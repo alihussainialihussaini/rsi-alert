@@ -27,17 +27,21 @@ jobs:
           MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
           python - <<'PY'
-          import os, json, requests
+          import os, json, time, requests
           from datetime import datetime, timezone, timedelta
 
           TOPIC = os.environ["NTFY_TOPIC"]
           SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
           TIMEFRAMES = ["1m", "5m", "8m", "1h"]
           MINUTES = {"1m": 1, "5m": 5, "8m": 8, "1h": 60}
-          LOOKBACK = {"1m": 15, "5m": 4, "8m": 3, "1h": 2}  # candles re-checked each run
+          LOOKBACK = {"1m": 15, "5m": 4, "8m": 3, "1h": 2}  # only for the very first run
+          MAX_CATCHUP = 6 * 3600 * 1000  # after a long gap, look back at most 6 hours
+          MAX_LINES = 25                 # max lines in one notification
           PERIOD = 14
           RSI_LEVELS = [30, 40, 50, 70]
           EMA_PERIOD = 200
+          LONG_RSI_PERIOD = 200          # the slow RSI line
+          LONG_RSI_NEAR = 2              # alert only if the RSI 200 line is within 50 +/- 2 (use 100 for every cross)
           PKT = timezone(timedelta(hours=5))
 
           KRAKEN = {"BTCUSDT": "XBTUSDT", "ETHUSDT": "ETHUSDT", "SOLUSDT": "SOLUSDT"}
@@ -129,17 +133,31 @@ jobs:
 
           def notify(text):
               try:
-                  requests.post("https://ntfy.sh/" + TOPIC, data=text.encode("utf-8"),
-                                headers={"Title": "RSI Alert", "Priority": "high"},
-                                timeout=15)
+                  r = requests.post("https://ntfy.sh/" + TOPIC, data=text.encode("utf-8"),
+                                    headers={"Title": "RSI Alert", "Priority": "high"},
+                                    timeout=15)
+                  return r.status_code < 300
               except Exception as e:
                   print("notify error:", e)
+                  return False
+
+          def start_index(candles, tf, since, now_ms):
+              n = len(candles)
+              if since is None:
+                  return max(1, n - LOOKBACK[tf])
+              since = max(since, now_ms - MAX_CATCHUP)
+              margin = 2 * MINUTES[tf] * 60000
+              lo = n
+              while lo > 1 and candles[lo - 1][0] + MINUTES[tf] * 60000 > since - margin:
+                  lo -= 1
+              return max(1, lo)
 
           try:
               state = json.load(open("state.json"))
           except Exception:
               state = {}
 
+          now_ms = int(time.time() * 1000)
           sample = ""
           for sym in SYMBOLS:
               for tf in TIMEFRAMES:
@@ -150,14 +168,21 @@ jobs:
                       if n < 2:
                           continue
                       rs = rsi_series(closes, PERIOD)
+                      rl = rsi_series(closes, LONG_RSI_PERIOD)
                       es = ema_series(closes, EMA_PERIOD)
                       print(sym, tf, n, "candles", source,
-                            "RSI", None if rs[-1] is None else round(rs[-1], 1))
+                            "RSI14", None if rs[-1] is None else round(rs[-1], 1),
+                            "RSI200", None if rl[-1] is None else round(rl[-1], 1))
                       if sym == "BTCUSDT" and tf == "1h" and rs[-1] is not None:
                           sample = "BTC 1h RSI %.1f (data: %s)" % (rs[-1], source)
 
+                      # catch up: check every candle since this pair was last checked
+                      chk = "_chk|" + sym + "|" + tf
+                      lo = start_index(candles, tf, state.get(chk), now_ms)
+
                       found = []
-                      for i in range(max(1, n - LOOKBACK[tf]), n):
+                      pending = {}
+                      for i in range(lo, n):
                           t = candles[i][0]
                           evs = []
                           r, rp = rs[i], rs[i - 1]
@@ -173,14 +198,31 @@ jobs:
                                   evs.append(("ema-up", "Price crossed ABOVE EMA%d (%.2f)" % (EMA_PERIOD, e)))
                               elif closes[i - 1] >= ep and closes[i] < e:
                                   evs.append(("ema-down", "Price crossed BELOW EMA%d (%.2f)" % (EMA_PERIOD, e)))
+                          s, sp = rl[i], rl[i - 1]
+                          if r is not None and rp is not None and s is not None and sp is not None \
+                                  and abs(s - 50) <= LONG_RSI_NEAR:
+                              if rp <= sp and r > s:
+                                  evs.append(("rsi200-up", "RSI14 crossed UP RSI%d (RSI%d %.1f, RSI14 %.1f)" % (LONG_RSI_PERIOD, LONG_RSI_PERIOD, s, r)))
+                              elif rp >= sp and r < s:
+                                  evs.append(("rsi200-down", "RSI14 crossed DOWN RSI%d (RSI%d %.1f, RSI14 %.1f)" % (LONG_RSI_PERIOD, LONG_RSI_PERIOD, s, r)))
                           for key, text in evs:
                               k = sym + "|" + tf + "|" + key
-                              if t > state.get(k, 0):
-                                  state[k] = t
+                              if t > pending.get(k, state.get(k, 0)):
+                                  pending[k] = t
                                   close_t = datetime.fromtimestamp((t + MINUTES[tf] * 60000) / 1000, PKT)
                                   found.append(close_t.strftime("%H:%M") + "  " + text)
+
                       if found:
-                          notify("%s [%s]\n%s\nPrice: %s" % (sym, tf, "\n".join(found), closes[-1]))
+                          extra = ""
+                          if len(found) > MAX_LINES:
+                              extra = "(%d older alerts not shown)\n" % (len(found) - MAX_LINES)
+                              found = found[-MAX_LINES:]
+                          msg = "%s [%s]\n%s%s\nPrice: %s" % (sym, tf, extra, "\n".join(found), closes[-1])
+                          if notify(msg):  # only mark as done if the phone alert was sent
+                              state.update(pending)
+                              state[chk] = now_ms
+                      else:
+                          state[chk] = now_ms
                   except Exception as e:
                       print("error", sym, tf, e)
 
