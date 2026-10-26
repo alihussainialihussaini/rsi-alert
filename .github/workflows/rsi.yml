@@ -2,7 +2,7 @@ name: RSI Alert
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -31,11 +31,11 @@ jobs:
           from datetime import datetime, timezone, timedelta
 
           TOPIC = os.environ["NTFY_TOPIC"]
-          SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
-          TIMEFRAMES = ["1m", "5m", "8m", "1h"]
-          MINUTES = {"1m": 1, "5m": 5, "8m": 8, "1h": 60}
-          LOOKBACK = {"1m": 15, "5m": 4, "8m": 3, "1h": 2}  # only for the very first run
-          MAX_CATCHUP = 6 * 3600 * 1000  # after a long gap, look back at most 6 hours
+          SYMBOLS = ["BTCUSDT"]
+          TIMEFRAMES = ["1h"]
+          MINUTES = {"1h": 60}
+          LOOKBACK = {"1h": 2}           # only for the very first run
+          MAX_CATCHUP = 24 * 3600 * 1000 # after a long gap, look back at most 24 hours
           MAX_LINES = 25                 # max lines in one notification
           PERIOD = 14
           RSI_LEVELS = [30, 40, 50, 70]
@@ -44,43 +44,20 @@ jobs:
           LONG_RSI_NEAR = 2              # alert only if the RSI 200 line is within 50 +/- 2 (use 100 for every cross)
           PKT = timezone(timedelta(hours=5))
 
-          KRAKEN = {"BTCUSDT": "XBTUSDT", "ETHUSDT": "ETHUSDT", "SOLUSDT": "SOLUSDT"}
-          KRAKEN_INT = {"1m": 1, "5m": 5, "8m": 1, "1h": 60}
-          BINANCE_INT = {"1m": "1m", "5m": "5m", "8m": "1m", "1h": "1h"}
+          KRAKEN = {"BTCUSDT": "XBTUSDT"}
+          KRAKEN_INT = {"1h": 60}
+          BINANCE_INT = {"1h": "1h"}
           BASES = ("https://data-api.binance.vision", "https://api.binance.com")
 
-          def aggregate(rows, minutes):
-              ms = minutes * 60000
-              groups = {}
-              for t, c in rows:
-                  groups.setdefault(t // ms, []).append((t, c))
-              out = []
-              for g in sorted(groups):
-                  items = groups[g]
-                  if len(items) == minutes:  # only fully closed windows
-                      out.append((g * ms, items[-1][1]))
-              return out
-
           def from_binance(sym, tf):
-              pages = 2 if tf == "8m" else 1
               for base in BASES:
                   try:
-                      rows, end = [], None
-                      for _ in range(pages):
-                          params = {"symbol": sym, "interval": BINANCE_INT[tf], "limit": 1000}
-                          if end:
-                              params["endTime"] = end
-                          r = requests.get(base + "/api/v3/klines", params=params, timeout=15)
-                          if r.status_code != 200:
-                              raise Exception("status %s" % r.status_code)
-                          page = r.json()
-                          if not page:
-                              break
-                          rows = page + rows
-                          end = page[0][0] - 1
-                      rows = [(int(c[0]), float(c[4])) for c in rows[:-1]]  # drop open candle
-                      if tf == "8m":
-                          rows = aggregate(rows, 8)
+                      r = requests.get(base + "/api/v3/klines",
+                                       params={"symbol": sym, "interval": BINANCE_INT[tf], "limit": 1000},
+                                       timeout=15)
+                      if r.status_code != 200:
+                          raise Exception("status %s" % r.status_code)
+                      rows = [(int(c[0]), float(c[4])) for c in r.json()[:-1]]  # drop open candle
                       return rows, "Binance"
                   except Exception:
                       continue
@@ -94,8 +71,6 @@ jobs:
               res = r.json()["result"]
               key = [k for k in res if k != "last"][0]
               rows = [(int(c[0]) * 1000, float(c[4])) for c in res[key][:-1]]  # drop open candle
-              if tf == "8m":
-                  rows = aggregate(rows, 8)
               return rows, "Kraken"
 
           def get_candles(sym, tf):
@@ -173,7 +148,7 @@ jobs:
                       print(sym, tf, n, "candles", source,
                             "RSI14", None if rs[-1] is None else round(rs[-1], 1),
                             "RSI200", None if rl[-1] is None else round(rl[-1], 1))
-                      if sym == "BTCUSDT" and tf == "1h" and rs[-1] is not None:
+                      if rs[-1] is not None:
                           sample = "BTC 1h RSI %.1f (data: %s)" % (rs[-1], source)
 
                       # catch up: check every candle since this pair was last checked
