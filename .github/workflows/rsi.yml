@@ -4,7 +4,7 @@ on:
   schedule:
     - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
   workflow_dispatch:
-  repository_dispatch:      
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -32,10 +32,10 @@ jobs:
 
           TOPIC = os.environ["NTFY_TOPIC"]
           SYMBOLS = ["BTCUSDT"]
-          TIMEFRAMES = ["1h"]
-          MINUTES = {"1h": 60}
-          LOOKBACK = {"1h": 2}           # only for the very first run
-          MAX_CATCHUP = 24 * 3600 * 1000 # after a long gap, look back at most 24 hours
+          TIMEFRAMES = ["1m"]
+          MINUTES = {"1m": 1}
+          LOOKBACK = {"1m": 15}          # only for the very first run
+          MAX_CATCHUP = 6 * 3600 * 1000  # after a long gap, look back at most 6 hours
           MAX_LINES = 25                 # max lines in one notification
           PERIOD = 14
           RSI_LEVELS = [30, 40, 50, 70]
@@ -45,8 +45,8 @@ jobs:
           PKT = timezone(timedelta(hours=5))
 
           KRAKEN = {"BTCUSDT": "XBTUSDT"}
-          KRAKEN_INT = {"1h": 60}
-          BINANCE_INT = {"1h": "1h"}
+          KRAKEN_INT = {"1m": 1}
+          BINANCE_INT = {"1m": "1m"}
           BASES = ("https://data-api.binance.vision", "https://api.binance.com")
 
           def from_binance(sym, tf):
@@ -149,7 +149,7 @@ jobs:
                             "RSI14", None if rs[-1] is None else round(rs[-1], 1),
                             "RSI200", None if rl[-1] is None else round(rl[-1], 1))
                       if rs[-1] is not None:
-                          sample = "BTC 1h RSI %.1f (data: %s)" % (rs[-1], source)
+                          sample = "BTC 1m RSI %.1f (data: %s)" % (rs[-1], source)
 
                       # catch up: check every candle since this pair was last checked
                       chk = "_chk|" + sym + "|" + tf
