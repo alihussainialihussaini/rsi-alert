@@ -31,7 +31,6 @@ aside{width:340px;border-left:1px solid var(--line);overflow:auto;background:var
 <div id="bar"><span id="sym">BTCUSDT</span><span id="px"></span>
 <span style="flex:1"></span>
 <button data-tf="5m" class="on">5m</button>
-<button data-tf="15m">15m</button><button data-tf="1h">1h</button><button data-tf="4h">4h</button><button data-tf="1d">1d</button>
 <input id="go" placeholder="coin e.g. SOL" size="9"></div>
 <div id="leg"><button id="bEma" class="on">EMA200 (blue)</button><button id="bSr" class="on">Support / Resistance</button><button id="bRsi" class="on">RSI14 (purple) + RSI200 (orange), lines at 30 · 50 · 70</button><span id="trend"></span></div>
 <div id="chart"></div></div>
@@ -77,7 +76,7 @@ function paint(){
 async function load(){
   $("sym").textContent=sym;
   try{
-    const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+sym+"&interval=5m&limit=1000");
+    const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+sym+"&interval="+tf+"&limit=1000");
     const k=await r.json();
     if(!Array.isArray(k))throw 0;
     K=k;
