@@ -102,7 +102,7 @@ function show(s){s=s.toUpperCase().replace(/[^A-Z0-9]/g,"");if(!s)return;if(!/US
 document.querySelectorAll("[data-tf]").forEach(b=>b.onclick=()=>{tf=b.dataset.tf;document.querySelectorAll("[data-tf]").forEach(x=>x.classList.toggle("on",x===b));load()});
 $("go").onkeydown=e=>{if(e.key==="Enter"){show($("go").value);$("go").value=""}};
 function coins(msg){const out=[];msg.split("\n").forEach(l=>{const m=l.trim().match(/^([A-Z0-9]{2,15})$/);if(m)out.push(m[1])});return out}
-function fmt(t){return new Date(t*1000).toLocaleString("en-US",{timeZone:"Asia/Karachi",hour:"numeric",minute:"2-digit",day:"numeric",month:"short",hour12:true})+" PKT"}
+function fmt(t){return new Date(t*1000).toLocaleString("en-US",{timeZone:"Asia/Karachi",hour:"2-digit",minute:"2-digit",day:"numeric",month:"short",hourCycle:"h23"})+" PKT"}
 function beep(){try{const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=880;g.gain.value=.15;o.start();o.stop(c.currentTime+.25)}catch(e){}}
 function add(m,live){
   if(seen.has(m.id))return;seen.add(m.id);
