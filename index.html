@@ -15,6 +15,7 @@ main{flex:1;display:flex;min-height:0}
 #bar{padding:8px 14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 #sym{font-size:18px;font-weight:700}#px{color:var(--mut)}
 #chart{flex:1;min-height:300px}
+#leg{padding:0 14px 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px}#leg button{padding:3px 8px;font-size:12px}#trend{color:var(--mut)}
 aside{width:340px;border-left:1px solid var(--line);overflow:auto;background:var(--panel)}
 .a{padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer;white-space:pre-wrap;line-height:1.4}
 .a:hover{background:#1d242d}.a b{color:var(--acc)}.a small{color:var(--mut)}
@@ -31,6 +32,7 @@ aside{width:340px;border-left:1px solid var(--line);overflow:auto;background:var
 <span style="flex:1"></span>
 <button data-tf="15m">15m</button><button data-tf="1h" class="on">1h</button><button data-tf="4h">4h</button><button data-tf="1d">1d</button>
 <input id="go" placeholder="coin e.g. SOL" size="9"></div>
+<div id="leg"><button id="bEma" class="on">EMA200 (blue)</button><button id="bSr" class="on">Support / Resistance</button><button id="bRsi" class="on">RSI14 (purple) + RSI200 (orange), lines at 30 · 50 · 70</button><span id="trend"></span></div>
 <div id="chart"></div></div>
 <aside id="list"></aside></main>
 <div id="toasts"></div>
@@ -42,23 +44,57 @@ let sym="BTCUSDT",tf="1h",soundOn=false,seen=new Set(),timer;
 const $=id=>document.getElementById(id);
 const chart=LightweightCharts.createChart($("chart"),{layout:{background:{color:"#0e1116"},textColor:"#8b96a3"},grid:{vertLines:{color:"#1b2129"},horzLines:{color:"#1b2129"}},timeScale:{timeVisible:true,borderColor:"#262d36"},rightPriceScale:{borderColor:"#262d36"},autoSize:true});
 const candles=chart.addCandlestickSeries({upColor:"#26a69a",downColor:"#ef5350",wickUpColor:"#26a69a",wickDownColor:"#ef5350",borderVisible:false});
+candles.priceScale().applyOptions({scaleMargins:{top:0.05,bottom:0.32}});
+const emaS=chart.addLineSeries({color:"#4aa3ff",lineWidth:2,priceLineVisible:false,lastValueVisible:false});
+const rsiS=chart.addLineSeries({priceScaleId:"rsi",color:"#b48cff",lineWidth:2,priceLineVisible:false,lastValueVisible:false});
+const rsiL=chart.addLineSeries({priceScaleId:"rsi",color:"#ff9f43",lineWidth:2,priceLineVisible:false,lastValueVisible:false});
+chart.priceScale("rsi").applyOptions({scaleMargins:{top:0.72,bottom:0.03}});
+[30,50,70].forEach(v=>rsiS.createPriceLine({price:v,color:"#3a4350",lineWidth:1,lineStyle:2,axisLabelVisible:false,title:"RSI "+v}));
+let K=[],srLines=[],vis={ema:true,sr:true,rsi:true};
+function rsiCalc(c,p){const o=new Array(c.length).fill(null);if(c.length<=p)return o;let g=0,l=0;for(let i=1;i<=p;i++){const d=c[i]-c[i-1];if(d>0)g+=d;else l-=d}g/=p;l/=p;o[p]=l===0?100:100-100/(1+g/l);for(let i=p+1;i<c.length;i++){const d=c[i]-c[i-1];g=(g*(p-1)+(d>0?d:0))/p;l=(l*(p-1)+(d<0?-d:0))/p;o[i]=l===0?100:100-100/(1+g/l)}return o}
+function emaCalc(c,p){const o=new Array(c.length).fill(null);if(c.length<p)return o;let e=0;for(let i=0;i<p;i++)e+=c[i];e/=p;o[p-1]=e;const k=2/(p+1);for(let i=p;i<c.length;i++){e=c[i]*k+e*(1-k);o[i]=e}return o}
+function levels(c){const out=[];const n=c.length,a=Math.max(5,n-300);for(let i=a+5;i<n-5;i++){let hi=true,lo=true;for(let j=1;j<=5;j++){if(c[i]<=c[i-j]||c[i]<=c[i+j])hi=false;if(c[i]>=c[i-j]||c[i]>=c[i+j])lo=false}if(hi||lo)out.push(c[i])}return out}
+function pts(arr){const r=[];for(let i=0;i<arr.length;i++)if(arr[i]!==null)r.push({time:K[i][0]/1000+OFF,value:arr[i]});return r}
+function paint(){
+  if(!K.length)return;
+  const c=K.map(x=>+x[4]),last=c[c.length-1];
+  const e=emaCalc(c,200),r14=rsiCalc(c,14),r200=rsiCalc(c,200);
+  emaS.setData(vis.ema?pts(e):[]);
+  rsiS.setData(vis.rsi?pts(r14):[]);rsiL.setData(vis.rsi?pts(r200):[]);
+  srLines.forEach(l=>candles.removePriceLine(l));srLines=[];
+  if(vis.sr){
+    const lv=levels(c).sort((a,b)=>a-b),u=[];
+    lv.forEach(v=>{if(!u.length||Math.abs(v-u[u.length-1])/v>0.003)u.push(v)});
+    const up=u.filter(v=>v>last).slice(0,3),dn=u.filter(v=>v<=last).slice(-3);
+    up.forEach(v=>srLines.push(candles.createPriceLine({price:v,color:"#ef5350",lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"R"})));
+    dn.forEach(v=>srLines.push(candles.createPriceLine({price:v,color:"#26a69a",lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"S"})));
+  }
+  const ev=e[e.length-1];
+  $("trend").textContent=ev?("Price is "+(last>ev?"above":"below")+" EMA200  ·  RSI14 "+(r14[r14.length-1]||0).toFixed(1)+(r200[r200.length-1]!==null?"  ·  RSI200 "+r200[r200.length-1].toFixed(1):"")):"";
+}
+[["bEma","ema"],["bSr","sr"],["bRsi","rsi"]].forEach(([id,k])=>{$(id).onclick=()=>{vis[k]=!vis[k];$(id).classList.toggle("on",vis[k]);paint()}});
 async function load(){
   $("sym").textContent=sym;
   try{
-    const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+sym+"&interval="+tf+"&limit=500");
+    const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+sym+"&interval="+tf+"&limit=1000");
     const k=await r.json();
     if(!Array.isArray(k))throw 0;
+    K=k;
     const lp=+k[k.length-1][4],pr=Math.max(2,Math.min(8,4-Math.floor(Math.log10(lp))));candles.applyOptions({priceFormat:{type:"price",precision:pr,minMove:1/Math.pow(10,pr)}});
     candles.setData(k.map(x=>({time:x[0]/1000+OFF,open:+x[1],high:+x[2],low:+x[3],close:+x[4]})));
+    paint();
+    chart.timeScale().setVisibleLogicalRange({from:k.length-160,to:k.length+6});
     $("px").textContent=k[k.length-1][4];
-  }catch(e){$("px").textContent="no data for "+sym}
+  }catch(e){K=[];$("px").textContent="no data for "+sym}
   clearInterval(timer);timer=setInterval(tick,10000);
 }
 async function tick(){
   try{
     const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+sym+"&interval="+tf+"&limit=2");
     const k=await r.json();
-    k.forEach(x=>candles.update({time:x[0]/1000+OFF,open:+x[1],high:+x[2],low:+x[3],close:+x[4]}));
+    k.forEach(x=>{candles.update({time:x[0]/1000+OFF,open:+x[1],high:+x[2],low:+x[3],close:+x[4]});
+      if(K.length&&K[K.length-1][0]===x[0])K[K.length-1]=x;else if(K.length&&x[0]>K[K.length-1][0])K.push(x)});
+    paint();
     $("px").textContent=k[k.length-1][4];
   }catch(e){}
 }
