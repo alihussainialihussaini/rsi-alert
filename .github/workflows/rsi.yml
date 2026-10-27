@@ -441,7 +441,7 @@ jobs:
                   if len(lines) > MAX_LINES:
                       extra = "(%d older alerts not shown)\n" % (len(lines) - MAX_LINES)
                       lines = lines[-MAX_LINES:]
-                  text = "%s\n%s%s\nPrice: %.6g (%s PKT)\n" % (sym, extra, "\n".join(lines), price, now_pkt.strftime("%d %b %-I:%M %p"))
+                  text = "%s\n%s%s\nPrice: %.6g (%s PKT)\n" % (sym, extra, "\n".join(lines), price, now_pkt.strftime("%d %b %H:%M"))
                   blocks.append((text, pending, chks))
               except Exception as e:
                   print("error", sym, e)
