@@ -30,7 +30,7 @@ aside{width:340px;border-left:1px solid var(--line);overflow:auto;background:var
 <div id="chartwrap">
 <div id="bar"><span id="sym">BTCUSDT</span><span id="px"></span>
 <span style="flex:1"></span>
-<button data-tf="15m">15m</button><button data-tf="1h" class="on">1h</button><button data-tf="4h">4h</button><button data-tf="1d">1d</button>
+<button data-tf="15m">15m</button><button data-tf="5m" class="on">1h</button><button data-tf="4h">4h</button><button data-tf="1d">1d</button>
 <input id="go" placeholder="coin e.g. SOL" size="9"></div>
 <div id="leg"><button id="bEma" class="on">EMA200 (blue)</button><button id="bSr" class="on">Support / Resistance</button><button id="bRsi" class="on">RSI14 (purple) + RSI200 (orange), lines at 30 · 50 · 70</button><span id="trend"></span></div>
 <div id="chart"></div></div>
@@ -40,7 +40,7 @@ aside{width:340px;border-left:1px solid var(--line);overflow:auto;background:var
 <script>
 const TOPIC="rsi-alert-7h3kq9xw2m";
 const OFF=5*3600; // Pakistan time
-let sym="BTCUSDT",tf="1h",soundOn=false,seen=new Set(),timer;
+let sym="BTCUSDT",tf="5m",soundOn=false,seen=new Set(),timer;
 const $=id=>document.getElementById(id);
 const chart=LightweightCharts.createChart($("chart"),{layout:{background:{color:"#0e1116"},textColor:"#8b96a3"},grid:{vertLines:{color:"#1b2129"},horzLines:{color:"#1b2129"}},timeScale:{timeVisible:true,borderColor:"#262d36"},rightPriceScale:{borderColor:"#262d36"},autoSize:true});
 const candles=chart.addCandlestickSeries({upColor:"#26a69a",downColor:"#ef5350",wickUpColor:"#26a69a",wickDownColor:"#ef5350",borderVisible:false});
@@ -86,7 +86,7 @@ async function load(){
     chart.timeScale().setVisibleLogicalRange({from:k.length-160,to:k.length+6});
     $("px").textContent=k[k.length-1][4];
   }catch(e){K=[];$("px").textContent="no data for "+sym}
-  clearInterval(timer);timer=setInterval(tick,10000);
+  clearInterval(timer);timer=setInterval(tick,300000);
 }
 async function tick(){
   try{
