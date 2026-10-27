@@ -435,13 +435,13 @@ jobs:
                   lines = []
                   for cm, text in found:
                       close_t = datetime.fromtimestamp(cm / 1000, PKT)
-                      fmt = "%-I:%M %p" if close_t.date() == now_pkt.date() else "%d %b %-I:%M %p"
+                      fmt = "%H:%M" if close_t.date() == now_pkt.date() else "%d %b %H:%M"
                       lines.append(close_t.strftime(fmt) + " PKT  " + text)
                   extra = ""
                   if len(lines) > MAX_LINES:
                       extra = "(%d older alerts not shown)\n" % (len(lines) - MAX_LINES)
                       lines = lines[-MAX_LINES:]
-                  text = "%s\n%s%s\nPrice: %.6g (%s PKT)\n" % (sym, extra, "\n".join(lines), price, now_pkt.strftime("%d %b %H:%M"))
+                  text = "%s\n%s%s\nPrice: %.6g (%s PKT)\n" % (sym, extra, "\n".join(lines), price, now_pkt.strftime("%d %b %-I:%M %p"))
                   blocks.append((text, pending, chks))
               except Exception as e:
                   print("error", sym, e)
