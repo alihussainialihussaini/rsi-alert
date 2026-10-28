@@ -53,4 +53,250 @@ chart.priceScale("rsi").applyOptions({scaleMargins:{top:0.72,bottom:0.03}});
 let K=[],srLines=[],vis={ema:true,sr:true,rsi:true};
 function rsiCalc(c,p){const o=new Array(c.length).fill(null);if(c.length<=p)return o;let g=0,l=0;for(let i=1;i<=p;i++){const d=c[i]-c[i-1];if(d>0)g+=d;else l-=d}g/=p;l/=p;o[p]=l===0?100:100-100/(1+g/l);for(let i=p+1;i<c.length;i++){const d=c[i]-c[i-1];g=(g*(p-1)+(d>0?d:0))/p;l=(l*(p-1)+(d<0?-d:0))/p;o[i]=l===0?100:100-100/(1+g/l)}return o}
 function emaCalc(c,p){const o=new Array(c.length).fill(null);if(c.length<p)return o;let e=0;for(let i=0;i<p;i++)e+=c[i];e/=p;o[p-1]=e;const k=2/(p+1);for(let i=p;i<c.length;i++){e=c[i]*k+e*(1-k);o[i]=e}return o}
-function levels(c){const out=[];const n=c.length,a=Math.max(5,n-300);for(let
+function levels(c){const out=[];const n=c.length,a=Math.max(5,n-300);for(let i=a+5;i<n-5;i++){let hi=true,lo=true;for(let j=1;j<=5;j++){if(c[i]<=c[i-j]||c[i]<=c[i+j])hi=false;if(c[i]>=c[i-j]||c[i]>=c[i+j])lo=false}if(hi||lo)out.push(c[i])}return out}
+function pts(arr){const r=[];for(let i=0;i<arr.length;i++)if(arr[i]!==null)r.push({time:K[i][0]/1000+OFF,value:arr[i]});return r}
+function paint(){
+  if(!K.length)return;
+  const c=K.map(x=>+x[4]),last=c[c.length-1];
+  const e=emaCalc(c,200),r14=rsiCalc(c,14),r200=rsiCalc(c,200);
+  emaS.setData(vis.ema?pts(e):[]);
+  rsiS.setData(vis.rsi?pts(r14):[]);rsiL.setData(vis.rsi?pts(r200):[]);
+  srLines.forEach(l=>candles.removePriceLine(l));srLines=[];
+  if(vis.sr){
+    const lv=levels(c).sort((a,b)=>a-b),u=[];
+    lv.forEach(v=>{if(!u.length||Math.abs(v-u[u.length-1])/v>0.003)u.push(v)});
+    const up=u.filter(v=>v>last).slice(0,3),dn=u.filter(v=>v<=last).slice(-3);
+    up.forEach(v=>srLines.push(candles.createPriceLine({price:v,color:"#ef5350",lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"R"})));
+    dn.forEach(v=>srLines.push(candles.createPriceLine({price:v,color:"#26a69a",lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"S"})));
+  }
+  const ev=e[e.length-1];
+  $("trend").textContent=ev?("Price is "+(last>ev?"above":"below")+" EMA200  ·  RSI14 "+(r14[r14.length-1]||0).toFixed(1)+(r200[r200.length-1]!==null?"  ·  RSI200 "+r200[r200.length-1].toFixed(1):"")):"";
+}
+[["bEma","ema"],["bSr","sr"],["bRsi","rsi"]].forEach(([id,k])=>{$(id).onclick=()=>{vis[k]=!vis[k];$(id).classList.toggle("on",vis[k]);paint()}});
+async function load(){
+  $("sym").textContent=sym;
+  try{
+    const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+tf+"&limit=1000");
+    const k=await r.json();
+    if(!Array.isArray(k))throw 0;
+    K=k;
+    const lp=+k[k.length-1][4],pr=Math.max(2,Math.min(8,4-Math.floor(Math.log10(lp))));candles.applyOptions({priceFormat:{type:"price",precision:pr,minMove:1/Math.pow(10,pr)}});
+    candles.setData(k.map(x=>({time:x[0]/1000+OFF,open:+x[1],high:+x[2],low:+x[3],close:+x[4]})));
+    paint();
+    chart.timeScale().setVisibleLogicalRange({from:k.length-160,to:k.length+6});
+    $("px").textContent=k[k.length-1][4];
+  }catch(e){K=[];$("px").textContent="no data for "+sym}
+  clearInterval(timer);timer=setInterval(tick,10000);
+}
+async function tick(){
+  try{
+    const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+tf+"&limit=2");
+    const k=await r.json();
+    k.forEach(x=>{candles.update({time:x[0]/1000+OFF,open:+x[1],high:+x[2],low:+x[3],close:+x[4]});
+      if(K.length&&K[K.length-1][0]===x[0])K[K.length-1]=x;else if(K.length&&x[0]>K[K.length-1][0])K.push(x)});
+    paint();
+    $("px").textContent=k[k.length-1][4];
+  }catch(e){}
+}
+function show(s){s=String(s).trim().toUpperCase().replace(/\s+/g,"");if(!s)return;if(!/USDT$/.test(s))s+="USDT";sym=s;load()}
+document.querySelectorAll("[data-tf]").forEach(b=>b.onclick=()=>{tf=b.dataset.tf;document.querySelectorAll("[data-tf]").forEach(x=>x.classList.toggle("on",x===b));load()});
+$("go").onkeydown=e=>{if(e.key==="Enter"){show($("go").value);$("go").value=""}};
+function coins(msg){const out=[];msg.split("\n").forEach(l=>{const m=l.trim().match(/^(\S+USDT)$/);if(m)out.push(m[1])});return out}
+function fmt(t){return new Date(t*1000).toLocaleString("en-US",{timeZone:"Asia/Karachi",hour:"2-digit",minute:"2-digit",day:"numeric",month:"short",hourCycle:"h23"})+" PKT"}
+function beep(){try{const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=880;g.gain.value=.15;o.start();o.stop(c.currentTime+.25)}catch(e){}}
+function add(m,live){
+  if(seen.has(m.id))return;seen.add(m.id);
+  const msg=m.message||"";const cs=coins(msg);
+  const d=document.createElement("div");d.className="a";
+  const hd=document.createElement("small");hd.textContent=fmt(m.time)+(m.src?"  ·  "+m.src:"")+(cs.length?"  ·  "+cs.join(", "):"");d.appendChild(hd);
+  msg.split("\n").forEach(l=>{const x=document.createElement("div");const s=l.trim();const isC=/^\S+USDT$/.test(s);x.className=isC?"coin":"ln";x.textContent=l||"\u00a0";if(isC)x.onclick=ev=>{ev.stopPropagation();show(s)};d.appendChild(x)});
+  d.onclick=()=>{if(cs.length)show(cs[0])};
+  $("list").prepend(d);
+  if(live){
+    const t=document.createElement("div");t.className="t";t.textContent=msg.slice(0,400);
+    t.onclick=()=>{if(cs.length)show(cs[0]);t.remove()};
+    $("toasts").appendChild(t);setTimeout(()=>t.remove(),20000);
+    if(autoOpen&&cs.length)show(cs[0]);
+    if(soundOn){beep();try{new Notification(m.title||"Alert",{body:msg.slice(0,200)})}catch(e){}}
+  }
+}
+$("en").onclick=()=>{soundOn=true;beep();$("en").textContent="Sound on";try{Notification.requestPermission()}catch(e){}};
+function connect(){
+  const es=new EventSource("https://ntfy.sh/"+TOPIC+"/sse?since=24h");
+  let first=true;
+  es.onopen=()=>{$("st").textContent="live";$("st").className="ok"};
+  es.onerror=()=>{$("st").textContent="reconnecting…";$("st").className=""};
+  es.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(x){return}if(m.event!=="message")return;add(m,!first)};
+  es.addEventListener("open",()=>{setTimeout(()=>first=false,2500)});
+  setTimeout(()=>first=false,4000);
+}
+// ===== live 5-minute scanner: same alert rules as the GitHub bot =====
+const API="https://data-api.binance.vision";
+const SC={TOP:100,BMIN:5,LOOK:2,MAXCATCH:864e5,MAXLINES:25,MAXCH:3500,RSIL:[40,50,70],LNEAR:2,SRL:5,SRR:5,SRW:300,SRN:0.005,TS:3,TFLAT:0.005,FL:20,HOLD5:2,HOLD4:1,PUMP:0.015,VN:20,FW:5,FVG:0.001,OB:0.01,OBB:3,ZW:100,RTW:50};
+const BMS=SC.BMIN*60000,H4=4*3600000;
+const STABLE=new Set(["USDC","FDUSD","TUSD","USDP","BUSD","DAI","EUR","AEUR","USD1","XUSD","USDE","PYUSD","EURI","RLUSD","BFUSD","USDS","UST"]);
+const SHORT={uptrend:"up",downtrend:"down",sideways:"side"};
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const p2=n=>(n<10?"0":"")+n;
+function ub(a,x){let lo=0,hi=a.length;while(lo<hi){const m=(lo+hi)>>1;if(a[m]<=x)lo=m+1;else hi=m}return lo}
+function g6(x){let s=Number(x).toPrecision(6);if(s.indexOf("e")<0&&s.indexOf(".")>=0)s=s.replace(/0+$/,"").replace(/\.$/,"");return s}
+function pk(ms){return new Date(ms+5*3600000)}
+function hm(ms){const d=pk(ms);return p2(d.getUTCHours())+":"+p2(d.getUTCMinutes())}
+function dm(ms){const d=pk(ms);return p2(d.getUTCDate())+" "+MON[d.getUTCMonth()]}
+function stamp(cm,now){return dm(cm)===dm(now)?hm(cm):dm(cm)+" "+hm(cm)}
+function swingsC(c){const hi=[],lo=[];for(let j=SC.SRL;j<c.length-SC.SRR;j++){let mxL=-Infinity,mnL=Infinity,mxR=-Infinity,mnR=Infinity;for(let x=j-SC.SRL;x<j;x++){mxL=Math.max(mxL,c[x]);mnL=Math.min(mnL,c[x])}for(let x=j+1;x<=j+SC.SRR;x++){mxR=Math.max(mxR,c[x]);mnR=Math.min(mnR,c[x])}if(c[j]>mxL&&c[j]>=mxR)hi.push([j,c[j]]);if(c[j]<mnL&&c[j]<=mnR)lo.push([j,c[j]])}return [hi,lo]}
+function trendLabels(C,es){const n=C.length,S=SC.TS,hs=[],ls=[];
+  for(let j=S;j<n-S;j++){const h=C[j][2],l=C[j][3];let mxl=-Infinity,mxr=-Infinity,mnl=Infinity,mnr=Infinity;
+    for(let x=j-S;x<j;x++){mxl=Math.max(mxl,C[x][2]);mnl=Math.min(mnl,C[x][3])}
+    for(let x=j+1;x<=j+S;x++){mxr=Math.max(mxr,C[x][2]);mnr=Math.min(mnr,C[x][3])}
+    if(h>mxl&&h>=mxr)hs.push([j,h]);if(l<mnl&&l<=mnr)ls.push([j,l])}
+  const out=new Array(n).fill(null);let ph=0,pl=0;
+  for(let i=0;i<n;i++){while(ph<hs.length&&hs[ph][0]+S<=i)ph++;while(pl<ls.length&&ls[pl][0]+S<=i)pl++;
+    const e=es[i];if(e===null||i<SC.FL||es[i-SC.FL]===null||ph<2||pl<2)continue;
+    if(Math.abs(e/es[i-SC.FL]-1)<SC.TFLAT){out[i]="sideways";continue}
+    const c=C[i][4],up=hs[ph-1][1]>hs[ph-2][1]&&ls[pl-1][1]>ls[pl-2][1],dn=hs[ph-1][1]<hs[ph-2][1]&&ls[pl-1][1]<ls[pl-2][1];
+    out[i]=(c>e&&up)?"uptrend":(c<e&&dn)?"downtrend":"sideways"}
+  return out}
+function holdLabels(L,hold){const out=new Array(L.length).fill(null);let cur=null;for(let i=0;i<L.length;i++){const lab=L[i];if(lab!==null){let ok=true;for(let x=Math.max(0,i-hold+1);x<=i;x++)if(L[x]!==lab){ok=false;break}if(ok)cur=lab}out[i]=cur}return out}
+function findZones(c,lo,n){const made=[];
+  for(let ci=Math.max(2,lo-SC.ZW);ci<n;ci++){const o=c[ci][1],h=c[ci][2],l=c[ci][3],cl=c[ci][4],a=c[ci-2];
+    if(l>a[2]&&(l-a[2])/cl>=SC.FVG)made.push(["bullish FVG",a[2],l,ci]);
+    if(h<a[3]&&(a[3]-h)/cl>=SC.FVG)made.push(["bearish FVG",h,a[3],ci]);
+    const body=o?(cl-o)/o:0;
+    if(body>=SC.OB){for(let k=ci-1;k>Math.max(-1,ci-1-SC.OBB);k--){if(c[k][4]<c[k][1]){made.push(["bullish order block / demand zone",c[k][3],c[k][2],ci]);break}}}
+    else if(body<=-SC.OB){for(let k=ci-1;k>Math.max(-1,ci-1-SC.OBB);k--){if(c[k][4]>c[k][1]){made.push(["bearish order block / supply zone",c[k][3],c[k][2],ci]);break}}}}
+  const out=[];for(const [kind,bot,top,ci] of made){for(let k=ci+1;k<Math.min(n,ci+1+SC.ZW);k++){if(c[k][3]<=top&&c[k][2]>=bot){out.push([kind,bot,top,k]);break}}}
+  return out}
+function startIdx(c,tfMin,since,nowMs,look){const n=c.length;if(since==null)return Math.max(1,n-look);since=Math.max(since,nowMs-SC.MAXCATCH);const margin=2*tfMin*60000;let lo=n;while(lo>1&&c[lo-1][0]+tfMin*60000>since-margin)lo--;return Math.max(1,lo)}
+// c5 / c4: closed candles [openTime,o,h,l,c,v]; st: saved alert state; returns found alerts for this coin
+function analyzeSym(sym,c5,c4,st,nowMs,cx){
+  const n=c5.length;if(n<2)return null;
+  const closes=c5.map(x=>x[4]),vols=c5.map(x=>x[5]);
+  const rs=rsiCalc(closes,14),rl=rsiCalc(closes,200),es=emaCalc(closes,200);
+  const [highs,lows]=swingsC(closes);
+  const conf1=holdLabels(trendLabels(c5,es),SC.HOLD5);
+  let conf4=null,close4=[];
+  if(c4&&c4.length>2){const es4=emaCalc(c4.map(x=>x[4]),200);conf4=holdLabels(trendLabels(c4,es4),SC.HOLD4);close4=c4.map(x=>x[0]+H4)}
+  const t4=cm=>{if(!conf4)return "";const k=ub(close4,cm)-1;return(k>=0&&conf4[k])?" [4h "+SHORT[conf4[k]]+"]":""};
+  const srAt=i=>{const p0=closes[i-1];let res=null,sup=null;
+    for(const [j,v] of highs){if(j+SC.SRR<=i-1&&j>=i-SC.SRW&&v>p0&&(res===null||v<res))res=v}
+    for(const [j,v] of lows){if(j+SC.SRR<=i-1&&j>=i-SC.SRW&&v<p0&&(sup===null||v>sup))sup=v}
+    return [res,sup]};
+  const chk5="_chk|"+sym+"|5m",lo=startIdx(c5,SC.BMIN,st[chk5],nowMs,SC.LOOK);
+  const chks=[chk5],found=[],pending={},upd={};
+  const add=(t,tfn,key,text,suffix,step)=>{const k=sym+"|"+tfn+"|"+key;const prev=(k in pending)?pending[k]:(st[k]||0);if(t>prev){pending[k]=t;found.push([t+step,text+suffix])}};
+  for(let i=lo;i<n;i++){
+    const t=c5[i][0],suffix=t4(t+BMS),evs=[];
+    const r=rs[i],rp=rs[i-1];
+    if(r!==null&&rp!==null){for(const lvl of SC.RSIL){
+      if(rp<lvl&&lvl<=r)evs.push(["rsi"+lvl+"-up","RSI crossed UP "+lvl+" ("+r.toFixed(1)+")"]);
+      else if(rp>=lvl&&lvl>r)evs.push(["rsi"+lvl+"-down","RSI crossed DOWN "+lvl+" ("+r.toFixed(1)+")"])}}
+    // RSI retests: 70 -> 50 and 30 -> 49 (first return to the level after RSI went beyond 70 / 30 in the last RTW candles)
+    if(r!==null&&rp!==null){
+      const w0=Math.max(0,i-SC.RTW);
+      if(rp>=50&&50>r){let p=-1;for(let x=i-1;x>=w0;x--){if(rs[x]!==null&&rs[x]>70){p=x;break}}
+        if(p>=0){let ok=true,mx=0;for(let x=p;x<i;x++){if(!(rs[x]>=50)){ok=false;break}}
+          if(ok){for(let x=w0;x<i;x++)if(rs[x]!==null)mx=Math.max(mx,rs[x]);
+            evs.push(["ret70|"+c5[p][0],"RSI 70 -> 50 retest: RSI was above 70 (peak "+mx.toFixed(1)+", "+(i-p)+" candles ago), now "+r.toFixed(1)])}}}
+      if(rp<49&&49<=r){let p=-1;for(let x=i-1;x>=w0;x--){if(rs[x]!==null&&rs[x]<30){p=x;break}}
+        if(p>=0){let ok=true,mn=100;for(let x=p;x<i;x++){if(!(rs[x]<49)){ok=false;break}}
+          if(ok){for(let x=w0;x<i;x++)if(rs[x]!==null)mn=Math.min(mn,rs[x]);
+            evs.push(["ret30|"+c5[p][0],"RSI 30 -> 49 retest: RSI was below 30 (low "+mn.toFixed(1)+", "+(i-p)+" candles ago), now "+r.toFixed(1)])}}}}
+    const e=es[i],ep=es[i-1];
+    if(e!==null&&ep!==null){
+      if(closes[i-1]<=ep&&closes[i]>e)evs.push(["ema-up","Price crossed ABOVE EMA200 ("+g6(e)+")"]);
+      else if(closes[i-1]>=ep&&closes[i]<e)evs.push(["ema-down","Price crossed BELOW EMA200 ("+g6(e)+")"])}
+    const s=rl[i],sp=rl[i-1];
+    if(r!==null&&rp!==null&&s!==null&&sp!==null&&Math.abs(s-50)<=SC.LNEAR){
+      if(rp<=sp&&r>s)evs.push(["rsi200-up","RSI14 crossed UP RSI200 (RSI200 "+s.toFixed(1)+", RSI14 "+r.toFixed(1)+")"]);
+      else if(rp>=sp&&r<s)evs.push(["rsi200-down","RSI14 crossed DOWN RSI200 (RSI200 "+s.toFixed(1)+", RSI14 "+r.toFixed(1)+")"])}
+    const p0=closes[i-1],[rlv,slv]=srAt(i);
+    if(rlv!==null){const zone=rlv*(1-SC.SRN);
+      if(closes[i]>rlv)evs.push(["res-break|"+g6(rlv),"Price BROKE ABOVE resistance "+g6(rlv)]);
+      else if(closes[i]>=zone&&p0<zone)evs.push(["res-near|"+g6(rlv),"Price NEAR resistance "+g6(rlv)+" (may break up)"])}
+    if(slv!==null){const zone=slv*(1+SC.SRN);
+      if(closes[i]<slv)evs.push(["sup-break|"+g6(slv),"Price BROKE BELOW support "+g6(slv)]);
+      else if(closes[i]<=zone&&p0>zone)evs.push(["sup-near|"+g6(slv),"Price NEAR support "+g6(slv)+" (may break down)"])}
+    for(let j=Math.max(1,i-SC.FW);j<i;j++){const [rj,sj]=srAt(j);
+      if(rj!==null&&closes[j]>rj&&closes[i]<=rj){let all=true;for(let x=j+1;x<i;x++)if(!(closes[x]>rj)){all=false;break}if(all)evs.push(["fake-up|"+g6(rj),"Fake breakout? Broke above resistance "+g6(rj)+", then closed back below"])}
+      if(sj!==null&&closes[j]<sj&&closes[i]>=sj){let all=true;for(let x=j+1;x<i;x++)if(!(closes[x]<sj)){all=false;break}if(all)evs.push(["fake-down|"+g6(sj),"Fake breakdown? Broke below support "+g6(sj)+", then closed back above"])}}
+    if(i>SC.VN){let sum=0;for(let x=i-SC.VN;x<i;x++)sum+=vols[x];const avg=sum/SC.VN,jump=closes[i-1]?closes[i]/closes[i-1]-1:0;
+      if(jump>=SC.PUMP&&avg>0&&vols[i]<avg)evs.push(["pump-lowvol","Fake pump? Price +"+(jump*100).toFixed(1)+"% but volume only "+(vols[i]/avg*100).toFixed(0)+"% of the 20-candle average"])}
+    if(conf1[i]&&conf1[i-1]&&conf1[i]!==conf1[i-1])evs.push(["trend|"+conf1[i-1]+">"+conf1[i],"TREND 5m changed: "+conf1[i-1]+" -> "+conf1[i]]);
+    for(const [key,text] of evs)add(t,"5m",key,text,suffix,BMS)}
+  for(const [kind,bot,top,k] of findZones(c5,lo,n)){if(k>=lo)add(c5[k][0],"5m","zone|"+kind+"|"+g6(bot)+"-"+g6(top),"Price entered "+kind+" "+g6(bot)+" - "+g6(top),t4(c5[k][0]+BMS),BMS)}
+  if(conf4){const chk4="_chk|"+sym+"|4h";chks.push(chk4);const lo4=startIdx(c4,240,st[chk4],nowMs,1);
+    for(let i=lo4;i<c4.length;i++){if(conf4[i]&&conf4[i-1]&&conf4[i]!==conf4[i-1])add(c4[i][0],"4h","trend|"+conf4[i-1]+">"+conf4[i],"TREND 4h changed: "+conf4[i-1]+" -> "+conf4[i],"",H4)}}
+  // multi-timeframe confluence: RSI14 on 15m, 1h and 4h all on the same side of 50 (alert when that alignment forms)
+  if(cx&&cx.m15&&cx.h1&&c4&&cx.m15.length>20&&cx.h1.length>20&&c4.length>20){
+    const lastR=a=>{const q=rsiCalc(a.map(x=>x[4]),14);return q[q.length-1]};
+    const v=[lastR(cx.m15),lastR(cx.h1),lastR(c4)];
+    if(v.every(x=>x!==null&&x!==undefined)){
+      const side=v.every(x=>x>50)?"bull":v.every(x=>x<50)?"bear":"none",key="_mtf|"+sym,prev=st[key];
+      if(prev===undefined)upd[key]=side;
+      else if(side!==prev){
+        if(side==="none")upd[key]=side;
+        else{pending[key]=side;found.push([c5[n-1][0]+BMS,"MTF CONFLUENCE "+(side==="bull"?"bullish":"bearish")+": RSI "+(side==="bull"?"above":"below")+" 50 on 15m ("+v[0].toFixed(1)+"), 1h ("+v[1].toFixed(1)+"), 4h ("+v[2].toFixed(1)+")"])}}}}
+  return {found,pending,chks,upd,price:closes[n-1]}}
+// ---- scan driver: runs at every 5-minute candle close while this page is open
+let ST={},scanning=false,scanN=0,scanOn=true,autoOpen=false,symCache={t:0,list:[]},c4cache={},c15cache={},c1hcache={},lastInfo="";
+try{ST=JSON.parse(localStorage.getItem("scanState")||"{}")}catch(e){ST={}}
+try{scanOn=localStorage.getItem("scanOn")!=="0"}catch(e){}
+async function topSymbols(){
+  if(Date.now()-symCache.t<3600000&&symCache.list.length)return symCache.list;
+  const r=await fetch(API+"/api/v3/ticker/24hr?type=MINI");if(!r.ok)throw new Error("ticker "+r.status);
+  const j=await r.json();
+  const list=j.filter(x=>x.symbol.endsWith("USDT")&&!STABLE.has(x.symbol.slice(0,-4))).map(x=>[+x.quoteVolume,x.symbol]).sort((a,b)=>b[0]-a[0]).slice(0,SC.TOP).map(x=>x[1]);
+  if(list.length>=10)symCache={t:Date.now(),list};
+  return symCache.list}
+async function kl(sym,iv,lim){const r=await fetch(API+"/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+iv+"&limit="+lim);if(!r.ok)throw new Error(sym+" "+r.status);const k=await r.json();return k.slice(0,-1).map(x=>[+x[0],+x[1],+x[2],+x[3],+x[4],+x[5]])}
+async function pool(items,n,fn){let i=0;await Promise.all(Array.from({length:n},async()=>{while(i<items.length){const k=i++;await fn(items[k],k)}}))}
+function setBar(txt){const e=document.getElementById("scanTxt");if(e)e.textContent=txt}
+async function scan(){
+  if(scanning||!scanOn)return;scanning=true;setBar("scanning…");
+  let alerts=0,coinsN=0;
+  try{
+    const now=Date.now(),syms=await topSymbols(),d5={},d4={},d15={},d1h={};
+    await pool(syms,8,async s=>{
+      try{d5[s]=await kl(s,"5m",1000)}catch(e){}
+      const b=Math.floor(now/H4);
+      if(!c4cache[s]||c4cache[s].b!==b){try{c4cache[s]={b,d:await kl(s,"4h",1000)}}catch(e){}}
+      const b15=Math.floor(now/9e5);if(!c15cache[s]||c15cache[s].b!==b15){try{c15cache[s]={b:b15,d:await kl(s,"15m",500)}}catch(e){}}
+      const b1=Math.floor(now/36e5);if(!c1hcache[s]||c1hcache[s].b!==b1){try{c1hcache[s]={b:b1,d:await kl(s,"1h",500)}}catch(e){}}
+      d15[s]=c15cache[s]?c15cache[s].d:null;d1h[s]=c1hcache[s]?c1hcache[s].d:null;
+      d4[s]=c4cache[s]?c4cache[s].d:null});
+    const blocks=[];
+    for(const s of syms){if(!d5[s])continue;coinsN++;
+      const out=analyzeSym(s,d5[s],d4[s],ST,now,{m15:d15[s],h1:d1h[s]});if(!out)continue;Object.assign(ST,out.upd);
+      if(!out.found.length){out.chks.forEach(c=>ST[c]=now);continue}
+      out.found.sort((a,b)=>a[0]-b[0]);
+      let lines=out.found.map(x=>stamp(x[0],now)+" PKT  "+x[1]),extra="";
+      if(lines.length>SC.MAXLINES){extra="("+(lines.length-SC.MAXLINES)+" older alerts not shown)\n";lines=lines.slice(-SC.MAXLINES)}
+      blocks.push({text:s+"\n"+extra+lines.join("\n")+"\nPrice: "+g6(out.price)+" ("+dm(now)+" "+hm(now)+" PKT)\n",pending:out.pending,chks:out.chks,n:lines.length})}
+    let idx=0,cards=0;
+    while(idx<blocks.length&&cards<10){let text="",grp=[];
+      while(idx<blocks.length&&(!grp.length||text.length+blocks[idx].text.length+1<=SC.MAXCH)){text+=blocks[idx].text+"\n";grp.push(blocks[idx]);idx++}
+      cards++;add({id:"scan-"+now+"-"+cards,time:now/1000,title:"5m alert",message:text.trim(),src:"5m live"},scanN>0);
+      grp.forEach(b=>{Object.assign(ST,b.pending);b.chks.forEach(c=>ST[c]=now);alerts+=b.n})}
+    for(const k of Object.keys(ST)){if(k[0]!=="_"&&typeof ST[k]==="number"&&ST[k]<now-3*864e5)delete ST[k]}
+    try{localStorage.setItem("scanState",JSON.stringify(ST))}catch(e){}
+    scanN++;
+    const d=new Date(),t=p2(d.getHours())+":"+p2(d.getMinutes());
+    lastInfo="last scan "+t+" · "+coinsN+" coins · "+alerts+" alerts";
+    setBar(lastInfo)
+  }catch(e){setBar("scan failed, trying again at the next 5-minute mark")}
+  finally{scanning=false;schedule()}}
+let scanTimer=null;
+function schedule(){clearTimeout(scanTimer);if(!scanOn){setBar("5m scan is off");return}
+  const next=(Math.floor(Date.now()/BMS)+1)*BMS+20000;scanTimer=setTimeout(scan,next-Date.now())}
+function buildBar(){const b=document.getElementById("scanbar");
+  b.innerHTML='<span id="scanTxt">starting…</span><button id="scanBtn"></button><button id="aoBtn"></button>';
+  const sb=document.getElementById("scanBtn"),ab=document.getElementById("aoBtn");
+  const paint=()=>{sb.textContent=scanOn?"5m scan: ON":"5m scan: OFF";sb.classList.toggle("on",scanOn);ab.textContent=autoOpen?"Auto-open chart: ON":"Auto-open chart: OFF";ab.classList.toggle("on",autoOpen)};
+  sb.onclick=()=>{scanOn=!scanOn;try{localStorage.setItem("scanOn",scanOn?"1":"0")}catch(e){}paint();if(scanOn)scan();else{clearTimeout(scanTimer);setBar("5m scan is off")}};
+  ab.onclick=()=>{autoOpen=!autoOpen;paint()};
+  paint()}
+function startScanner(){buildBar();if(scanOn)scan();else setBar("5m scan is off")}
+
+load();connect();startScanner();
+</script></body></html>
