@@ -304,4 +304,36 @@ async function scan(){
       d4[s]=c4cache[s]?c4cache[s].d:null});
     const blocks=[];
     for(const s of syms){if(!d5[s])continue;coinsN++;
-      const out=analyzeSym(s,d5[s],d4[s],ST,now,
+      const out=analyzeSym(s,d5[s],d4[s],ST,now,{m15:d15[s],h1:d1h[s]});if(!out)continue;Object.assign(ST,out.upd);
+      if(!out.found.length){out.chks.forEach(c=>ST[c]=now);continue}
+      out.found.sort((a,b)=>a[0]-b[0]);
+      let lines=out.found.map(x=>stamp(x[0],now)+" PKT  "+x[1]),extra="";
+      if(lines.length>SC.MAXLINES){extra="("+(lines.length-SC.MAXLINES)+" older alerts not shown)\n";lines=lines.slice(-SC.MAXLINES)}
+      blocks.push({text:s+"\n"+extra+lines.join("\n")+"\nPrice: "+g6(out.price)+" ("+dm(now)+" "+hm(now)+" PKT)\n",pending:out.pending,chks:out.chks,n:lines.length})}
+    let idx=0,cards=0;
+    while(idx<blocks.length&&cards<10){let text="",grp=[];
+      while(idx<blocks.length&&(!grp.length||text.length+blocks[idx].text.length+1<=SC.MAXCH)){text+=blocks[idx].text+"\n";grp.push(blocks[idx]);idx++}
+      cards++;add({id:"scan-"+now+"-"+cards,time:now/1000,title:"5m alert",message:text.trim(),src:"5m live"},scanN>0);
+      grp.forEach(b=>{Object.assign(ST,b.pending);b.chks.forEach(c=>ST[c]=now);alerts+=b.n})}
+    for(const k of Object.keys(ST)){if(k[0]!=="_"&&typeof ST[k]==="number"&&ST[k]<now-3*864e5)delete ST[k]}
+    try{localStorage.setItem("scanState",JSON.stringify(ST))}catch(e){}
+    scanN++;
+    const d=new Date(),t=p2(d.getHours())+":"+p2(d.getMinutes());
+    lastInfo="last scan "+t+" · "+coinsN+" coins · "+alerts+" alerts";
+    setBar(lastInfo)
+  }catch(e){setBar("scan failed, trying again at the next 5-minute mark")}
+  finally{scanning=false;schedule()}}
+let scanTimer=null;
+function schedule(){clearTimeout(scanTimer);if(!scanOn){setBar("5m scan is off");return}
+  const next=(Math.floor(Date.now()/BMS)+1)*BMS+20000;scanTimer=setTimeout(scan,next-Date.now())}
+function buildBar(){const b=document.getElementById("scanbar");
+  b.innerHTML='<span id="scanTxt">starting…</span><button id="scanBtn"></button><button id="aoBtn"></button>';
+  const sb=document.getElementById("scanBtn"),ab=document.getElementById("aoBtn");
+  const paint=()=>{sb.textContent=scanOn?"5m scan: ON":"5m scan: OFF";sb.classList.toggle("on",scanOn);ab.textContent=autoOpen?"Auto-open chart: ON":"Auto-open chart: OFF";ab.classList.toggle("on",autoOpen)};
+  sb.onclick=()=>{scanOn=!scanOn;try{localStorage.setItem("scanOn",scanOn?"1":"0")}catch(e){}paint();if(scanOn)scan();else{clearTimeout(scanTimer);setBar("5m scan is off")}};
+  ab.onclick=()=>{autoOpen=!autoOpen;paint()};
+  paint()}
+function startScanner(){buildBar();if(scanOn)scan();else setBar("5m scan is off")}
+
+load();connect();startScanner();
+</script></body></html>
