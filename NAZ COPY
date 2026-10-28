@@ -179,10 +179,9 @@ function connect(){
 }
 // ===== live 5-minute scanner: same alert rules as the GitHub bot =====
 const API="https://data-api.binance.vision";
-const SC={TOP:100,BMIN:5,LOOK:2,MAXCATCH:864e5,MAXLINES:25,MAXCH:3500,RSIL:[40,50,70],LNEAR:2,SRL:5,SRR:5,SRW:300,SRN:0.005,TS:3,TFLAT:0.005,FL:20,HOLD5:2,HOLD4:1,PUMP:0.015,VN:20,FW:5,FVG:0.001,OB:0.01,OBB:3,ZW:100,RTW:50,
-  RETEST_RUN:3,      // min consecutive 5m candles RSI14 must hold above 70 to arm the staged retest watch
-  RETEST_LOOKBACK:100,// how many candles back to look for that qualifying run
-  ALERT_LEVEL:54};    // main actionable level — adjust this one number to move the "Alert" stage
+const SC={TOP:100,BMIN:5,LOOK:2,MAXCATCH:864e5,MAXLINES:25,MAXCH:3500,LNEAR:2,SRL:5,SRR:5,SRW:300,SRN:0.005,TS:3,TFLAT:0.005,FL:20,HOLD5:2,HOLD4:1,PUMP:0.015,VN:20,FW:5,FVG:0.001,OB:0.01,OBB:3,ZW:100,
+  RETEST_RUN:3,    // min consecutive 5m candles RSI14 must hold above 70 to arm the staged retest watch
+  ALERT_LEVEL:54}; // main actionable level — adjust this one number to move the "Alert" stage
 const BMS=SC.BMIN*60000,H4=4*3600000;
 const STABLE=new Set(["USDC","FDUSD","TUSD","USDP","BUSD","DAI","EUR","AEUR","USD1","XUSD","USDE","PYUSD","EURI","RLUSD","BFUSD","USDS","UST"]);
 const SHORT={uptrend:"up",downtrend:"down",sideways:"side"};
@@ -209,18 +208,12 @@ function trendLabels(C,es){const n=C.length,S=SC.TS,hs=[],ls=[];
   return out}
 function holdLabels(L,hold){const out=new Array(L.length).fill(null);let cur=null;for(let i=0;i<L.length;i++){const lab=L[i];if(lab!==null){let ok=true;for(let x=Math.max(0,i-hold+1);x<=i;x++)if(L[x]!==lab){ok=false;break}if(ok)cur=lab}out[i]=cur}return out}
 function startIdx(c,tfMin,since,nowMs,look){const n=c.length;if(since==null)return Math.max(1,n-look);since=Math.max(since,nowMs-SC.MAXCATCH);const margin=2*tfMin*60000;let lo=n;while(lo>1&&c[lo-1][0]+tfMin*60000>since-margin)lo--;return Math.max(1,lo)}
-// Rule: RSI 70 -> ALERT_LEVEL staged retest. Arms once RSI14 has held above 70 for RETEST_RUN+ consecutive
-// 5m candles within the last RETEST_LOOKBACK candles; then, as RSI falls back, fires one alert per stage:
+// Rule: RSI 70 -> ALERT_LEVEL staged retest (the main strategy). Arms once RSI14 has held above 70 for
+// RETEST_RUN+ consecutive 5m candles; then, as RSI falls back, fires one alert per stage it enters:
 // Monitoring (60-65) -> Early Warning (57-60) -> Near Retest (57-ALERT_LEVEL) -> Alert (ALERT_LEVEL-52) -> Retest Zone (49-52).
-// Resets (re-arms) once RSI goes back above 70, or clears once it drops under 49.
-function hadRun70(rs,i,minRun,lookback){
-  const w0=Math.max(0,i-lookback);let run=0;
-  for(let x=w0;x<=i;x++){
-    if(rs[x]!==null&&rs[x]>70){run++;if(run>=minRun)return true}
-    else run=0;
-  }
-  return false;
-}
+// Each alert carries the run's peak RSI, how many candles held above 70, how many times it has re-entered
+// the Retest Zone, the lowest RSI seen since arming, and when the run started. Re-arms fresh if RSI goes
+// back above 70; closes out (with a summary line) once RSI drops under 49.
 function stageFor(r){
   if(r===null||r>=65||r<49)return null;
   if(r>=60)return "Monitoring";
@@ -234,6 +227,9 @@ function analyzeSym(sym,c5,c4,st,nowMs,cx){
   const n=c5.length;if(n<2)return null;
   const closes=c5.map(x=>x[4]),vols=c5.map(x=>x[5]);
   const rs=rsiCalc(closes,14),rl=rsiCalc(closes,200),es=emaCalc(closes,200);
+  // consecutive-candle streak of RSI14 > 70, used to arm the staged retest rule
+  const streak70=new Array(n).fill(0);
+  for(let k=1;k<n;k++)streak70[k]=(rs[k]!==null&&rs[k]>70)?streak70[k-1]+1:0;
   const [highs,lows]=swingsC(closes);
   const conf1=holdLabels(trendLabels(c5,es),SC.HOLD5);
   let conf4=null,close4=[];
@@ -246,32 +242,30 @@ function analyzeSym(sym,c5,c4,st,nowMs,cx){
   const chk5="_chk|"+sym+"|5m",lo=startIdx(c5,SC.BMIN,st[chk5],nowMs,SC.LOOK);
   const chks=[chk5],found=[],pending={},upd={};
   const add=(t,tfn,key,text,suffix,step)=>{const k=sym+"|"+tfn+"|"+key;const prev=(k in pending)?pending[k]:(st[k]||0);if(t>prev){pending[k]=t;found.push([t+step,text+suffix])}};
-  let stage70=st["_stage70|"+sym]||null;
+  // r70: null when not armed; otherwise {start,peak,bars,retests,low,stage}
+  let r70=st["_r70|"+sym]||null;
   for(let i=lo;i<n;i++){
     const t=c5[i][0],suffix=t4(t+BMS),evs=[];
     const r=rs[i],rp=rs[i-1];
-    if(r!==null&&rp!==null){for(const lvl of SC.RSIL){
-      if(rp<lvl&&lvl<=r)evs.push(["rsi"+lvl+"-up","RSI crossed UP "+lvl+" ("+r.toFixed(1)+")"]);
-      else if(rp>=lvl&&lvl>r)evs.push(["rsi"+lvl+"-down","RSI crossed DOWN "+lvl+" ("+r.toFixed(1)+")"])}}
-    // RSI retests: 70 -> 50 and 30 -> 49 (first return to the level after RSI went beyond 70 / 30 in the last RTW candles)
-    if(r!==null&&rp!==null){
-      const w0=Math.max(0,i-SC.RTW);
-      if(rp>=50&&50>r){let p=-1;for(let x=i-1;x>=w0;x--){if(rs[x]!==null&&rs[x]>70){p=x;break}}
-        if(p>=0){let ok=true,mx=0;for(let x=p;x<i;x++){if(!(rs[x]>=50)){ok=false;break}}
-          if(ok){for(let x=w0;x<i;x++)if(rs[x]!==null)mx=Math.max(mx,rs[x]);
-            evs.push(["ret70|"+c5[p][0],"RSI 70 -> 50 retest: RSI was above 70 (peak "+mx.toFixed(1)+", "+(i-p)+" candles ago), now "+r.toFixed(1)])}}}
-      if(rp<49&&49<=r){let p=-1;for(let x=i-1;x>=w0;x--){if(rs[x]!==null&&rs[x]<30){p=x;break}}
-        if(p>=0){let ok=true,mn=100;for(let x=p;x<i;x++){if(!(rs[x]<49)){ok=false;break}}
-          if(ok){for(let x=w0;x<i;x++)if(rs[x]!==null)mn=Math.min(mn,rs[x]);
-            evs.push(["ret30|"+c5[p][0],"RSI 30 -> 49 retest: RSI was below 30 (low "+mn.toFixed(1)+", "+(i-p)+" candles ago), now "+r.toFixed(1)])}}}}
-    // Staged RSI 70 -> ALERT_LEVEL retest (see SC.RETEST_RUN / RETEST_LOOKBACK / ALERT_LEVEL above)
+    // Staged RSI 70 -> ALERT_LEVEL retest (see SC.RETEST_RUN / ALERT_LEVEL above)
     if(r!==null){
-      const stg=hadRun70(rs,i,SC.RETEST_RUN,SC.RETEST_LOOKBACK)?stageFor(r):null;
-      if(stg&&stg!==stage70){
-        let w0=Math.max(0,i-SC.RETEST_LOOKBACK),pk2=0;for(let x=w0;x<=i;x++)if(rs[x]!==null)pk2=Math.max(pk2,rs[x]);
-        evs.push(["stage70-"+stg+"-"+t,(stg==="Alert"?"RSI RETEST ALERT":"RSI 70 retest")+" ["+stg+"]: RSI "+r.toFixed(1)+" (peak "+pk2.toFixed(1)+")"]);
-        stage70=stg;
-      }else if(r>=70||r<49){stage70=null}
+      if(streak70[i]>=SC.RETEST_RUN){
+        if(!r70)r70={start:c5[i-streak70[i]+1][0],peak:r,bars:streak70[i],retests:0,low:null,stage:null};
+        else{r70.peak=Math.max(r70.peak,r);r70.bars=streak70[i];r70.stage=null}
+      }else if(r70){
+        r70.low=(r70.low===null)?r:Math.min(r70.low,r);
+        const stg=stageFor(r);
+        if(stg&&stg!==r70.stage){
+          if(stg==="Retest Zone")r70.retests++;
+          const tag=stg==="Alert"?"RSI "+SC.ALERT_LEVEL+" ALERT":"RSI 70 retest ["+stg+"]";
+          evs.push(["r70-"+stg+"-"+t,tag+": RSI "+r.toFixed(1)+" | peak "+r70.peak.toFixed(1)+" | "+r70.bars+" bars>70 | "+r70.retests+" retest(s) | low "+r70.low.toFixed(1)+" | since "+stamp(r70.start,t)+" PKT"]);
+          r70.stage=stg;
+        }
+        if(r<49){
+          evs.push(["r70-end-"+t,"RSI 70 retest ENDED: RSI "+r.toFixed(1)+" | peak "+r70.peak.toFixed(1)+" | "+r70.bars+" bars>70 | "+r70.retests+" retest(s) | low "+r70.low.toFixed(1)+" | started "+stamp(r70.start,t)+" PKT"]);
+          r70=null;
+        }
+      }
     }
     const e=es[i],ep=es[i-1];
     if(e!==null&&ep!==null){
@@ -295,7 +289,7 @@ function analyzeSym(sym,c5,c4,st,nowMs,cx){
       if(jump>=SC.PUMP&&avg>0&&vols[i]<avg)evs.push(["pump-lowvol","Fake pump? Price +"+(jump*100).toFixed(1)+"% but volume only "+(vols[i]/avg*100).toFixed(0)+"% of the 20-candle average"])}
     if(conf1[i]&&conf1[i-1]&&conf1[i]!==conf1[i-1])evs.push(["trend|"+conf1[i-1]+">"+conf1[i],"TREND 5m changed: "+conf1[i-1]+" -> "+conf1[i]]);
     for(const [key,text] of evs)add(t,"5m",key,text,suffix,BMS)}
-  upd["_stage70|"+sym]=stage70;
+  upd["_r70|"+sym]=r70;
   if(conf4){const chk4="_chk|"+sym+"|4h";chks.push(chk4);const lo4=startIdx(c4,240,st[chk4],nowMs,1);
     for(let i=lo4;i<c4.length;i++){if(conf4[i]&&conf4[i-1]&&conf4[i]!==conf4[i-1])add(c4[i][0],"4h","trend|"+conf4[i-1]+">"+conf4[i],"TREND 4h changed: "+conf4[i-1]+" -> "+conf4[i],"",H4)}}
   // multi-timeframe confluence: RSI14 on 15m, 1h and 4h all on the same side of 50 (alert when that alignment forms)
