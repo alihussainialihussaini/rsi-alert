@@ -98,6 +98,48 @@ const stLabel=st=>st==="RETEST"?"Retest Zone 49-"+CFG.TGT:st==="ALERT"?"Alert "+
 const OS_LABEL={OS3:"Extremely Oversold",OS2:"Strongly Oversold",OS1:"Oversold"};
 const osClass=v=>v<CFG.EXTREME?"OS3":v<CFG.STRONG?"OS2":"OS1";
 
+// ---------- dominance symbols (USDT.D / BTC.D / ETH.D / Stables.D) ----------
+// Binance has no dominance pairs, so these four run on CoinGecko's free /global snapshot instead of Binance
+// klines, and their Symbol links point to TradingView's CRYPTOCAP dominance charts rather than a Binance pair.
+const DOM_SYMS=[{s:"BTC.D",cg:"btc",tv:"CRYPTOCAP:BTC.D"},{s:"ETH.D",cg:"eth",tv:"CRYPTOCAP:ETH.D"},{s:"USDT.D",cg:"usdt",tv:"CRYPTOCAP:USDT.D"},{s:"STABLES.D",cg:null,tv:"CRYPTOCAP:STABLE.C.D"}];
+const DOM_SET=new Set(DOM_SYMS.map(x=>x.s));
+const STABLE_IDS=["usdt","usdc","dai","fdusd","tusd","usdp","busd","pyusd","usde","frax","eurs","gusd","lusd","eurt","usdd"];
+const CG_API="https://api.coingecko.com/api/v3/global";
+const DOM_POLL_MS=30000,DOM_BASE_MS=60000; // sample every 30s, bucket into 1-minute base bars
+let DOMH={};
+try{DOMH=JSON.parse(localStorage.getItem("domHist")||"{}")}catch(e){DOMH={}}
+DOM_SYMS.forEach(d=>{if(!DOMH[d.s])DOMH[d.s]={bars:[],cur:null}});
+function saveDomH(){try{localStorage.setItem("domHist",JSON.stringify(DOMH))}catch(e){}}
+function domFeed(key,val,ts){
+  const h=DOMH[key],b=Math.floor(ts/DOM_BASE_MS)*DOM_BASE_MS;
+  if(!h.cur||h.cur[0]!==b){if(h.cur){h.bars.push(h.cur);if(h.bars.length>10080)h.bars.shift()}h.cur=[b,val,val,val,val,0]}
+  else{h.cur[2]=Math.max(h.cur[2],val);h.cur[3]=Math.min(h.cur[3],val);h.cur[4]=val}
+}
+// resample the 1-minute base bars up into any coarser TF, same [t,o,h,l,c,v] shape proc() already expects
+function domResample(key,tfMs){
+  const h=DOMH[key],all=h.cur?h.bars.concat([h.cur]):h.bars.slice();if(!all.length)return [];
+  const out=[];let cur=null;
+  for(const b of all){const t=Math.floor(b[0]/tfMs)*tfMs;
+    if(!cur||cur[0]!==t)cur=[t,b[1],b[2],b[3],b[4],0],out.push(cur);
+    else{cur[2]=Math.max(cur[2],b[2]);cur[3]=Math.min(cur[3],b[3]);cur[4]=b[4]}}
+  return out}
+async function domPoll(){
+  try{
+    const r=await fetch(CG_API);const j=await r.json();const mcp=j.data.market_cap_percentage;
+    const ts=Date.now();let stb=0;STABLE_IDS.forEach(id=>{if(mcp[id])stb+=mcp[id]});
+    DOM_SYMS.forEach(d=>domFeed(d.s,d.cg?mcp[d.cg]:stb,ts));
+    saveDomH();
+    const now=Date.now();
+    for(const d of DOM_SYMS){
+      (DATA[d.s]=DATA[d.s]||{});
+      for(const t of TF){const k=domResample(d.s,t.ms);const out=k.length>=30?proc(k,t.ms,now,t.id):null;DATA[d.s][t.id]=out?Object.assign(out,{src:"fresh"}):null}
+      const bars=DOMH[d.s].bars;let chg=null;
+      if(bars.length>=24){const back=bars[Math.max(0,bars.length-1-1440)]||bars[0];if(back&&back[4])chg=(bars[bars.length-1][4]/back[4]-1)*100}
+      const row=SYMS.find(c=>c.s===d.s);if(row){row.chg=chg;row.px=bars.length?bars[bars.length-1][4]:null}
+    }
+  }catch(e){}
+  render();overview()}
+
 const UI0={v:2,entTfs:ENT_TFS.slice(),entDirs:["L","S"],entWithin:2,entMinScore:2,entMaxStop:8,entAlign:false,entSound:false,entConf:"X",dview:"log",dmode:"X",dTfs:DASH_TFS.slice(),dDirs:["L","S"],dPer:7,dMaxStop:8,zoneTfs:ZONE_TFS.slice(),zoneKinds:["FVG","OB"],zoneSides:["B","S"],zoneNear:3,divTfs:DIV_TFS.slice(),divTypes:["B","R"],divFresh:3,tab:"alerts",live:false,search:"",minVol:0,retestTfs:RETEST_TFS.slice(),alertTfs:RETEST_TFS.slice(),showEnded:true,sound:false,
   stages:["RETEST","ALERT","NEAR","EARLY","MONITOR"],osTfs:OS_TFS.slice(),osClasses:["OS3","OS2","OS1"],minTfCount:1,preset:"all",minMatch:2,includeMonitor:false,
   crossTfs:CROSS_TFS.slice(),crossDirs:["L","S"],crossWithin:2,crossLive:true,crossAlign:false,crossSound:false,
@@ -199,7 +241,7 @@ async function loadSyms(){
   const r=await fetch(API+"/api/v3/ticker/24hr?type=MINI");if(!r.ok)throw new Error("ticker "+r.status);
   const j=await r.json();
   const l=j.filter(x=>x.symbol.endsWith("USDT")&&!STABLE.has(x.symbol.slice(0,-4))&&!/(UP|DOWN|BULL|BEAR)USDT$/.test(x.symbol)).map(x=>({s:x.symbol,vol:+x.quoteVolume,chg:+x.openPrice?(+x.lastPrice/+x.openPrice-1)*100:null,px:+x.lastPrice})).sort((a,b)=>b.vol-a.vol).slice(0,CFG.TOP);
-  if(l.length>=10){SYMS=l;symT=Date.now()}}
+  if(l.length>=10){SYMS=l.concat(DOM_SYMS.map(d=>({s:d.s,vol:null,chg:null,px:null,isDom:true})));symT=Date.now()}}
 async function kl(sym,iv){api.req++;const r=await fetch(API+"/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+iv+"&limit="+CFG.LIM);if(!r.ok)throw new Error(sym+" "+r.status);const k=await r.json();return k.map(x=>[+x[0],+x[1],+x[2],+x[3],+x[4],+x[5]])}
 async function pool(items,n,fn){let i=0;await Promise.all(Array.from({length:n},async()=>{while(i<items.length){const k=i++;await fn(items[k])}}))}
 async function scan(force){
@@ -207,10 +249,11 @@ async function scan(force){
   try{
     await loadSyms();errMsg="";
     const now=Date.now();
+    const coinSyms=SYMS.filter(c=>!c.isDom);
     const due=TF.filter(t=>force||!FETCHED[t.id]||now-FETCHED[t.id]>=t.ref*1000||Math.floor(now/t.ms)!==Math.floor(FETCHED[t.id]/t.ms));
     if(due.length){
       for(const s in DATA)for(const t in DATA[s])if(due.some(x=>x.id===t)&&DATA[s][t])DATA[s][t].src="cached";
-      const jobs=[];for(const t of due)for(const s of SYMS)jobs.push([s.s,t]);
+      const jobs=[];for(const t of due)for(const s of coinSyms)jobs.push([s.s,t]);
       prog={done:0,total:jobs.length};overview();
       await pool(jobs,8,async([s,t])=>{
         try{const k=await kl(s,t.id);const d=proc(k,t.ms,Date.now(),t.id);(DATA[s]=DATA[s]||{})[t.id]=d?Object.assign(d,{src:"fresh"}):null}
@@ -256,7 +299,8 @@ async function dashScan(){
   if(DASH.status==="loading")return;
   DASH.status="loading";DASH.done=0;DASH.err="";
   try{await loadSyms()}catch(e){DASH.status="error";DASH.err=String(e.message||e);render();return}
-  const jobs=[];for(const t of DASH_TFS)for(const c of SYMS)jobs.push([c.s,TFM[t]]);
+  const coinSyms=SYMS.filter(c=>!c.isDom); // dominance has no independent long history to backtest against
+  const jobs=[];for(const t of DASH_TFS)for(const c of coinSyms)jobs.push([c.s,TFM[t]]);
   DASH.total=jobs.length;const tr=[],px={};let fail=0;
   await pool(jobs,8,async([sym,t])=>{
     try{const rr=await fetch(API+"/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+t.id+"&limit=1000");if(!rr.ok)throw new Error(rr.status);
@@ -276,7 +320,7 @@ function dashTfRows(){const rows=dashFiltered(),out=[];for(const tf of ui.dTfs)f
 function dashSumHtml(){const s=dstats(dashFiltered());
   const c=(l,v,cls)=>'<div class="card"><b class="'+(cls||"")+'">'+v+"</b><span>"+l+"</span></div>";
   const wrc=s.wr==null?"":s.wr>33.4?"up":"down";
-  const msg=DASH.status==="loading"?"Loading history… "+DASH.done+"/"+DASH.total:DASH.status==="error"?"Could not load history: "+esc(DASH.err):DASH.status==="ready"?"History loaded "+fmtTime(DASH.at)+(DASH.fail?" · "+DASH.fail+" requests failed":"")+". Replays the rule on about 10 days of 15m, 20 days of 30m, 41 days of 1H and 166 days of 4H candles. With a 2R target the break-even win rate is 33.3%. Entry assumed at the signal candle close; a candle touching both stop and target counts as a stop; no fees or slippage.":"Open this tab to load history.";
+  const msg=DASH.status==="loading"?"Loading history… "+DASH.done+"/"+DASH.total:DASH.status==="error"?"Could not load history: "+esc(DASH.err):DASH.status==="ready"?"History loaded "+fmtTime(DASH.at)+(DASH.fail?" · "+DASH.fail+" requests failed":"")+". Replays the rule on about 10 days of 15m, 20 days of 30m, 41 days of 1H and 166 days of 4H candles. With a 2R target the break-even win rate is 33.3%. Entry assumed at the signal candle close; a candle touching both stop and target counts as a stop; no fees or slippage. Dominance symbols have no independent history and are not included here.":"Open this tab to load history.";
   return c("Signals",s.n)+c("TP hit",s.tp,"up")+c("SL hit",s.sl,"down")+c("Still open",s.op)+c("Win rate",s.wr==null?"—":s.wr.toFixed(1)+"%",wrc)+c("Loss rate",s.lr==null?"—":s.lr.toFixed(1)+"%")+c("Net result",(s.net>=0?"+":"")+s.net.toFixed(0)+"R",s.net>0?"up":s.net<0?"down":"")+c("Avg per closed trade",s.exp==null?"—":(s.exp>=0?"+":"")+s.exp.toFixed(2)+"R",s.exp>0?"up":s.exp<0?"down":"")+
     '<div class="card" style="flex:1;min-width:280px"><span>'+msg+"</span></div>"}
 const fmtDur=ms=>{if(ms==null||ms<0)return"—";const m=Math.round(ms/6e4);return m<60?m+"m":m<1440?Math.floor(m/60)+"h "+m%60+"m":Math.floor(m/1440)+"d "+Math.floor(m%1440/60)+"h"};
@@ -292,13 +336,15 @@ const fmtVol=v=>v==null||!isFinite(v)?"—":v>=1e9?"$"+(v/1e9).toFixed(2)+"B":v>
 const fmtChg=v=>v==null?'<span class="dim">—</span>':'<span class="'+(v>=0?"up":"down")+'">'+(v>=0?"+":"")+v.toFixed(2)+"%</span>";
 const fmtPx=v=>v==null?'<span class="dim">—</span>':v>=1000?v.toFixed(2):v>=1?v.toFixed(4):v.toPrecision(4);
 const tfTag=t=>'<span class="tf">'+esc(TFM[t].l)+"</span>";
-const symLink=s=>'<a class="sym" href="https://www.tradingview.com/chart/?symbol=BINANCE:'+encodeURIComponent(s)+'" target="_blank" rel="noopener" title="Open chart">'+esc(s.replace(/USDT$/,""))+'<span class="q">/USDT</span></a>';
-const lnk=s=>'<a href="https://www.binance.com/en/trade/'+encodeURIComponent(s.replace(/USDT$/,"_USDT"))+'" target="_blank" rel="noopener">Binance ↗</a>';
+const symLink=s=>{if(DOM_SET.has(s)){const tv=DOM_SYMS.find(d=>d.s===s).tv;return '<a class="sym" href="https://www.tradingview.com/chart/?symbol='+encodeURIComponent(tv)+'" target="_blank" rel="noopener" title="Open on TradingView">'+esc(s)+'</a>'}
+  return '<a class="sym" href="https://www.tradingview.com/chart/?symbol=BINANCE:'+encodeURIComponent(s)+'" target="_blank" rel="noopener" title="Open chart">'+esc(s.replace(/USDT$/,""))+'<span class="q">/USDT</span></a>'};
+const lnk=s=>{if(DOM_SET.has(s)){const tv=DOM_SYMS.find(d=>d.s===s).tv;return '<a href="https://www.tradingview.com/chart/?symbol='+encodeURIComponent(tv)+'" target="_blank" rel="noopener">TradingView ↗</a>'}
+  return '<a href="https://www.binance.com/en/trade/'+encodeURIComponent(s.replace(/USDT$/,"_USDT"))+'" target="_blank" rel="noopener">Binance ↗</a>'};
 const stTag=(st,pv)=>'<span class="st st-'+st+'">'+esc(stLabel(st))+"</span>"+(pv?'<span class="live-b" title="Based on the still-forming candle, not confirmed">LIVE</span>':"");
 const srcDot=s=>'<span class="dot '+esc(s||"")+'"></span><span class="dim">'+esc(s||"—")+"</span>";
 
 // ---------- rows ----------
-const symOk=c=>{const q=ui.search.trim().toUpperCase();return(!q||c.s.includes(q))&&(!ui.minVol||(c.vol||0)>=ui.minVol)};
+const symOk=c=>{const q=ui.search.trim().toUpperCase();return(!q||c.s.includes(q))&&(!ui.minVol||c.isDom||(c.vol||0)>=ui.minVol)};
 const D=(c,tf)=>DATA[c.s]&&DATA[c.s][tf];
 function alertRows(){const out=[];const t=Date.now();
   for(const c of SYMS){if(!symOk(c))continue;for(const tf of RETEST_TFS){if(!ui.alertTfs.includes(tf))continue;const d=D(c,tf);if(!d)continue;const a=d.s1p;if(!a)continue;
@@ -575,7 +621,7 @@ function render(){
      :ui.tab==="dash"?(DASH.status==="loading"?"Loading history… "+DASH.done+"/"+DASH.total:DASH.status==="error"?"Could not load history: "+DASH.err:"No trades match these filters."):ui.tab==="cross"?"No RSI × MA crosses in the last "+ui.crossWithin+" candle(s) for these filters."
      :ui.tab==="entry"?"No entry setups right now. An entry needs a retest and the confirmation (RSI × MA cross, or the bounce) on a closed candle; lower the minimum score or widen the filters to see more.":ui.tab==="zones"?"No zones near price for these filters.":ui.tab==="div"?"No fresh divergences for these filters.":ui.tab==="alerts"?"No alerts right now. A coin appears here when RSI falls to "+CFG.AL+" after staying above 70 for "+CFG.MINBARS+"+ candles.":"No coins match these conditions right now."}
   else em.classList.add("hidden");
-  $("foot").textContent="Times are Pakistan time (PKT). Data: Binance spot, top "+CFG.TOP+" USDT pairs by 24h volume. "+(lastRows.length>LIMIT?"Showing first "+LIMIT+" of "+lastRows.length+" rows (CSV export includes all). ":"")+"Scanner results are information, not trade advice.";
+  $("foot").textContent="Times are Pakistan time (PKT). Data: Binance spot, top "+CFG.TOP+" USDT pairs by 24h volume, plus USDT.D / BTC.D / ETH.D / Stables.D from CoinGecko's free dominance snapshot (charts open on TradingView). "+(lastRows.length>LIMIT?"Showing first "+LIMIT+" of "+lastRows.length+" rows (CSV export includes all). ":"")+"Scanner results are information, not trade advice.";
   counts()}
 function counts(){$("cAlerts").textContent=alertRows().filter(r=>r.active).length;$("cCross").textContent=crossRows().filter(r=>!r.pending).length;$("cRetest").textContent=retestRows().length;$("cOs").textContent=oversoldRows().length;$("cConf").textContent=confRows().length;$("cEntry").textContent=entryRows().length;$("cZones").textContent=zoneRows().length;$("cDiv").textContent=divRows().length;$("cDash").textContent=dashFiltered().length}
 function overview(){
@@ -630,7 +676,7 @@ $("toolbar").addEventListener("change",e=>{const id=e.target.id;
   else if(id==="crossWithin")ui.crossWithin=Number(e.target.value);else if(id==="crossLive")ui.crossLive=e.target.checked;else if(id==="crossAlign")ui.crossAlign=e.target.checked;
   else if(id==="sound"||id==="crossSound"||id==="entSound"){ui[id]=e.target.checked;if(ui[id]){beep();try{if("Notification" in window&&Notification.permission==="default")Notification.requestPermission()}catch(x){}}}
   else return;saveUi();toolbar();render()});
-$("refresh").addEventListener("click",()=>{scan(true);if(ui.tab==="dash")dashScan()});
+$("refresh").addEventListener("click",()=>{scan(true);domPoll();if(ui.tab==="dash")dashScan()});
 function exportCsv(){const cols=COLS[tk()].filter(c=>c.l);const q=v=>{const s=v==null?"":String(v);return/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
   const strip=h=>String(h).replace(/<[^>]*>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").trim();
   const lines=[cols.map(c=>q(c.l)).join(",")];for(const r of lastRows)lines.push(cols.map(c=>q(strip(c.r(r)))).join(","));
@@ -639,4 +685,5 @@ function exportCsv(){const cols=COLS[tk()].filter(c=>c.l);const q=v=>{const s=v=
 tabs();toolbar();render();overview();
 if(ui.tab==="dash")dashScan();setInterval(()=>{if(ui.tab==="dash"&&DASH.status==="ready"&&Date.now()-DASH.at>6e5)dashScan()},30000);
 scan(true);setInterval(()=>scan(false),20000);setInterval(overview,1000);
+domPoll();setInterval(domPoll,DOM_POLL_MS);
 </script></body></html>
