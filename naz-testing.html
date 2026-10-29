@@ -56,6 +56,7 @@ tr.ended td{opacity:.55}
 .dot.fresh{background:var(--up)}.dot.stale{background:var(--dn)}
 #empty{padding:30px 14px;color:var(--mut);text-align:center}
 footer{padding:12px 14px 30px;color:var(--mut);font-size:12px;line-height:1.5}
+.cards{display:flex;gap:10px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid var(--line)}.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 14px;min-width:105px}.card b{display:block;font-size:20px}.card span{font-size:12px;color:var(--mut)}
 .hidden{display:none!important}
 </style></head><body>
 <header><h1>Naz Testing</h1><a href="index.html">← Chart board</a><span id="pill" class="pill">starting…</span>
@@ -64,6 +65,7 @@ footer{padding:12px 14px 30px;color:var(--mut);font-size:12px;line-height:1.5}
 <div id="bar"><i id="barI"></i></div>
 <div id="banner" class="hidden"></div>
 <div class="tabs">
+<div class="tab" data-tab="dash"><span>Dashboard (results)</span><span class="n" id="cDash">0</span></div>
 <div class="tab" data-tab="entry"><span>Entries (Buy / Sell)</span><span class="n" id="cEntry">0</span></div>
 <div class="tab" data-tab="zones"><span>Zones</span><span class="n" id="cZones">0</span></div>
 <div class="tab" data-tab="div"><span>Divergence</span><span class="n" id="cDiv">0</span></div>
@@ -74,6 +76,7 @@ footer{padding:12px 14px 30px;color:var(--mut);font-size:12px;line-height:1.5}
 <div class="tab" data-tab="conf"><span>Confluence</span><span class="n" id="cConf">0</span></div>
 </div>
 <div id="toolbar"></div>
+<div id="dashSum" class="cards hidden"></div>
 <div class="wrap"><table id="grid"><thead></thead><tbody></tbody></table></div>
 <div id="empty" class="hidden"></div>
 <footer id="foot"></footer>
@@ -89,19 +92,20 @@ const STABLE=new Set(["USDC","FDUSD","TUSD","USDP","BUSD","DAI","EUR","AEUR","US
 const TF=[{id:"3m",l:"3m",ms:18e4,ref:60},{id:"5m",l:"5m",ms:3e5,ref:60},{id:"15m",l:"15m",ms:9e5,ref:60},{id:"30m",l:"30m",ms:18e5,ref:120},{id:"1h",l:"1H",ms:36e5,ref:120},{id:"2h",l:"2H",ms:72e5,ref:300},{id:"4h",l:"4H",ms:144e5,ref:300},{id:"1d",l:"D",ms:864e5,ref:300},{id:"1w",l:"W",ms:6048e5,ref:600}];
 const TFM=Object.fromEntries(TF.map(t=>[t.id,t]));
 const RETEST_TFS=["3m","5m","15m","30m","1h","4h"],CROSS_TFS=["15m","30m","4h"],OS_TFS=["5m","15m","30m","1h","2h","4h","1d","1w"];
-const ZONE_TFS=["15m","30m","1h","4h","1d"],DIV_TFS=["15m","30m","1h","4h"],ENT_TFS=["15m","30m","1h"];
+const ZONE_TFS=["15m","30m","1h","4h","1d"],DIV_TFS=["15m","30m","1h","4h"],ENT_TFS=["15m","30m","1h"],DASH_TFS=["15m","30m","1h","4h"];
 const STAGE={RETEST:{rank:5},ALERT:{rank:4},NEAR:{rank:3},EARLY:{rank:2},MONITOR:{rank:1}};
 const stLabel=st=>st==="RETEST"?"Retest Zone 49-"+CFG.TGT:st==="ALERT"?"Alert "+CFG.TGT+"-"+CFG.AL:st==="NEAR"?"Near Retest":st==="EARLY"?"Early Warning":"Monitoring";
 const OS_LABEL={OS3:"Extremely Oversold",OS2:"Strongly Oversold",OS1:"Oversold"};
 const osClass=v=>v<CFG.EXTREME?"OS3":v<CFG.STRONG?"OS2":"OS1";
 
-const UI0={v:2,entTfs:ENT_TFS.slice(),entDirs:["L","S"],entWithin:2,entMinScore:2,entMaxStop:8,entAlign:false,entSound:false,entConf:"X",zoneTfs:ZONE_TFS.slice(),zoneKinds:["FVG","OB"],zoneSides:["B","S"],zoneNear:3,divTfs:DIV_TFS.slice(),divTypes:["B","R"],divFresh:3,tab:"alerts",live:false,search:"",minVol:0,retestTfs:RETEST_TFS.slice(),alertTfs:RETEST_TFS.slice(),showEnded:true,sound:false,
+const UI0={v:2,entTfs:ENT_TFS.slice(),entDirs:["L","S"],entWithin:2,entMinScore:2,entMaxStop:8,entAlign:false,entSound:false,entConf:"X",dview:"log",dmode:"X",dTfs:DASH_TFS.slice(),dDirs:["L","S"],dPer:7,dMaxStop:8,zoneTfs:ZONE_TFS.slice(),zoneKinds:["FVG","OB"],zoneSides:["B","S"],zoneNear:3,divTfs:DIV_TFS.slice(),divTypes:["B","R"],divFresh:3,tab:"alerts",live:false,search:"",minVol:0,retestTfs:RETEST_TFS.slice(),alertTfs:RETEST_TFS.slice(),showEnded:true,sound:false,
   stages:["RETEST","ALERT","NEAR","EARLY","MONITOR"],osTfs:OS_TFS.slice(),osClasses:["OS3","OS2","OS1"],minTfCount:1,preset:"all",minMatch:2,includeMonitor:false,
   crossTfs:CROSS_TFS.slice(),crossDirs:["L","S"],crossWithin:2,crossLive:true,crossAlign:false,crossSound:false,
-  sort:{entry:{key:"score",dir:-1},zones:{key:"dist",dir:1},div:{key:"ago",dir:1},alerts:{key:"since",dir:-1},cross:{key:"t",dir:-1},retest:{key:"prox",dir:1},oversold:{key:"count",dir:-1},conf:{key:"matches",dir:-1}}};
+  sort:{entry:{key:"score",dir:-1},zones:{key:"dist",dir:1},div:{key:"ago",dir:1},alerts:{key:"since",dir:-1},cross:{key:"t",dir:-1},retest:{key:"prox",dir:1},oversold:{key:"count",dir:-1},conf:{key:"matches",dir:-1},dash_log:{key:"t",dir:-1},dash_coin:{key:"n",dir:-1},dash_tf:{key:"n",dir:-1}}};
 const saved=store.get("ui",{});
 const ui=Object.assign({},UI0,saved&&saved.v===2?saved:{});ui.sort=Object.assign({},UI0.sort,ui.sort);
 const saveUi=()=>store.set("ui",ui);
+const tk=()=>ui.tab==="dash"?"dash_"+ui.dview:ui.tab;
 
 // ---------- indicator math ----------
 function rsiCalc(c,p){const o=new Array(c.length).fill(null);if(c.length<=p)return o;let g=0,l=0;for(let i=1;i<=p;i++){const d=c[i]-c[i-1];if(d>0)g+=d;else l-=d}g/=p;l/=p;o[p]=l===0?100:100-100/(1+g/l);for(let i=p+1;i<c.length;i++){const d=c[i]-c[i-1];g=(g*(p-1)+(d>0?d:0))/p;l=(l*(p-1)+(d<0?-d:0))/p;o[i]=l===0?100:100-100/(1+g/l)}return o}
@@ -218,6 +222,67 @@ async function scan(force){
   }catch(e){errMsg=String(e.message||e)}
   finally{scanning=false}
   notifyNew();render();overview()}
+
+// ---------- dashboard: replay the entry rules on recent history and mark every signal TP / SL / open ----------
+const DASH={trades:[],px:{},status:"idle",done:0,total:0,at:0,fail:0,err:""};
+function replay(sym,tf,K,ms){
+  const n=K.length,out=[];if(n<80)return out;
+  const cl=K.map(x=>x[4]),rs=rsiCalc(cl,14),ma=smaArr(rs,CFG.MALEN),iv=rs.map(v=>v==null?null:100-v),busy={};
+  for(let i=40;i<n;i++){
+    for(const dir of [1,-1]){
+      const R=dir>0?rs:iv,modes=[];
+      if(rs[i]!=null&&ma[i]!=null&&rs[i-1]!=null&&ma[i-1]!=null){
+        if(dir>0&&rs[i]>ma[i]&&rs[i-1]<=ma[i-1])modes.push("X");
+        if(dir<0&&rs[i]<ma[i]&&rs[i-1]>=ma[i-1])modes.push("X")}
+      if(R[i]!=null&&R[i-1]!=null&&R[i-2]!=null&&R[i]>R[i-1]&&R[i-1]<=R[i-2]&&R[i-1]<=CFG.AL&&R[i-1]>=49&&(dir>0?K[i][4]>K[i][1]:K[i][4]<K[i][1]))modes.push("B");
+      if(!modes.length)continue;
+      const a=Math.max(0,i-199),s=stageOf(R.slice(a,i+1),K.slice(a,i+1),ms);
+      if(!s||!s.st||s.e==null)continue;
+      const ei=a+s.e;
+      for(const m of modes){
+        if(m==="X"&&!(i>ei))continue;
+        if(m==="B"&&!(i>=ei+2))continue;
+        const key=dir+m;if(busy[key]!=null&&busy[key]>=i)continue;
+        const px=K[i][4],stop=dir>0?(s.ll!=null?s.ll*0.999:null):(s.hh!=null?s.hh*1.001:null);if(stop==null)continue;
+        const risk=dir>0?px-stop:stop-px;if(!(risk>0))continue;
+        const tp=dir>0?px+2*risk:px-2*risk;let res="open",j2=null;
+        for(let j=i+1;j<n;j++){
+          if(dir>0){if(K[j][3]<=stop){res="sl";j2=j;break}if(K[j][2]>=tp){res="tp";j2=j;break}}
+          else{if(K[j][2]>=stop){res="sl";j2=j;break}if(K[j][3]<=tp){res="tp";j2=j;break}}}
+        busy[key]=j2!=null?j2:n;
+        out.push({s:sym,tf,dir,m,t:K[i][0]+ms,px,stop,tp,rp:risk/px*100,res,r:res==="tp"?2:res==="sl"?-1:(cl[n-1]-px)/risk*dir,ct:j2!=null?K[j2][0]+ms:null,now:cl[n-1]})}}}
+  return out}
+async function dashScan(){
+  if(DASH.status==="loading")return;
+  DASH.status="loading";DASH.done=0;DASH.err="";
+  try{await loadSyms()}catch(e){DASH.status="error";DASH.err=String(e.message||e);render();return}
+  const jobs=[];for(const t of DASH_TFS)for(const c of SYMS)jobs.push([c.s,TFM[t]]);
+  DASH.total=jobs.length;const tr=[],px={};let fail=0;
+  await pool(jobs,8,async([sym,t])=>{
+    try{const rr=await fetch(API+"/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+t.id+"&limit=1000");if(!rr.ok)throw new Error(rr.status);
+      let k=(await rr.json()).map(x=>[+x[0],+x[1],+x[2],+x[3],+x[4],+x[5]]);if(k.length&&k[k.length-1][0]+t.ms>Date.now())k.pop();
+      if(k.length){px[sym]=k[k.length-1][4];for(const x of replay(sym,t.id,k,t.ms))tr.push(x)}}
+    catch(e){fail++}
+    DASH.done++;if(DASH.done%40===0&&ui.tab==="dash")render()});
+  DASH.trades=tr;DASH.px=px;DASH.fail=fail;DASH.at=Date.now();DASH.status="ready";render()}
+function dashFiltered(){const per=ui.dPer?Date.now()-ui.dPer*864e5:0,vm={};for(const c of SYMS)vm[c.s]=c.vol;
+  return DASH.trades.filter(x=>x.m===ui.dmode&&ui.dTfs.includes(x.tf)&&ui.dDirs.includes(x.dir>0?"L":"S")&&x.t>=per&&x.rp<=ui.dMaxStop&&symOk({s:x.s,vol:vm[x.s]||0}))}
+function dstats(rows){let tp=0,sl=0,op=0,net=0;for(const x of rows){if(x.res==="tp"){tp++;net+=2}else if(x.res==="sl"){sl++;net-=1}else op++}
+  const cl=tp+sl;return {n:rows.length,tp,sl,op,cl,wr:cl?tp/cl*100:null,lr:cl?sl/cl*100:null,net,exp:cl?net/cl:null}}
+function dashLogRows(){return dashFiltered().map(x=>Object.assign({c:{s:x.s}},x))}
+function dashCoinRows(){const m={};for(const x of dashFiltered())(m[x.s]=m[x.s]||[]).push(x);
+  return Object.entries(m).map(([s,a])=>Object.assign({c:{s},last:Math.max(...a.map(x=>x.t)),pxNow:DASH.px[s]},dstats(a)))}
+function dashTfRows(){const rows=dashFiltered(),out=[];for(const tf of ui.dTfs)for(const d of [0,1,-1]){const a=rows.filter(x=>x.tf===tf&&(d===0||x.dir===d));if(!a.length)continue;out.push(Object.assign({c:{s:tf+d},tf,dir:d},dstats(a)))}return out}
+function dashSumHtml(){const s=dstats(dashFiltered());
+  const c=(l,v,cls)=>'<div class="card"><b class="'+(cls||"")+'">'+v+"</b><span>"+l+"</span></div>";
+  const wrc=s.wr==null?"":s.wr>33.4?"up":"down";
+  const msg=DASH.status==="loading"?"Loading history… "+DASH.done+"/"+DASH.total:DASH.status==="error"?"Could not load history: "+esc(DASH.err):DASH.status==="ready"?"History loaded "+fmtTime(DASH.at)+(DASH.fail?" · "+DASH.fail+" requests failed":"")+". Replays the rule on about 10 days of 15m, 20 days of 30m, 41 days of 1H and 166 days of 4H candles. With a 2R target the break-even win rate is 33.3%. Entry assumed at the signal candle close; a candle touching both stop and target counts as a stop; no fees or slippage.":"Open this tab to load history.";
+  return c("Signals",s.n)+c("TP hit",s.tp,"up")+c("SL hit",s.sl,"down")+c("Still open",s.op)+c("Win rate",s.wr==null?"—":s.wr.toFixed(1)+"%",wrc)+c("Loss rate",s.lr==null?"—":s.lr.toFixed(1)+"%")+c("Net result",(s.net>=0?"+":"")+s.net.toFixed(0)+"R",s.net>0?"up":s.net<0?"down":"")+c("Avg per closed trade",s.exp==null?"—":(s.exp>=0?"+":"")+s.exp.toFixed(2)+"R",s.exp>0?"up":s.exp<0?"down":"")+
+    '<div class="card" style="flex:1;min-width:280px"><span>'+msg+"</span></div>"}
+const fmtDur=ms=>{if(ms==null||ms<0)return"—";const m=Math.round(ms/6e4);return m<60?m+"m":m<1440?Math.floor(m/60)+"h "+m%60+"m":Math.floor(m/1440)+"d "+Math.floor(m%1440/60)+"h"};
+const resTag=x=>x.res==="tp"?'<span class="st st-RETEST">TP hit ✔</span>':x.res==="sl"?'<span class="st st-OS3">SL hit ✖</span>':'<span class="st st-ALERT">Open</span>';
+const wrFmt=v=>v==null?'<span class="dim">—</span>':'<span class="'+(v>33.4?"up":"down")+'">'+v.toFixed(1)+"%</span>";
+const netFmt=v=>'<span class="'+(v>0?"up":v<0?"down":"dim")+'">'+(v>=0?"+":"")+v.toFixed(0)+"R</span>";
 
 // ---------- formatting ----------
 const fmtRsi=v=>v==null?'<span class="dim">—</span>':v.toFixed(2);
@@ -413,6 +478,43 @@ const COLS={
   {k:"status",l:"Status",sort:r=>r.nA*10+r.nO,r:r=>(r.nA?'<span class="st st-EARLY">'+r.nA+"× → "+CFG.TGT+"</span> ":"")+(r.nO?'<span class="st st-OS2">'+r.nO+"× oversold</span>":"")},
   {k:"ct",l:"Last candle close",sort:r=>r.ct,r:r=>'<span class="dim">'+fmtTime(r.ct)+"</span>"},
   chg(),vol(),{k:"src",l:"Data",sort:r=>r.src,r:r=>srcDot(r.src)},{k:"link",l:"",r:r=>lnk(r.c.s)}]};
+COLS.dash_log=[
+  {k:"sym",l:"Symbol",sort:r=>r.c.s,r:r=>symLink(r.c.s)},
+  {k:"tf",l:"TF",sort:r=>TFM[r.tf].ms,r:r=>tfTag(r.tf)},
+  {k:"dir",l:"Signal",sort:r=>r.dir,r:r=>'<span class="sig-'+(r.dir>0?"L":"S")+'">'+(r.dir>0?"▲ BUY / LONG":"▼ SELL / SHORT")+"</span>"},
+  {k:"t",l:"Signal given (PKT)",sort:r=>r.t,r:r=>'<span class="mono">'+fmtTime(r.t)+'</span> <span class="dim">'+fmtAgo(r.t)+"</span>"},
+  {k:"px",l:"Entry",num:1,sort:r=>r.px,r:r=>"<b>"+fmtPx(r.px)+"</b>"},
+  {k:"stop",l:"Stop-loss",num:1,sort:r=>r.stop,r:r=>'<span class="down">'+fmtPx(r.stop)+"</span>"},
+  {k:"tp",l:"Take-profit (2R)",num:1,sort:r=>r.tp,r:r=>'<span class="up">'+fmtPx(r.tp)+"</span>"},
+  {k:"rp",l:"Stop distance",num:1,sort:r=>r.rp,r:r=>r.rp.toFixed(2)+"%"},
+  {k:"res",l:"Status",sort:r=>r.res==="tp"?2:r.res==="sl"?0:1,r:r=>resTag(r)},
+  {k:"ct",l:"Closed at (PKT)",sort:r=>r.ct,r:r=>r.ct?'<span class="dim">'+fmtTime(r.ct)+"</span>":'<span class="dim">—</span>'},
+  {k:"dur",l:"Time to result",num:1,sort:r=>r.ct?r.ct-r.t:null,r:r=>r.ct?fmtDur(r.ct-r.t):'<span class="dim">'+fmtDur(Date.now()-r.t)+" so far</span>"},
+  {k:"r",l:"Result",num:1,sort:r=>r.r,r:r=>'<span class="'+(r.r>0?"up":r.r<0?"down":"dim")+'">'+(r.r>=0?"+":"")+r.r.toFixed(2)+"R</span>"+(r.res==="open"?' <span class="dim">now</span>':"")},
+  {k:"link",l:"",r:r=>lnk(r.c.s)}];
+COLS.dash_coin=[
+  {k:"sym",l:"Symbol",sort:r=>r.c.s,r:r=>symLink(r.c.s)},
+  {k:"n",l:"Signals",num:1,sort:r=>r.n,r:r=>"<b>"+r.n+"</b>"},
+  {k:"tp",l:"TP hit",num:1,sort:r=>r.tp,r:r=>'<span class="up">'+r.tp+"</span>"},
+  {k:"sl",l:"SL hit",num:1,sort:r=>r.sl,r:r=>'<span class="down">'+r.sl+"</span>"},
+  {k:"op",l:"Open",num:1,sort:r=>r.op,r:r=>r.op},
+  {k:"wr",l:"Win rate",num:1,sort:r=>r.wr,r:r=>wrFmt(r.wr)},
+  {k:"lr",l:"Loss rate",num:1,sort:r=>r.lr,r:r=>r.lr==null?'<span class="dim">—</span>':r.lr.toFixed(1)+"%"},
+  {k:"net",l:"Net result",num:1,sort:r=>r.net,r:r=>netFmt(r.net)},
+  {k:"last",l:"Last signal (PKT)",sort:r=>r.last,r:r=>'<span class="dim">'+fmtTime(r.last)+"</span>"},
+  {k:"pxNow",l:"Price now",num:1,sort:r=>r.pxNow,r:r=>fmtPx(r.pxNow)},
+  {k:"link",l:"",r:r=>lnk(r.c.s)}];
+COLS.dash_tf=[
+  {k:"tf",l:"TF",sort:r=>TFM[r.tf].ms,r:r=>tfTag(r.tf)},
+  {k:"dir",l:"Side",sort:r=>r.dir,r:r=>r.dir===0?"All":'<span class="sig-'+(r.dir>0?"L":"S")+'">'+(r.dir>0?"▲ Buy / Long":"▼ Sell / Short")+"</span>"},
+  {k:"n",l:"Signals",num:1,sort:r=>r.n,r:r=>"<b>"+r.n+"</b>"},
+  {k:"tp",l:"TP hit",num:1,sort:r=>r.tp,r:r=>'<span class="up">'+r.tp+"</span>"},
+  {k:"sl",l:"SL hit",num:1,sort:r=>r.sl,r:r=>'<span class="down">'+r.sl+"</span>"},
+  {k:"op",l:"Open",num:1,sort:r=>r.op,r:r=>r.op},
+  {k:"wr",l:"Win rate",num:1,sort:r=>r.wr,r:r=>wrFmt(r.wr)},
+  {k:"lr",l:"Loss rate",num:1,sort:r=>r.lr,r:r=>r.lr==null?'<span class="dim">—</span>':r.lr.toFixed(1)+"%"},
+  {k:"net",l:"Net result",num:1,sort:r=>r.net,r:r=>netFmt(r.net)},
+  {k:"exp",l:"Avg per closed trade",num:1,sort:r=>r.exp,r:r=>r.exp==null?'<span class="dim">—</span>':(r.exp>=0?"+":"")+r.exp.toFixed(2)+"R"}];
 function sorted(rows,tab){const s=ui.sort[tab];const col=COLS[tab].find(c=>c.k===s.key&&c.sort)||COLS[tab].find(c=>c.sort);
   return rows.sort((a,b)=>{let x=col.sort(a),y=col.sort(b);if(x==null&&y==null)return 0;if(x==null)return 1;if(y==null)return-1;if(typeof x==="string")return s.dir*x.localeCompare(y);if(x!==y)return s.dir*(x-y);return a.c.s.localeCompare(b.c.s)})}
 
@@ -431,6 +533,10 @@ function toolbar(){
   else if(ui.tab==="alerts"){h=common+tfChips("alertTfs",RETEST_TFS)+'<label class="t"><input type="checkbox" id="showEnded" '+(ui.showEnded?"checked":"")+"> Show ended alerts (last hour)</label>"+
     '<label class="t"><input type="checkbox" id="sound" '+(ui.sound?"checked":"")+"> Sound + notification</label>"+'<span class="dim">RSI &gt; 70 for ≥ '+CFG.MINBARS+" candles, then falls to "+CFG.AL+" · lookback "+CFG.LOOK+" candles</span>";}
   else if(ui.tab==="retest"){const a=CFG.AL;h=common+tfChips("retestTfs",RETEST_TFS)+'<div class="group"><span class="gl">Status</span>'+chips("stages",[["RETEST","Retest Zone 49–"+CFG.TGT],["ALERT","Alert "+CFG.TGT+"–"+a],["NEAR","Near Retest "+a+"–"+Math.max(55,a+3)],["EARLY","Early Warning "+Math.max(55,a+3)+"–60"],["MONITOR","Monitoring 60–65"]])+"</div>"+live;}
+  else if(ui.tab==="dash"){h=common+'<label class="t">Rule <select id="dmode"><option value="X" '+(ui.dmode==="X"?"selected":"")+'>Naz: retest + RSI × MA cross</option><option value="B" '+(ui.dmode==="B"?"selected":"")+'>Faster: retest + RSI bounce</option></select></label>'+tfChips("dTfs",DASH_TFS)+'<div class="group"><span class="gl">Signal</span>'+chips("dDirs",[["L","Buy / Long"],["S","Sell / Short"]])+"</div>"+
+    '<label class="t">Period <select id="dPer">'+[[1,"Last 24 hours"],[3,"Last 3 days"],[7,"Last 7 days"],[30,"Last 30 days"],[0,"All history"]].map(([v,l])=>'<option value="'+v+'" '+(ui.dPer===v?"selected":"")+">"+l+"</option>").join("")+"</select></label>"+
+    '<label class="t">Max stop distance <select id="dMaxStop">'+[3,5,8,12].map(v=>'<option value="'+v+'" '+(ui.dMaxStop===v?"selected":"")+">"+v+"%</option>").join("")+"</select></label>"+
+    '<label class="t">View <select id="dview">'+[["log","All trades"],["coin","By coin"],["tf","By timeframe"]].map(([v,l])=>'<option value="'+v+'" '+(ui.dview===v?"selected":"")+">"+l+"</option>").join("")+"</select></label>";}
   else if(ui.tab==="oversold"){h=common+tfChips("osTfs",OS_TFS)+'<div class="group"><span class="gl">Class</span>'+chips("osClasses",[["OS3","< "+CFG.EXTREME],["OS2",CFG.EXTREME+"–"+CFG.STRONG],["OS1",CFG.STRONG+"–"+CFG.OS]])+"</div>"+
     '<label class="t">Oversold on at least <select id="minTf">'+[1,2,3,4].map(n=>'<option value="'+n+'" '+(ui.minTfCount===n?"selected":"")+">"+n+" TF"+(n>1?"s":"")+"</option>").join("")+"</select></label>"+live;}
   else if(ui.tab==="entry"){h=common+tfChips("entTfs",ENT_TFS)+'<div class="group"><span class="gl">Signal</span>'+chips("entDirs",[["L","Buy / Long"],["S","Sell / Short"]])+"</div>"+
@@ -455,8 +561,9 @@ function toolbar(){
 // ---------- render ----------
 let lastRows=[];
 function render(){
-  const ROWS={alerts:alertRows,cross:crossRows,retest:retestRows,oversold:oversoldRows,conf:confRows,entry:entryRows,zones:zoneRows,div:divRows};const rows=ROWS[ui.tab]();
-  lastRows=sorted(rows,ui.tab);const cols=COLS[ui.tab],s=ui.sort[ui.tab];
+  const ROWS={alerts:alertRows,cross:crossRows,retest:retestRows,oversold:oversoldRows,conf:confRows,entry:entryRows,zones:zoneRows,div:divRows};ROWS.dash_log=dashLogRows;ROWS.dash_coin=dashCoinRows;ROWS.dash_tf=dashTfRows;const TK=tk();const rows=ROWS[TK]();
+  const ds=$("dashSum");if(ui.tab==="dash"){ds.classList.remove("hidden");ds.innerHTML=dashSumHtml()}else ds.classList.add("hidden");
+  lastRows=sorted(rows,TK);const cols=COLS[TK],s=ui.sort[TK];
   document.querySelector("#grid thead").innerHTML="<tr>"+cols.map(c=>'<th class="'+(c.sort?"s":"")+" "+(c.num?"num":"")+'" data-k="'+c.k+'">'+esc(c.l)+(s.key===c.k?(s.dir>0?" ▲":" ▼"):"")+"</th>").join("")+"</tr>";
   const LIMIT=1500;
   document.querySelector("#grid tbody").innerHTML=lastRows.slice(0,LIMIT).map(r=>{
@@ -465,12 +572,12 @@ function render(){
   const em=$("empty");
   if(!lastRows.length){em.classList.remove("hidden");
     em.textContent=!SYMS.length?(errMsg?"Market data unavailable: "+errMsg:"Loading the market — the first full scan takes about a minute; results appear as coins finish…")
-     :ui.tab==="cross"?"No RSI × MA crosses in the last "+ui.crossWithin+" candle(s) for these filters."
+     :ui.tab==="dash"?(DASH.status==="loading"?"Loading history… "+DASH.done+"/"+DASH.total:DASH.status==="error"?"Could not load history: "+DASH.err:"No trades match these filters."):ui.tab==="cross"?"No RSI × MA crosses in the last "+ui.crossWithin+" candle(s) for these filters."
      :ui.tab==="entry"?"No entry setups right now. An entry needs a retest and the confirmation (RSI × MA cross, or the bounce) on a closed candle; lower the minimum score or widen the filters to see more.":ui.tab==="zones"?"No zones near price for these filters.":ui.tab==="div"?"No fresh divergences for these filters.":ui.tab==="alerts"?"No alerts right now. A coin appears here when RSI falls to "+CFG.AL+" after staying above 70 for "+CFG.MINBARS+"+ candles.":"No coins match these conditions right now."}
   else em.classList.add("hidden");
   $("foot").textContent="Times are Pakistan time (PKT). Data: Binance spot, top "+CFG.TOP+" USDT pairs by 24h volume. "+(lastRows.length>LIMIT?"Showing first "+LIMIT+" of "+lastRows.length+" rows (CSV export includes all). ":"")+"Scanner results are information, not trade advice.";
   counts()}
-function counts(){$("cAlerts").textContent=alertRows().filter(r=>r.active).length;$("cCross").textContent=crossRows().filter(r=>!r.pending).length;$("cRetest").textContent=retestRows().length;$("cOs").textContent=oversoldRows().length;$("cConf").textContent=confRows().length;$("cEntry").textContent=entryRows().length;$("cZones").textContent=zoneRows().length;$("cDiv").textContent=divRows().length}
+function counts(){$("cAlerts").textContent=alertRows().filter(r=>r.active).length;$("cCross").textContent=crossRows().filter(r=>!r.pending).length;$("cRetest").textContent=retestRows().length;$("cOs").textContent=oversoldRows().length;$("cConf").textContent=confRows().length;$("cEntry").textContent=entryRows().length;$("cZones").textContent=zoneRows().length;$("cDiv").textContent=divRows().length;$("cDash").textContent=dashFiltered().length}
 function overview(){
   const p=$("pill");
   if(errMsg&&!lastScan){p.className="pill err";p.textContent="No data"}
@@ -507,10 +614,10 @@ function notifyNew(){
   if(!firstE&&fe.length&&ui.entSound)ping("New entry setup: "+fe.length,fe)}
 
 // ---------- events ----------
-document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest(".tab");if(!b)return;ui.tab=b.dataset.tab;saveUi();tabs();toolbar();render()});
+document.querySelector(".tabs").addEventListener("click",e=>{const b=e.target.closest(".tab");if(!b)return;ui.tab=b.dataset.tab;saveUi();tabs();toolbar();render();if(ui.tab==="dash"&&DASH.status==="idle")dashScan()});
 function tabs(){document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===ui.tab))}
-document.querySelector("#grid thead").addEventListener("click",e=>{const h=e.target.closest("th.s");if(!h)return;const s=ui.sort[ui.tab];
-  if(s.key===h.dataset.k)s.dir*=-1;else{s.key=h.dataset.k;s.dir=["vol","count","matches","chg","status","rt","peak","ba","since","t","move","score","side"].includes(h.dataset.k)?-1:1}saveUi();render()});
+document.querySelector("#grid thead").addEventListener("click",e=>{const h=e.target.closest("th.s");if(!h)return;const s=ui.sort[tk()];
+  if(s.key===h.dataset.k)s.dir*=-1;else{s.key=h.dataset.k;s.dir=["vol","count","matches","chg","status","rt","peak","ba","since","t","move","score","side","n","net","r","wr","tp"].includes(h.dataset.k)?-1:1}saveUi();render()});
 $("toolbar").addEventListener("click",e=>{const c=e.target.closest("[data-chip]");
   if(c){const a=ui[c.dataset.chip],v=c.dataset.v,i=a.indexOf(v);if(i>=0)a.splice(i,1);else a.push(v);saveUi();toolbar();render();return}
   const p=e.target.closest("[data-preset]");if(p){ui.preset=p.dataset.preset;saveUi();toolbar();render();return}
@@ -519,16 +626,17 @@ $("toolbar").addEventListener("input",e=>{if(e.target.id==="q"){ui.search=e.targ
 $("toolbar").addEventListener("change",e=>{const id=e.target.id;
   if(id==="minVol")ui.minVol=Number(e.target.value);else if(id==="live")ui.live=e.target.checked;else if(id==="minTf")ui.minTfCount=Number(e.target.value);
   else if(id==="minMatch")ui.minMatch=Number(e.target.value);else if(id==="incMon")ui.includeMonitor=e.target.checked;else if(id==="showEnded")ui.showEnded=e.target.checked;
-  else if(id==="entConf")ui.entConf=e.target.value;else if(id==="entWithin")ui.entWithin=Number(e.target.value);else if(id==="entMinScore")ui.entMinScore=Number(e.target.value);else if(id==="entMaxStop")ui.entMaxStop=Number(e.target.value);else if(id==="entAlign")ui.entAlign=e.target.checked;else if(id==="zoneNear")ui.zoneNear=Number(e.target.value);else if(id==="divFresh")ui.divFresh=Number(e.target.value);
+  else if(id==="dmode"||id==="dview")ui[id]=e.target.value;else if(id==="dPer"||id==="dMaxStop")ui[id]=Number(e.target.value);else if(id==="entConf")ui.entConf=e.target.value;else if(id==="entWithin")ui.entWithin=Number(e.target.value);else if(id==="entMinScore")ui.entMinScore=Number(e.target.value);else if(id==="entMaxStop")ui.entMaxStop=Number(e.target.value);else if(id==="entAlign")ui.entAlign=e.target.checked;else if(id==="zoneNear")ui.zoneNear=Number(e.target.value);else if(id==="divFresh")ui.divFresh=Number(e.target.value);
   else if(id==="crossWithin")ui.crossWithin=Number(e.target.value);else if(id==="crossLive")ui.crossLive=e.target.checked;else if(id==="crossAlign")ui.crossAlign=e.target.checked;
   else if(id==="sound"||id==="crossSound"||id==="entSound"){ui[id]=e.target.checked;if(ui[id]){beep();try{if("Notification" in window&&Notification.permission==="default")Notification.requestPermission()}catch(x){}}}
   else return;saveUi();toolbar();render()});
-$("refresh").addEventListener("click",()=>scan(true));
-function exportCsv(){const cols=COLS[ui.tab].filter(c=>c.l);const q=v=>{const s=v==null?"":String(v);return/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
+$("refresh").addEventListener("click",()=>{scan(true);if(ui.tab==="dash")dashScan()});
+function exportCsv(){const cols=COLS[tk()].filter(c=>c.l);const q=v=>{const s=v==null?"":String(v);return/[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
   const strip=h=>String(h).replace(/<[^>]*>/g,"").replace(/&amp;/g,"&").replace(/&lt;/g,"<").replace(/&gt;/g,">").trim();
   const lines=[cols.map(c=>q(c.l)).join(",")];for(const r of lastRows)lines.push(cols.map(c=>q(strip(c.r(r)))).join(","));
-  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([lines.join("\n")],{type:"text/csv"}));a.download="rsi-"+ui.tab+"-"+new Date().toISOString().slice(0,16).replace(/[:T]/g,"")+".csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([lines.join("\n")],{type:"text/csv"}));a.download="rsi-"+tk()+"-"+new Date().toISOString().slice(0,16).replace(/[:T]/g,"")+".csv";a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
 
 tabs();toolbar();render();overview();
+if(ui.tab==="dash")dashScan();setInterval(()=>{if(ui.tab==="dash"&&DASH.status==="ready"&&Date.now()-DASH.at>6e5)dashScan()},30000);
 scan(true);setInterval(()=>scan(false),20000);setInterval(overview,1000);
 </script></body></html>
