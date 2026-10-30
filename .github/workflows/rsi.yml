@@ -44,10 +44,14 @@ jobs:
           MAX_CHARS = 3500               # max size of one notification
           MAX_MSGS = 10                  # max notifications per run
           PERIOD = 14
-          RSI_LEVELS = [30, 40, 50, 70]
           EMA_PERIOD = 200
-          LONG_RSI_PERIOD = 200          # the slow RSI line
-          LONG_RSI_NEAR = 2              # alert only if the RSI 200 line is within 50 +/- 2 (use 100 for every cross)
+          DIV_LEFT = 5                   # divergence: a swing low/high needs 5 candles on the left ...
+          DIV_RIGHT = 3                  # ... and 3 on the right (so it is confirmed 3 candles later)
+          DIV_MIN_GAP = 5                # the two swings must be 5 to 60 candles apart
+          DIV_MAX_GAP = 60
+          DIV_BULL_RSI = 45              # regular bullish: the first RSI low must be below 45
+          DIV_BEAR_RSI = 55              # regular bearish: the first RSI high must be above 55
+          DIV_CONF_WINDOW = 6            # price-action confirmation must come within 6 candles
           SR_LEFT = 5                    # support/resistance: a swing needs 5 lower/higher closes on each side
           SR_RIGHT = 5
           SR_WINDOW = 300                # only use swings from the last 300 hours
@@ -58,7 +62,6 @@ jobs:
           TREND_HOLD = {"1h": 2, "4h": 1}  # a new 1h trend must hold 2 candles before it counts
           PUMP_PCT = 0.03                # fake pump: candle rises 3% or more ...
           VOL_AVG_N = 20                 # ... but its volume is below the average of the last 20 candles
-          FAKE_WINDOW = 5                # fake breakout: price closes back through the level within 5 candles
           FVG_MIN = 0.002                # fair value gap must be at least 0.2% of price
           OB_MOVE = 0.02                 # order block: the candle before a 2%+ move
           OB_BACK = 3                    # look back at most 3 candles for the order block candle
@@ -244,6 +247,89 @@ jobs:
                           break
               return out
 
+          def find_divs(candles, rs, es):
+              # Regular bullish: price lower low + RSI higher low (reversal up)
+              # Regular bearish: price higher high + RSI lower high (reversal down)
+              # Hidden bullish: price higher low + RSI lower low, price above EMA200 (continuation up)
+              # Hidden bearish: price lower high + RSI higher high, price below EMA200 (continuation down)
+              # An alert needs price-action confirmation: a candle in the trade direction that closes beyond the previous candle.
+              n = len(candles)
+              lowp, highp = [], []
+              for j in range(DIV_LEFT, n - DIV_RIGHT):
+                  is_l = all(candles[x][3] > candles[j][3] for x in range(j - DIV_LEFT, j)) and \
+                         all(candles[x][3] >= candles[j][3] for x in range(j + 1, j + DIV_RIGHT + 1))
+                  is_h = all(candles[x][2] < candles[j][2] for x in range(j - DIV_LEFT, j)) and \
+                         all(candles[x][2] <= candles[j][2] for x in range(j + 1, j + DIV_RIGHT + 1))
+                  if is_l:
+                      lowp.append(j)
+                  if is_h:
+                      highp.append(j)
+
+              def clear(i1, i2, p1, p2, r1, r2, low):
+                  gap = i2 - i1
+                  for k in range(i1 + 1, i2):
+                      lp = p1 + (p2 - p1) * (k - i1) / gap
+                      lr = r1 + (r2 - r1) * (k - i1) / gap
+                      if low:
+                          if candles[k][3] < lp or (rs[k] is not None and rs[k] < lr):
+                              return False
+                      else:
+                          if candles[k][2] > lp or (rs[k] is not None and rs[k] > lr):
+                              return False
+                  return True
+
+              def confirm(i2, bull):
+                  for k in range(i2 + DIV_RIGHT, min(n, i2 + DIV_RIGHT + DIV_CONF_WINDOW)):
+                      c, o = candles[k][4], candles[k][1]
+                      if bull and c > o and c > candles[k - 1][2]:
+                          return k
+                      if (not bull) and c < o and c < candles[k - 1][3]:
+                          return k
+                  return None
+
+              out = []
+              for a, b in zip(lowp, lowp[1:]):
+                  gap = b - a
+                  r1, r2 = rs[a], rs[b]
+                  if r1 is None or r2 is None or gap < DIV_MIN_GAP or gap > DIV_MAX_GAP:
+                      continue
+                  l1, l2 = candles[a][3], candles[b][3]
+                  if l2 < l1 and r2 > r1 and r1 < DIV_BULL_RSI:
+                      typ = "reg-bull"
+                  elif l2 > l1 and r2 < r1 and es[b] is not None and candles[b][4] > es[b]:
+                      typ = "hid-bull"
+                  else:
+                      continue
+                  if clear(a, b, l1, l2, r1, r2, True):
+                      out.append({"type": typ, "i1": a, "i2": b, "p1": l1, "p2": l2, "r1": r1, "r2": r2, "c": confirm(b, True)})
+              for a, b in zip(highp, highp[1:]):
+                  gap = b - a
+                  r1, r2 = rs[a], rs[b]
+                  if r1 is None or r2 is None or gap < DIV_MIN_GAP or gap > DIV_MAX_GAP:
+                      continue
+                  h1, h2 = candles[a][2], candles[b][2]
+                  if h2 > h1 and r2 < r1 and r1 > DIV_BEAR_RSI:
+                      typ = "reg-bear"
+                  elif h2 < h1 and r2 > r1 and es[b] is not None and candles[b][4] < es[b]:
+                      typ = "hid-bear"
+                  else:
+                      continue
+                  if clear(a, b, h1, h2, r1, r2, False):
+                      out.append({"type": typ, "i1": a, "i2": b, "p1": h1, "p2": h2, "r1": r1, "r2": r2, "c": confirm(b, False)})
+              out.sort(key=lambda d: d["i2"])
+              return out
+
+          DIV_NAME = {"reg-bull": "BULLISH divergence (regular, possible reversal up)",
+                      "hid-bull": "BULLISH HIDDEN divergence (trend continuing up)",
+                      "reg-bear": "BEARISH divergence (regular, possible reversal down)",
+                      "hid-bear": "BEARISH HIDDEN divergence (trend continuing down)"}
+          DIV_PRICE = {"reg-bull": "lower low", "hid-bull": "higher low", "reg-bear": "higher high", "hid-bear": "lower high"}
+
+          def div_text(d):
+              bull = d["type"].endswith("bull")
+              return "%s 1h: price %s %.6g -> %.6g, RSI %.1f -> %.1f, confirmed by a %s candle" % (
+                  DIV_NAME[d["type"]], DIV_PRICE[d["type"]], d["p1"], d["p2"], d["r1"], d["r2"], "bullish" if bull else "bearish")
+
           def notify(text):
               try:
                   r = requests.post("https://ntfy.sh/" + TOPIC, data=text.encode("utf-8"),
@@ -273,7 +359,6 @@ jobs:
               closes = [x[4] for x in candles]
               vols = [x[5] for x in candles]
               rs = rsi_series(closes, PERIOD)
-              rl = rsi_series(closes, LONG_RSI_PERIOD)
               es = ema_series(closes, EMA_PERIOD)
               highs, lows = swings(closes)
               conf1 = hold_labels(trend_labels(candles, es), TREND_HOLD["1h"])
@@ -316,26 +401,12 @@ jobs:
                   t = candles[i][0]
                   suffix = trend4_at(t + H1)
                   evs = []
-                  r, rp = rs[i], rs[i - 1]
-                  if r is not None and rp is not None:
-                      for lvl in RSI_LEVELS:
-                          if rp < lvl <= r:
-                              evs.append(("rsi%d-up" % lvl, "RSI crossed UP %d (%.1f)" % (lvl, r)))
-                          elif rp >= lvl > r:
-                              evs.append(("rsi%d-down" % lvl, "RSI crossed DOWN %d (%.1f)" % (lvl, r)))
                   e, ep = es[i], es[i - 1]
                   if e is not None and ep is not None:
                       if closes[i - 1] <= ep and closes[i] > e:
                           evs.append(("ema-up", "Price crossed ABOVE EMA%d (%.6g)" % (EMA_PERIOD, e)))
                       elif closes[i - 1] >= ep and closes[i] < e:
                           evs.append(("ema-down", "Price crossed BELOW EMA%d (%.6g)" % (EMA_PERIOD, e)))
-                  s, sp = rl[i], rl[i - 1]
-                  if r is not None and rp is not None and s is not None and sp is not None \
-                          and abs(s - 50) <= LONG_RSI_NEAR:
-                      if rp <= sp and r > s:
-                          evs.append(("rsi200-up", "RSI14 crossed UP RSI%d (RSI%d %.1f, RSI14 %.1f)" % (LONG_RSI_PERIOD, LONG_RSI_PERIOD, s, r)))
-                      elif rp >= sp and r < s:
-                          evs.append(("rsi200-down", "RSI14 crossed DOWN RSI%d (RSI%d %.1f, RSI14 %.1f)" % (LONG_RSI_PERIOD, LONG_RSI_PERIOD, s, r)))
                   # support / resistance: near and broke
                   p0 = closes[i - 1]
                   rlv, slv = sr_at(i)
@@ -351,15 +422,6 @@ jobs:
                           evs.append(("sup-break|%.6g" % slv, "Price BROKE BELOW support %.6g" % slv))
                       elif closes[i] <= zone and p0 > zone:
                           evs.append(("sup-near|%.6g" % slv, "Price NEAR support %.6g (may break down)" % slv))
-                  # fake breakout: broke a level, then closed back through it within FAKE_WINDOW candles
-                  for j in range(max(1, i - FAKE_WINDOW), i):
-                      rj, sj = sr_at(j)
-                      if rj is not None and closes[j] > rj and closes[i] <= rj \
-                              and all(closes[x] > rj for x in range(j + 1, i)):
-                          evs.append(("fake-up|%.6g" % rj, "Fake breakout? Broke above resistance %.6g, then closed back below" % rj))
-                      if sj is not None and closes[j] < sj and closes[i] >= sj \
-                              and all(closes[x] < sj for x in range(j + 1, i)):
-                          evs.append(("fake-down|%.6g" % sj, "Fake breakdown? Broke below support %.6g, then closed back above" % sj))
                   # fake pump: price jumps but volume is below average
                   if i > VOL_AVG_N:
                       avg = sum(vols[i - VOL_AVG_N:i]) / VOL_AVG_N
@@ -371,6 +433,13 @@ jobs:
                       evs.append(("trend|%s>%s" % (conf1[i - 1], conf1[i]), "TREND 1h changed: %s -> %s" % (conf1[i - 1], conf1[i])))
                   for key, text in evs:
                       add(t, "1h", key, text, suffix, H1)
+
+              # RSI divergences (regular + hidden, bullish + bearish) on the 1h chart, once price-action confirms them
+              for d in find_divs(candles, rs, es):
+                  c = d["c"]
+                  if c is not None and c >= lo:
+                      tc = candles[c][0]
+                      add(tc, "1h", "div|%s|%d" % (d["type"], candles[d["i2"]][0]), div_text(d), trend4_at(tc + H1), H1)
 
               # order blocks, supply/demand zones and fair value gaps: first time price returns to them
               for kind, bot, top, k in find_zones(candles, lo, n):
@@ -474,5 +543,5 @@ jobs:
           json.dump(state, open("state.json", "w"))
 
           if os.environ.get("MANUAL") == "true":
-              notify("GitHub RSI bot is working.\nWatching %d coins on 1h, trend on 4h and 1h.\n%s" % (len(SYMBOLS), sample))
+              notify("GitHub alert bot is working.\nWatching %d coins on 1h: RSI divergences (4 types), trend, support/resistance, pump and zones.\n%s" % (len(SYMBOLS), sample))
           PY
