@@ -1,551 +1,372 @@
-name: RSI Alert
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crypto Alert Board</title>
+<style>
+:root{--bg:#0e1116;--panel:#161b22;--line:#262d36;--fg:#e6edf3;--mut:#8b96a3;--up:#26a69a;--dn:#ef5350;--acc:#f0b90b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif;height:100vh;display:flex;flex-direction:column}
+header{display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+h1{font-size:16px;margin:0;margin-right:auto}
+button,select,input{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit}
+button{cursor:pointer}button.on{border-color:var(--acc);color:var(--acc)}
+#st{font-size:12px;color:var(--mut)}#st.ok{color:var(--up)}
+main{flex:1;display:flex;min-height:0}
+#chartwrap{flex:1;display:flex;flex-direction:column;min-width:0}
+#bar{padding:8px 14px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}#bar button{padding:4px 8px}
+#sym{font-size:18px;font-weight:700}#px{color:var(--mut)}
+#chart{flex:1;min-height:300px}
+#leg{padding:0 14px 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px}#leg button{padding:3px 8px;font-size:12px}#trend{color:var(--mut)}
+aside{width:340px;border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0;background:var(--panel)}#list{flex:1;overflow:auto}#scanbar{padding:8px 12px;border-bottom:1px solid var(--line);font-size:12px;color:var(--mut);display:flex;gap:8px;align-items:center;flex-wrap:wrap}#scanbar button{padding:2px 8px;font-size:12px}.coin{color:var(--acc);font-weight:700;cursor:pointer;margin-top:6px}.coin:hover{text-decoration:underline}.ln{white-space:pre-wrap}
+.a{padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer;white-space:pre-wrap;line-height:1.4}
+.a:hover{background:#1d242d}.a b{color:var(--acc)}.a small{color:var(--mut)}
+#toasts{position:fixed;top:14px;right:14px;display:flex;flex-direction:column;gap:8px;z-index:9;max-width:340px}
+.t{background:var(--panel);border:1px solid var(--acc);border-radius:8px;padding:10px 12px;white-space:pre-wrap;cursor:pointer;box-shadow:0 6px 20px #0008}
+@media(max-width:800px){main{flex-direction:column}aside{width:100%;height:40%;border-left:0;border-top:1px solid var(--line)}}
+</style></head><body>
+<header><h1>Crypto Alert Board</h1>
+<span id="st">connecting…</span>
+<button id="en">Enable sound + popups</button></header>
+<main>
+<div id="chartwrap">
+<div id="bar"><span id="sym">BTCUSDT</span><span id="px"></span>
+<span style="flex:1"></span>
+<button data-tf="1m">1m</button><button data-tf="3m">3m</button><button data-tf="5m">5m</button><button data-tf="15m">15m</button><button data-tf="30m">30m</button><button data-tf="1h" class="on">1h</button><button data-tf="2h">2h</button><button data-tf="4h">4h</button><button data-tf="6h">6h</button><button data-tf="12h">12h</button><button data-tf="1d">1d</button><button data-tf="1w">1w</button>
+<input id="go" placeholder="coin e.g. SOL" size="9"></div>
+<div id="leg"><button id="bEma" class="on">EMA200 (blue)</button><button id="bSr" class="on">Support / Resistance</button><button id="bRsi" class="on">RSI14 (purple) + RSI200 (orange), lines at 40 · 50 · 70</button><button id="bDv" class="on">RSI divergences + trendlines</button><button id="bZn" class="on">FVG + Order blocks (green / red)</button><span id="trend"></span></div>
+<div id="chart"></div></div>
+<aside><div id="scanbar"></div><div id="list"></div></aside></main>
+<div id="toasts"></div>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+const TOPIC="rsi-alert-7h3kq9xw2m";
+const OFF=5*3600; // Pakistan time
+let sym="BTCUSDT",tf="1h",soundOn=false,seen=new Set(),timer;
+const $=id=>document.getElementById(id);
+const chart=LightweightCharts.createChart($("chart"),{layout:{background:{color:"#0e1116"},textColor:"#8b96a3"},grid:{vertLines:{color:"#1b2129"},horzLines:{color:"#1b2129"}},timeScale:{timeVisible:true,borderColor:"#262d36"},rightPriceScale:{borderColor:"#262d36"},autoSize:true});
+const candles=chart.addCandlestickSeries({upColor:"#26a69a",downColor:"#ef5350",wickUpColor:"#26a69a",wickDownColor:"#ef5350",borderVisible:false});
+candles.priceScale().applyOptions({scaleMargins:{top:0.05,bottom:0.32}});
+const rsiL=chart.addLineSeries({priceScaleId:"rsi",color:"#ff9f43",lineWidth:2,priceLineVisible:false,lastValueVisible:false});
+const emaS=chart.addLineSeries({color:"#4aa3ff",lineWidth:2,priceLineVisible:false,lastValueVisible:false});
+const rsiS=chart.addLineSeries({priceScaleId:"rsi",color:"#b48cff",lineWidth:2,priceLineVisible:false,lastValueVisible:false});
+chart.priceScale("rsi").applyOptions({scaleMargins:{top:0.72,bottom:0.03}});
+[[40,"#f0b90b",1],[50,"#e6edf3",2],[70,"#3a4350",1]].forEach(([v,c,w])=>rsiS.createPriceLine({price:v,color:c,lineWidth:w,lineStyle:2,axisLabelVisible:false,title:"RSI "+v}));
+let K=[],srLines=[],vis={ema:true,sr:true,rsi:true,zn:true,dv:true},dvSeries=[];
+function rsiCalc(c,p){const o=new Array(c.length).fill(null);if(c.length<=p)return o;let g=0,l=0;for(let i=1;i<=p;i++){const d=c[i]-c[i-1];if(d>0)g+=d;else l-=d}g/=p;l/=p;o[p]=l===0?100:100-100/(1+g/l);for(let i=p+1;i<c.length;i++){const d=c[i]-c[i-1];g=(g*(p-1)+(d>0?d:0))/p;l=(l*(p-1)+(d<0?-d:0))/p;o[i]=l===0?100:100-100/(1+g/l)}return o}
+function emaCalc(c,p){const o=new Array(c.length).fill(null);if(c.length<p)return o;let e=0;for(let i=0;i<p;i++)e+=c[i];e/=p;o[p-1]=e;const k=2/(p+1);for(let i=p;i<c.length;i++){e=c[i]*k+e*(1-k);o[i]=e}return o}
+function levels(c){const out=[];const n=c.length,a=Math.max(5,n-300);for(let i=a+5;i<n-5;i++){let hi=true,lo=true;for(let j=1;j<=5;j++){if(c[i]<=c[i-j]||c[i]<=c[i+j])hi=false;if(c[i]>=c[i-j]||c[i]>=c[i+j])lo=false}if(hi||lo)out.push(c[i])}return out}
+function pts(arr){const r=[];for(let i=0;i<arr.length;i++)if(arr[i]!==null)r.push({time:K[i][0]/1000+OFF,value:arr[i]});return r}
 
-on:
-  schedule:
-    - cron: "2,7,12,17,22,27,32,37,42,47,52,57 * * * *"
-  workflow_dispatch:
+// ===== FVG + order block zones drawn on the chart (no alerts) =====
+const cv=document.createElement("canvas");cv.style.cssText="position:absolute;left:0;top:0;pointer-events:none;z-index:3";
+$("chart").style.position="relative";$("chart").appendChild(cv);
+let zones=[];
+function calcZones(){
+  zones=[];const n=K.length;if(n<5)return;
+  const FVG=0.001,OBP=0.01,made=[];
+  for(let ci=Math.max(2,n-400);ci<n;ci++){
+    const o=+K[ci][1],h=+K[ci][2],l=+K[ci][3],cl=+K[ci][4],ph=+K[ci-2][2],pl=+K[ci-2][3];
+    if(l>ph&&(l-ph)/cl>=FVG)made.push({k:"FVG",up:1,bot:ph,top:l,t0:ci-2,ci});
+    if(h<pl&&(pl-h)/cl>=FVG)made.push({k:"FVG",up:0,bot:h,top:pl,t0:ci-2,ci});
+    const body=o?(cl-o)/o:0;
+    if(body>=OBP){for(let k=ci-1;k>Math.max(-1,ci-4);k--){if(+K[k][4]<+K[k][1]){made.push({k:"OB",up:1,bot:+K[k][3],top:+K[k][2],t0:k,ci});break}}}
+    else if(body<=-OBP){for(let k=ci-1;k>Math.max(-1,ci-4);k--){if(+K[k][4]>+K[k][1]){made.push({k:"OB",up:0,bot:+K[k][3],top:+K[k][2],t0:k,ci});break}}}
+  }
+  const open=made.filter(z=>{for(let k=z.ci+1;k<n;k++){if(+K[k][3]<=z.top&&+K[k][2]>=z.bot)return false}return true});
+  zones=open.filter(z=>z.k==="FVG").slice(-8).concat(open.filter(z=>z.k==="OB").slice(-6));
+}
+function drawZones(){
+  requestAnimationFrame(drawZones);
+  const w=$("chart").clientWidth,h=$("chart").clientHeight,dpr=window.devicePixelRatio||1;
+  if(!w||!h)return;
+  if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);cv.style.width=w+"px";cv.style.height=h+"px"}
+  const g=cv.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
+  if(!vis.zn||!zones.length||!K.length)return;
+  const ts=chart.timeScale();let xr=w-70;try{xr=ts.width()}catch(e){}
+  g.save();g.beginPath();g.rect(0,0,xr,(h-26)*0.68);g.clip();
+  for(const z of zones){
+    const y1=candles.priceToCoordinate(z.top),y2=candles.priceToCoordinate(z.bot);
+    if(y1===null||y2===null||!K[z.t0])continue;
+    let x1=ts.timeToCoordinate(K[z.t0][0]/1000+OFF);if(x1===null)x1=0;
+    if(x1>=xr)continue;x1=Math.max(0,x1);
+    const top=Math.min(y1,y2),ht=Math.max(2,Math.abs(y2-y1));
+    g.fillStyle=z.up?"rgba(38,166,154,0.22)":"rgba(239,83,80,0.22)";g.fillRect(x1,top,xr-x1,ht);
+    g.strokeStyle=z.up?"rgba(38,166,154,0.85)":"rgba(239,83,80,0.85)";g.lineWidth=1;g.strokeRect(x1+.5,top+.5,xr-x1-1,ht);
+    g.fillStyle=z.up?"#26a69a":"#ef5350";g.font="10px system-ui,sans-serif";g.fillText((z.k==="FVG"?"FVG ":"OB ")+(z.up?"buy":"sell"),x1+4,top+10)}
+  g.restore()}
+requestAnimationFrame(drawZones);
+// ===== RSI divergences (4 types) =====
+const DV={L:5,R:3,MING:5,MAXG:60,BULL:45,BEAR:55,CW:6};
+const DVN={"reg-bull":"Bull div","hid-bull":"Hidden bull","reg-bear":"Bear div","hid-bear":"Hidden bear"};
+const DVL={"reg-bull":"BULLISH divergence (regular, possible reversal up)","hid-bull":"BULLISH HIDDEN divergence (trend continuing up)","reg-bear":"BEARISH divergence (regular, possible reversal down)","hid-bear":"BEARISH HIDDEN divergence (trend continuing down)"};
+const DVP={"reg-bull":"lower low","hid-bull":"higher low","reg-bear":"higher high","hid-bear":"lower high"};
+// C rows: [openTime,o,h,l,c] numbers. Returns divergences; c = index of the confirming candle (or null)
+function findDivs(C,rs,es){
+  const n=C.length,lowp=[],highp=[];
+  for(let j=DV.L;j<n-DV.R;j++){
+    let isL=true,isH=true;
+    for(let x=j-DV.L;x<j;x++){if(!(C[x][3]>C[j][3]))isL=false;if(!(C[x][2]<C[j][2]))isH=false}
+    for(let x=j+1;x<=j+DV.R;x++){if(!(C[x][3]>=C[j][3]))isL=false;if(!(C[x][2]<=C[j][2]))isH=false}
+    if(isL)lowp.push(j);if(isH)highp.push(j)}
+  const clear=(i1,i2,p1,p2,r1,r2,low)=>{const g=i2-i1;
+    for(let k=i1+1;k<i2;k++){const lp=p1+(p2-p1)*(k-i1)/g,lr=r1+(r2-r1)*(k-i1)/g;
+      if(low){if(C[k][3]<lp||(rs[k]!==null&&rs[k]<lr))return false}else{if(C[k][2]>lp||(rs[k]!==null&&rs[k]>lr))return false}}
+    return true};
+  const confirm=(i2,bull)=>{for(let k=i2+DV.R;k<Math.min(n,i2+DV.R+DV.CW);k++){
+    const c=C[k][4],o=C[k][1];
+    if(bull&&c>o&&c>C[k-1][2])return k;
+    if(!bull&&c<o&&c<C[k-1][3])return k}
+    return null};
+  const out=[];
+  for(let q=1;q<lowp.length;q++){const a=lowp[q-1],b=lowp[q],g=b-a,r1=rs[a],r2=rs[b];
+    if(r1===null||r2===null||g<DV.MING||g>DV.MAXG)continue;
+    const l1=C[a][3],l2=C[b][3];let typ;
+    if(l2<l1&&r2>r1&&r1<DV.BULL)typ="reg-bull";
+    else if(l2>l1&&r2<r1&&es[b]!==null&&C[b][4]>es[b])typ="hid-bull";
+    else continue;
+    if(clear(a,b,l1,l2,r1,r2,true))out.push({type:typ,i1:a,i2:b,p1:l1,p2:l2,r1,r2,c:confirm(b,true)})}
+  for(let q=1;q<highp.length;q++){const a=highp[q-1],b=highp[q],g=b-a,r1=rs[a],r2=rs[b];
+    if(r1===null||r2===null||g<DV.MING||g>DV.MAXG)continue;
+    const h1=C[a][2],h2=C[b][2];let typ;
+    if(h2>h1&&r2<r1&&r1>DV.BEAR)typ="reg-bear";
+    else if(h2<h1&&r2>r1&&es[b]!==null&&C[b][4]<es[b])typ="hid-bear";
+    else continue;
+    if(clear(a,b,h1,h2,r1,r2,false))out.push({type:typ,i1:a,i2:b,p1:h1,p2:h2,r1,r2,c:confirm(b,false)})}
+  out.sort((x,y)=>x.i2-y.i2);return out}
+function divText(d){const bull=d.type.slice(-4)==="bull";
+  return DVL[d.type]+" 1h: price "+DVP[d.type]+" "+g6(d.p1)+" -> "+g6(d.p2)+", RSI "+d.r1.toFixed(1)+" -> "+d.r2.toFixed(1)+", confirmed by a "+(bull?"bullish":"bearish")+" candle"}
+function drawDivs(KN,rs,es){
+  dvSeries.forEach(x=>{try{chart.removeSeries(x)}catch(e){}});dvSeries=[];
+  if(!vis.dv){candles.setMarkers([]);return}
+  const ds=findDivs(KN,rs,es).slice(-8),mk=[];
+  const T=i=>KN[i][0]/1000+OFF;
+  for(const d of ds){
+    const bull=d.type.slice(-4)==="bull",hid=d.type.slice(0,3)==="hid";
+    const col=bull?"#26a69a":"#ef5350",st=hid?2:0;
+    const ps=chart.addLineSeries({color:col,lineWidth:2,lineStyle:st,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
+    ps.setData([{time:T(d.i1),value:d.p1},{time:T(d.i2),value:d.p2}]);dvSeries.push(ps);
+    const rl=chart.addLineSeries({priceScaleId:"rsi",color:col,lineWidth:2,lineStyle:st,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
+    rl.setData([{time:T(d.i1),value:d.r1},{time:T(d.i2),value:d.r2}]);dvSeries.push(rl);
+    mk.push({time:T(d.c!==null?d.c:d.i2),position:bull?"belowBar":"aboveBar",color:col,shape:bull?"arrowUp":"arrowDown",text:DVN[d.type]+(d.c===null?" (waiting)":"")})}
+  mk.sort((a,b)=>a.time-b.time);candles.setMarkers(mk)}
+function paint(){
+  if(!K.length){zones=[];return}
+  calcZones();
+  const c=K.map(x=>+x[4]),last=c[c.length-1];
+  const e=emaCalc(c,200),r14=rsiCalc(c,14),r200=rsiCalc(c,200);
+  emaS.setData(vis.ema?pts(e):[]);
+  rsiS.setData(vis.rsi?pts(r14):[]);rsiL.setData(vis.rsi?pts(r200):[]);
+  drawDivs(K.map(x=>[+x[0],+x[1],+x[2],+x[3],+x[4]]),r14,e);
+  srLines.forEach(l=>candles.removePriceLine(l));srLines=[];
+  if(vis.sr){
+    const lv=levels(c).sort((a,b)=>a-b),u=[];
+    lv.forEach(v=>{if(!u.length||Math.abs(v-u[u.length-1])/v>0.003)u.push(v)});
+    const up=u.filter(v=>v>last).slice(0,3),dn=u.filter(v=>v<=last).slice(-3);
+    up.forEach(v=>srLines.push(candles.createPriceLine({price:v,color:"#ef5350",lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"R"})));
+    dn.forEach(v=>srLines.push(candles.createPriceLine({price:v,color:"#26a69a",lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"S"})));
+  }
+  const ev=e[e.length-1];
+  $("trend").textContent=ev?("Price is "+(last>ev?"above":"below")+" EMA200  ·  RSI14 "+(r14[r14.length-1]||0).toFixed(1)+(r200[r200.length-1]!==null?"  ·  RSI200 "+r200[r200.length-1].toFixed(1):"")):"";
+}
+[["bEma","ema"],["bSr","sr"],["bRsi","rsi"],["bZn","zn"],["bDv","dv"]].forEach(([id,k])=>{$(id).onclick=()=>{vis[k]=!vis[k];$(id).classList.toggle("on",vis[k]);paint()}});
+async function load(){
+  $("sym").textContent=sym;
+  try{
+    const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+tf+"&limit=1000");
+    const k=await r.json();
+    if(!Array.isArray(k))throw 0;
+    K=k;
+    const lp=+k[k.length-1][4],pr=Math.max(2,Math.min(8,4-Math.floor(Math.log10(lp))));candles.applyOptions({priceFormat:{type:"price",precision:pr,minMove:1/Math.pow(10,pr)}});
+    candles.setData(k.map(x=>({time:x[0]/1000+OFF,open:+x[1],high:+x[2],low:+x[3],close:+x[4]})));
+    paint();
+    chart.timeScale().setVisibleLogicalRange({from:k.length-160,to:k.length+6});
+    $("px").textContent=k[k.length-1][4];
+  }catch(e){K=[];zones=[];$("px").textContent="no data for "+sym}
+  clearInterval(timer);timer=setInterval(tick,10000);
+}
+async function tick(){
+  try{
+    const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+tf+"&limit=2");
+    const k=await r.json();
+    k.forEach(x=>{candles.update({time:x[0]/1000+OFF,open:+x[1],high:+x[2],low:+x[3],close:+x[4]});
+      if(K.length&&K[K.length-1][0]===x[0])K[K.length-1]=x;else if(K.length&&x[0]>K[K.length-1][0])K.push(x)});
+    paint();
+    $("px").textContent=k[k.length-1][4];
+  }catch(e){}
+}
+function show(s){s=String(s).trim().toUpperCase().replace(/\s+/g,"");if(!s)return;if(!/USDT$/.test(s))s+="USDT";sym=s;load()}
+document.querySelectorAll("[data-tf]").forEach(b=>b.onclick=()=>{tf=b.dataset.tf;document.querySelectorAll("[data-tf]").forEach(x=>x.classList.toggle("on",x===b));load()});
+$("go").onkeydown=e=>{if(e.key==="Enter"){show($("go").value);$("go").value=""}};
+function coins(msg){const out=[];msg.split("\n").forEach(l=>{const m=l.trim().match(/^(\S+USDT)$/);if(m)out.push(m[1])});return out}
+function fmt(t){return new Date(t*1000).toLocaleString("en-US",{timeZone:"Asia/Karachi",hour:"2-digit",minute:"2-digit",day:"numeric",month:"short",hourCycle:"h23"})+" PKT"}
+function beep(){try{const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=880;g.gain.value=.15;o.start();o.stop(c.currentTime+.25)}catch(e){}}
+function clean(msg){
+  if(!/FVG|order block|supply zone|demand zone/i.test(msg))return msg;
+  const out=[];
+  msg.split(/\n\s*\n/).forEach(b=>{
+    const ls=b.split("\n").filter(l=>!/FVG|order block|supply zone|demand zone/i.test(l));
+    if(ls.some((l,i)=>i>0&&/PKT/.test(l)&&!/^Price:/.test(l.trim())))out.push(ls.join("\n"))});
+  return out.join("\n\n")}
+function add(m,live){
+  if(seen.has(m.id))return;seen.add(m.id);
+  const msg=clean(m.message||"");if(!msg.trim())return;const cs=coins(msg);
+  const d=document.createElement("div");d.className="a";
+  const hd=document.createElement("small");hd.textContent=fmt(m.time)+(m.src?"  ·  "+m.src:"")+(cs.length?"  ·  "+cs.join(", "):"");d.appendChild(hd);
+  msg.split("\n").forEach(l=>{const x=document.createElement("div");const s=l.trim();const isC=/^\S+USDT$/.test(s);x.className=isC?"coin":"ln";x.textContent=l||" ";if(isC)x.onclick=ev=>{ev.stopPropagation();show(s)};d.appendChild(x)});
+  d.onclick=()=>{if(cs.length)show(cs[0])};
+  $("list").prepend(d);
+  if(live){
+    const t=document.createElement("div");t.className="t";t.textContent=msg.slice(0,400);
+    t.onclick=()=>{if(cs.length)show(cs[0]);t.remove()};
+    $("toasts").appendChild(t);setTimeout(()=>t.remove(),20000);
+    if(autoOpen&&cs.length)show(cs[0]);
+    if(soundOn){beep();try{new Notification(m.title||"Alert",{body:msg.slice(0,200)})}catch(e){}}
+  }
+}
+$("en").onclick=()=>{soundOn=true;beep();$("en").textContent="Sound on";try{Notification.requestPermission()}catch(e){}};
+function connect(){
+  const es=new EventSource("https://ntfy.sh/"+TOPIC+"/sse?since=24h");
+  let first=true;
+  es.onopen=()=>{$("st").textContent="live";$("st").className="ok"};
+  es.onerror=()=>{$("st").textContent="reconnecting…";$("st").className=""};
+  es.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(x){return}if(m.event!=="message")return;add(m,!first)};
+  es.addEventListener("open",()=>{setTimeout(()=>first=false,2500)});
+  setTimeout(()=>first=false,4000);
+}
+// ===== live 5-minute scanner: same alert rules as the GitHub bot =====
+const API="https://data-api.binance.vision";
+const SC={TOP:100,BMIN:5,LOOK:2,MAXCATCH:864e5,MAXLINES:25,MAXCH:3500,LZ:[49,39],LNEAR:2,SRL:5,SRR:5,SRW:300,SRN:0.005,TS:3,TFLAT:0.005,FL:20,HOLD5:2,HOLD4:1,FVG:0.001,OB:0.01,OBB:3,ZW:100};
+const BMS=SC.BMIN*60000,H4=4*3600000;
+const STABLE=new Set(["USDC","FDUSD","TUSD","USDP","BUSD","DAI","EUR","AEUR","USD1","XUSD","USDE","PYUSD","EURI","RLUSD","BFUSD","USDS","UST"]);
+const SHORT={uptrend:"up",downtrend:"down",sideways:"side"};
+const MON=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const p2=n=>(n<10?"0":"")+n;
+function ub(a,x){let lo=0,hi=a.length;while(lo<hi){const m=(lo+hi)>>1;if(a[m]<=x)lo=m+1;else hi=m}return lo}
+function g6(x){let s=Number(x).toPrecision(6);if(s.indexOf("e")<0&&s.indexOf(".")>=0)s=s.replace(/0+$/,"").replace(/\.$/,"");return s}
+function pk(ms){return new Date(ms+5*3600000)}
+function hm(ms){const d=pk(ms);return p2(d.getUTCHours())+":"+p2(d.getUTCMinutes())}
+function dm(ms){const d=pk(ms);return p2(d.getUTCDate())+" "+MON[d.getUTCMonth()]}
+function stamp(cm,now){return dm(cm)===dm(now)?hm(cm):dm(cm)+" "+hm(cm)}
+function swingsC(c){const hi=[],lo=[];for(let j=SC.SRL;j<c.length-SC.SRR;j++){let mxL=-Infinity,mnL=Infinity,mxR=-Infinity,mnR=Infinity;for(let x=j-SC.SRL;x<j;x++){mxL=Math.max(mxL,c[x]);mnL=Math.min(mnL,c[x])}for(let x=j+1;x<=j+SC.SRR;x++){mxR=Math.max(mxR,c[x]);mnR=Math.min(mnR,c[x])}if(c[j]>mxL&&c[j]>=mxR)hi.push([j,c[j]]);if(c[j]<mnL&&c[j]<=mnR)lo.push([j,c[j]])}return [hi,lo]}
+function trendLabels(C,es){const n=C.length,S=SC.TS,hs=[],ls=[];
+  for(let j=S;j<n-S;j++){const h=C[j][2],l=C[j][3];let mxl=-Infinity,mxr=-Infinity,mnl=Infinity,mnr=Infinity;
+    for(let x=j-S;x<j;x++){mxl=Math.max(mxl,C[x][2]);mnl=Math.min(mnl,C[x][3])}
+    for(let x=j+1;x<=j+S;x++){mxr=Math.max(mxr,C[x][2]);mnr=Math.min(mnr,C[x][3])}
+    if(h>mxl&&h>=mxr)hs.push([j,h]);if(l<mnl&&l<=mnr)ls.push([j,l])}
+  const out=new Array(n).fill(null);let ph=0,pl=0;
+  for(let i=0;i<n;i++){while(ph<hs.length&&hs[ph][0]+S<=i)ph++;while(pl<ls.length&&ls[pl][0]+S<=i)pl++;
+    const e=es[i];if(e===null||i<SC.FL||es[i-SC.FL]===null||ph<2||pl<2)continue;
+    if(Math.abs(e/es[i-SC.FL]-1)<SC.TFLAT){out[i]="sideways";continue}
+    const c=C[i][4],up=hs[ph-1][1]>hs[ph-2][1]&&ls[pl-1][1]>ls[pl-2][1],dn=hs[ph-1][1]<hs[ph-2][1]&&ls[pl-1][1]<ls[pl-2][1];
+    out[i]=(c>e&&up)?"uptrend":(c<e&&dn)?"downtrend":"sideways"}
+  return out}
+function holdLabels(L,hold){const out=new Array(L.length).fill(null);let cur=null;for(let i=0;i<L.length;i++){const lab=L[i];if(lab!==null){let ok=true;for(let x=Math.max(0,i-hold+1);x<=i;x++)if(L[x]!==lab){ok=false;break}if(ok)cur=lab}out[i]=cur}return out}
+function startIdx(c,tfMin,since,nowMs,look){const n=c.length;if(since==null)return Math.max(1,n-look);since=Math.max(since,nowMs-SC.MAXCATCH);const margin=2*tfMin*60000;let lo=n;while(lo>1&&c[lo-1][0]+tfMin*60000>since-margin)lo--;return Math.max(1,lo)}
+// c5 / c4: closed candles [openTime,o,h,l,c,v]; st: saved alert state; returns found alerts for this coin
+function analyzeSym(sym,c5,c4,st,nowMs,cx){
+  const n=c5.length;if(n<2)return null;
+  const closes=c5.map(x=>x[4]),vols=c5.map(x=>x[5]);
+  const rs=rsiCalc(closes,14),rl=rsiCalc(closes,200),es=emaCalc(closes,200);
+  const [highs,lows]=swingsC(closes);
+  const conf1=holdLabels(trendLabels(c5,es),SC.HOLD5);
+  let conf4=null,close4=[];
+  if(c4&&c4.length>2){const es4=emaCalc(c4.map(x=>x[4]),200);conf4=holdLabels(trendLabels(c4,es4),SC.HOLD4);close4=c4.map(x=>x[0]+H4)}
+  const t4=cm=>{if(!conf4)return "";const k=ub(close4,cm)-1;return(k>=0&&conf4[k])?" [4h "+SHORT[conf4[k]]+"]":""};
+  const srAt=i=>{const p0=closes[i-1];let res=null,sup=null;
+    for(const [j,v] of highs){if(j+SC.SRR<=i-1&&j>=i-SC.SRW&&v>p0&&(res===null||v<res))res=v}
+    for(const [j,v] of lows){if(j+SC.SRR<=i-1&&j>=i-SC.SRW&&v<p0&&(sup===null||v>sup))sup=v}
+    return [res,sup]};
+  const chk5="_chk|"+sym+"|5m",lo=startIdx(c5,SC.BMIN,st[chk5],nowMs,SC.LOOK);
+  const chks=[chk5],found=[],pending={},upd={};
+  const add=(t,tfn,key,text,suffix,step)=>{const k=sym+"|"+tfn+"|"+key;const prev=(k in pending)?pending[k]:(st[k]||0);if(t>prev){pending[k]=t;found.push([t+step,text+suffix])}};
+  for(let i=lo;i<n;i++){
+    const t=c5[i][0],suffix=t4(t+BMS),evs=[];
+    const e=es[i],ep=es[i-1];
+    if(e!==null&&ep!==null){
+      if(closes[i-1]<=ep&&closes[i]>e)evs.push(["ema-up","Price crossed ABOVE EMA200 ("+g6(e)+")"]);
+      else if(closes[i-1]>=ep&&closes[i]<e)evs.push(["ema-down","Price crossed BELOW EMA200 ("+g6(e)+")"])}
+    const r=rs[i],rp=rs[i-1],s=rl[i],sp=rl[i-1];
+    if(r!==null&&rp!==null&&s!==null&&sp!==null&&SC.LZ.some(z=>Math.abs(s-z)<=SC.LNEAR)){
+      if(rp<=sp&&r>s)evs.push(["rsi200-up","RSI14 crossed UP RSI200 (RSI200 "+s.toFixed(1)+", RSI14 "+r.toFixed(1)+")"]);
+      else if(rp>=sp&&r<s)evs.push(["rsi200-down","RSI14 crossed DOWN RSI200 (RSI200 "+s.toFixed(1)+", RSI14 "+r.toFixed(1)+")"])}
+    const p0=closes[i-1],[rlv,slv]=srAt(i);
+    if(rlv!==null){const zone=rlv*(1-SC.SRN);
+      if(closes[i]>rlv)evs.push(["res-break|"+g6(rlv),"Price BROKE ABOVE resistance "+g6(rlv)]);
+      else if(closes[i]>=zone&&p0<zone)evs.push(["res-near|"+g6(rlv),"Price NEAR resistance "+g6(rlv)+" (may break up)"])}
+    if(slv!==null){const zone=slv*(1+SC.SRN);
+      if(closes[i]<slv)evs.push(["sup-break|"+g6(slv),"Price BROKE BELOW support "+g6(slv)]);
+      else if(closes[i]<=zone&&p0>zone)evs.push(["sup-near|"+g6(slv),"Price NEAR support "+g6(slv)+" (may break down)"])}
+    if(conf1[i]&&conf1[i-1]&&conf1[i]!==conf1[i-1])evs.push(["trend|"+conf1[i-1]+">"+conf1[i],"TREND 5m changed: "+conf1[i-1]+" -> "+conf1[i]]);
+    for(const [key,text] of evs)add(t,"5m",key,text,suffix,BMS)}
+  if(conf4){const chk4="_chk|"+sym+"|4h";chks.push(chk4);const lo4=startIdx(c4,240,st[chk4],nowMs,1);
+    for(let i=lo4;i<c4.length;i++){if(conf4[i]&&conf4[i-1]&&conf4[i]!==conf4[i-1])add(c4[i][0],"4h","trend|"+conf4[i-1]+">"+conf4[i],"TREND 4h changed: "+conf4[i-1]+" -> "+conf4[i],"",H4)}}
+  // RSI divergences on the 1h chart (regular + hidden, bullish + bearish), alert when a confirming candle closes
+  const h1=cx&&cx.h1;
+  if(h1&&h1.length>60){
+    const chk1="_chk|"+sym+"|1h";chks.push(chk1);const lo1=startIdx(h1,60,st[chk1],nowMs,1);
+    const hc=h1.map(x=>x[4]),rh=rsiCalc(hc,14),eh=emaCalc(hc,200);
+    const t4h=cm=>{if(!conf4)return "";const k=ub(close4,cm)-1;return(k>=0&&conf4[k])?" [4h "+SHORT[conf4[k]]+"]":""};
+    for(const d of findDivs(h1,rh,eh)){if(d.c!==null&&d.c>=lo1){const tc=h1[d.c][0];
+      add(tc,"1h","div|"+d.type+"|"+h1[d.i2][0],divText(d),t4h(tc+36e5),36e5)}}}
+  return {found,pending,chks,upd,price:closes[n-1]}}
+// ---- scan driver: runs at every 5-minute candle close while this page is open
+let ST={},scanning=false,scanN=0,scanOn=true,autoOpen=false,symCache={t:0,list:[]},c4cache={},c15cache={},c1hcache={},lastInfo="";
+try{ST=JSON.parse(localStorage.getItem("scanState")||"{}")}catch(e){ST={}}
+try{scanOn=localStorage.getItem("scanOn")!=="0"}catch(e){}
+async function topSymbols(){
+  if(Date.now()-symCache.t<3600000&&symCache.list.length)return symCache.list;
+  const r=await fetch(API+"/api/v3/ticker/24hr?type=MINI");if(!r.ok)throw new Error("ticker "+r.status);
+  const j=await r.json();
+  const list=j.filter(x=>x.symbol.endsWith("USDT")&&!STABLE.has(x.symbol.slice(0,-4))).map(x=>[+x.quoteVolume,x.symbol]).sort((a,b)=>b[0]-a[0]).slice(0,SC.TOP).map(x=>x[1]);
+  if(list.length>=10)symCache={t:Date.now(),list};
+  return symCache.list}
+async function kl(sym,iv,lim){const r=await fetch(API+"/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+iv+"&limit="+lim);if(!r.ok)throw new Error(sym+" "+r.status);const k=await r.json();return k.slice(0,-1).map(x=>[+x[0],+x[1],+x[2],+x[3],+x[4],+x[5]])}
+async function pool(items,n,fn){let i=0;await Promise.all(Array.from({length:n},async()=>{while(i<items.length){const k=i++;await fn(items[k],k)}}))}
+function setBar(txt){const e=document.getElementById("scanTxt");if(e)e.textContent=txt}
+async function scan(){
+  if(scanning||!scanOn)return;scanning=true;setBar("scanning…");
+  let alerts=0,coinsN=0;
+  try{
+    const now=Date.now(),syms=await topSymbols(),d5={},d4={},d15={},d1h={};
+    await pool(syms,8,async s=>{
+      try{d5[s]=await kl(s,"5m",1000)}catch(e){}
+      const b=Math.floor(now/H4);
+      if(!c4cache[s]||c4cache[s].b!==b){try{c4cache[s]={b,d:await kl(s,"4h",1000)}}catch(e){}}
+      const b15=Math.floor(now/9e5);if(!c15cache[s]||c15cache[s].b!==b15){try{c15cache[s]={b:b15,d:await kl(s,"15m",500)}}catch(e){}}
+      const b1=Math.floor(now/36e5);if(!c1hcache[s]||c1hcache[s].b!==b1){try{c1hcache[s]={b:b1,d:await kl(s,"1h",500)}}catch(e){}}
+      d15[s]=c15cache[s]?c15cache[s].d:null;d1h[s]=c1hcache[s]?c1hcache[s].d:null;
+      d4[s]=c4cache[s]?c4cache[s].d:null});
+    const blocks=[];
+    for(const s of syms){if(!d5[s])continue;coinsN++;
+      const out=analyzeSym(s,d5[s],d4[s],ST,now,{m15:d15[s],h1:d1h[s]});if(!out)continue;Object.assign(ST,out.upd);
+      if(!out.found.length){out.chks.forEach(c=>ST[c]=now);continue}
+      out.found.sort((a,b)=>a[0]-b[0]);
+      let lines=out.found.map(x=>stamp(x[0],now)+" PKT  "+x[1]),extra="";
+      if(lines.length>SC.MAXLINES){extra="("+(lines.length-SC.MAXLINES)+" older alerts not shown)\n";lines=lines.slice(-SC.MAXLINES)}
+      blocks.push({text:s+"\n"+extra+lines.join("\n")+"\nPrice: "+g6(out.price)+" ("+dm(now)+" "+hm(now)+" PKT)\n",pending:out.pending,chks:out.chks,n:lines.length})}
+    let idx=0,cards=0;
+    while(idx<blocks.length&&cards<10){let text="",grp=[];
+      while(idx<blocks.length&&(!grp.length||text.length+blocks[idx].text.length+1<=SC.MAXCH)){text+=blocks[idx].text+"\n";grp.push(blocks[idx]);idx++}
+      cards++;add({id:"scan-"+now+"-"+cards,time:now/1000,title:"Alert",message:text.trim(),src:"5m live"},scanN>0);
+      grp.forEach(b=>{Object.assign(ST,b.pending);b.chks.forEach(c=>ST[c]=now);alerts+=b.n})}
+    for(const k of Object.keys(ST)){if(k[0]!=="_"&&typeof ST[k]==="number"&&ST[k]<now-3*864e5)delete ST[k]}
+    try{localStorage.setItem("scanState",JSON.stringify(ST))}catch(e){}
+    scanN++;
+    const d=new Date(),t=p2(d.getHours())+":"+p2(d.getMinutes());
+    lastInfo="last scan "+t+" · "+coinsN+" coins · "+alerts+" alerts";
+    setBar(lastInfo)
+  }catch(e){setBar("scan failed, trying again at the next 5-minute mark")}
+  finally{scanning=false;schedule()}}
+let scanTimer=null;
+function schedule(){clearTimeout(scanTimer);if(!scanOn){setBar("5m scan is off");return}
+  const next=(Math.floor(Date.now()/BMS)+1)*BMS+20000;scanTimer=setTimeout(scan,next-Date.now())}
+function buildBar(){const b=document.getElementById("scanbar");
+  b.innerHTML='<span id="scanTxt">starting…</span><button id="scanBtn"></button><button id="aoBtn"></button>';
+  const sb=document.getElementById("scanBtn"),ab=document.getElementById("aoBtn");
+  const paint=()=>{sb.textContent=scanOn?"5m scan: ON":"5m scan: OFF";sb.classList.toggle("on",scanOn);ab.textContent=autoOpen?"Auto-open chart: ON":"Auto-open chart: OFF";ab.classList.toggle("on",autoOpen)};
+  sb.onclick=()=>{scanOn=!scanOn;try{localStorage.setItem("scanOn",scanOn?"1":"0")}catch(e){}paint();if(scanOn)scan();else{clearTimeout(scanTimer);setBar("5m scan is off")}};
+  ab.onclick=()=>{autoOpen=!autoOpen;paint()};
+  paint()}
+function startScanner(){buildBar();if(scanOn)scan();else setBar("5m scan is off")}
 
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - run: pip install requests
-
-      - uses: actions/cache@v4
-        with:
-          path: state.json
-          key: rsi-state-${{ github.run_id }}
-          restore-keys: rsi-state-
-
-      - name: Check RSI and notify
-        env:
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-          MANUAL: ${{ github.event_name == 'workflow_dispatch' }}
-        run: |
-          python - <<'PY'
-          import os, json, time, bisect, requests
-          from datetime import datetime, timezone, timedelta
-          from concurrent.futures import ThreadPoolExecutor
-
-          TOPIC = os.environ["NTFY_TOPIC"]
-          TOP_N = 100                    # watch the 100 USDT coins with the highest 24h trading volume
-          DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]  # used only if Binance's list cannot be loaded
-          STABLES = {"USDC", "FDUSD", "TUSD", "USDP", "BUSD", "DAI", "EUR", "AEUR", "USD1", "XUSD",
-                     "USDE", "PYUSD", "EURI", "RLUSD", "BFUSD", "USDS", "UST"}
-          TIMEFRAMES = ["1h", "4h"]      # 1h = all alerts, 4h = trend only
-          MINUTES = {"1h": 60, "4h": 240}
-          LOOKBACK = {"1h": 2, "4h": 1}  # only for the very first run
-          MAX_CATCHUP = 24 * 3600 * 1000 # after a long gap, look back at most 24 hours
-          MAX_LINES = 25                 # max lines per coin in one notification
-          MAX_CHARS = 3500               # max size of one notification
-          MAX_MSGS = 10                  # max notifications per run
-          PERIOD = 14
-          EMA_PERIOD = 200
-          LONG_RSI_PERIOD = 200          # the slow RSI line
-          LONG_RSI_ZONES = [49, 39]      # alert on an RSI14 / RSI200 cross only when RSI200 is near one of these ...
-          LONG_RSI_NEAR = 2              # ... within +/- 2
-          DIV_LEFT = 5                   # divergence: a swing low/high needs 5 candles on the left ...
-          DIV_RIGHT = 3                  # ... and 3 on the right (so it is confirmed 3 candles later)
-          DIV_MIN_GAP = 5                # the two swings must be 5 to 60 candles apart
-          DIV_MAX_GAP = 60
-          DIV_BULL_RSI = 45              # regular bullish: the first RSI low must be below 45
-          DIV_BEAR_RSI = 55              # regular bearish: the first RSI high must be above 55
-          DIV_CONF_WINDOW = 6            # price-action confirmation must come within 6 candles
-          SR_LEFT = 5                    # support/resistance: a swing needs 5 lower/higher closes on each side
-          SR_RIGHT = 5
-          SR_WINDOW = 300                # only use swings from the last 300 hours
-          SR_NEAR = 0.005                # "near" alert when price is within 0.5% of the level
-          TREND_SWING = 3                # trend: swing highs/lows need 3 candles on each side
-          TREND_FLAT = 0.005             # trend: 200 EMA moved less than 0.5% in 20 candles = flat = sideways
-          FLAT_LOOK = 20
-          TREND_HOLD = {"1h": 2, "4h": 1}  # a new 1h trend must hold 2 candles before it counts
-          FVG_MIN = 0.002                # fair value gap must be at least 0.2% of price
-          OB_MOVE = 0.02                 # order block: the candle before a 2%+ move
-          OB_BACK = 3                    # look back at most 3 candles for the order block candle
-          ZONE_WINDOW = 100              # a zone alerts only when price first returns within 100 candles
-          PKT = timezone(timedelta(hours=5))
-          SHORT = {"uptrend": "up", "downtrend": "down", "sideways": "side"}
-
-          KRAKEN = {"BTCUSDT": "XBTUSDT", "ETHUSDT": "ETHUSDT", "SOLUSDT": "SOLUSDT"}
-          KRAKEN_INT = {"1h": 60, "4h": 240}
-          BINANCE_INT = {"1h": "1h", "4h": "4h"}
-          BASES = ("https://data-api.binance.vision", "https://api.binance.com")
-
-          def get_symbols():
-              for base in BASES:
-                  try:
-                      r = requests.get(base + "/api/v3/ticker/24hr", timeout=20)
-                      if r.status_code != 200:
-                          raise Exception("status %s" % r.status_code)
-                      rows = []
-                      for t in r.json():
-                          sym = t["symbol"]
-                          if not sym.endswith("USDT") or sym[:-4] in STABLES:
-                              continue
-                          rows.append((float(t["quoteVolume"]), sym))
-                      rows.sort(reverse=True)
-                      if len(rows) >= 10:
-                          return [sym for _, sym in rows[:TOP_N]]
-                  except Exception:
-                      continue
-              return None
-
-          # a candle is (open time ms, open, high, low, close, volume)
-          def from_binance(sym, tf):
-              for base in BASES:
-                  try:
-                      r = requests.get(base + "/api/v3/klines",
-                                       params={"symbol": sym, "interval": BINANCE_INT[tf], "limit": 1000},
-                                       timeout=15)
-                      if r.status_code != 200:
-                          raise Exception("status %s" % r.status_code)
-                      rows = [(int(c[0]), float(c[1]), float(c[2]), float(c[3]), float(c[4]), float(c[5]))
-                              for c in r.json()[:-1]]  # drop open candle
-                      return rows, "Binance"
-                  except Exception:
-                      continue
-              return None
-
-          def from_kraken(sym, tf):
-              if sym not in KRAKEN:
-                  raise Exception("no data source for " + sym)
-              r = requests.get("https://api.kraken.com/0/public/OHLC",
-                               params={"pair": KRAKEN[sym], "interval": KRAKEN_INT[tf]},
-                               timeout=15)
-              r.raise_for_status()
-              res = r.json()["result"]
-              key = [k for k in res if k != "last"][0]
-              rows = [(int(c[0]) * 1000, float(c[1]), float(c[2]), float(c[3]), float(c[4]), float(c[6]))
-                      for c in res[key][:-1]]  # drop open candle
-              return rows, "Kraken"
-
-          def get_candles(sym, tf):
-              return from_binance(sym, tf) or from_kraken(sym, tf)
-
-          def fetch(job):
-              sym, tf = job
-              try:
-                  return sym, tf, get_candles(sym, tf), None
-              except Exception as e:
-                  return sym, tf, None, e
-
-          def rsi_series(closes, period):
-              out = [None] * len(closes)
-              if len(closes) <= period:
-                  return out
-              gains, losses = [], []
-              for i in range(1, len(closes)):
-                  d = closes[i] - closes[i - 1]
-                  gains.append(max(d, 0))
-                  losses.append(max(-d, 0))
-              ag = sum(gains[:period]) / period
-              al = sum(losses[:period]) / period
-              out[period] = 100.0 if al == 0 else 100 - 100 / (1 + ag / al)
-              for i in range(period, len(gains)):
-                  ag = (ag * (period - 1) + gains[i]) / period
-                  al = (al * (period - 1) + losses[i]) / period
-                  out[i + 1] = 100.0 if al == 0 else 100 - 100 / (1 + ag / al)
-              return out
-
-          def ema_series(closes, period):
-              out = [None] * len(closes)
-              if len(closes) < period:
-                  return out
-              k = 2 / (period + 1)
-              e = sum(closes[:period]) / period
-              out[period - 1] = e
-              for i in range(period, len(closes)):
-                  e = closes[i] * k + e * (1 - k)
-                  out[i] = e
-              return out
-
-          def swings(closes):
-              highs, lows = [], []
-              for j in range(SR_LEFT, len(closes) - SR_RIGHT):
-                  left = closes[j - SR_LEFT:j]
-                  right = closes[j + 1:j + SR_RIGHT + 1]
-                  if closes[j] > max(left) and closes[j] >= max(right):
-                      highs.append((j, closes[j]))
-                  if closes[j] < min(left) and closes[j] <= min(right):
-                      lows.append((j, closes[j]))
-              return highs, lows
-
-          def trend_labels(candles, es):
-              # uptrend: above EMA200 + higher swing high and higher swing low
-              # downtrend: below EMA200 + lower swing high and lower swing low
-              # sideways: everything else, or when EMA200 is flat
-              n = len(candles)
-              hs, ls = [], []
-              for j in range(TREND_SWING, n - TREND_SWING):
-                  h, l = candles[j][2], candles[j][3]
-                  lh = [candles[x][2] for x in range(j - TREND_SWING, j)]
-                  rh = [candles[x][2] for x in range(j + 1, j + TREND_SWING + 1)]
-                  ll = [candles[x][3] for x in range(j - TREND_SWING, j)]
-                  rl = [candles[x][3] for x in range(j + 1, j + TREND_SWING + 1)]
-                  if h > max(lh) and h >= max(rh):
-                      hs.append((j, h))
-                  if l < min(ll) and l <= min(rl):
-                      ls.append((j, l))
-              out = [None] * n
-              ph = pl = 0
-              for i in range(n):
-                  while ph < len(hs) and hs[ph][0] + TREND_SWING <= i:
-                      ph += 1
-                  while pl < len(ls) and ls[pl][0] + TREND_SWING <= i:
-                      pl += 1
-                  e = es[i]
-                  if e is None or i < FLAT_LOOK or es[i - FLAT_LOOK] is None or ph < 2 or pl < 2:
-                      continue
-                  if abs(e / es[i - FLAT_LOOK] - 1) < TREND_FLAT:
-                      out[i] = "sideways"
-                      continue
-                  c = candles[i][4]
-                  up = hs[ph - 1][1] > hs[ph - 2][1] and ls[pl - 1][1] > ls[pl - 2][1]
-                  dn = hs[ph - 1][1] < hs[ph - 2][1] and ls[pl - 1][1] < ls[pl - 2][1]
-                  out[i] = "uptrend" if (c > e and up) else "downtrend" if (c < e and dn) else "sideways"
-              return out
-
-          def hold_labels(labels, hold):
-              # a trend only counts after it showed up on `hold` candles in a row
-              out = [None] * len(labels)
-              cur = None
-              for i, lab in enumerate(labels):
-                  if lab is not None and all(labels[x] == lab for x in range(max(0, i - hold + 1), i + 1)):
-                      cur = lab
-                  out[i] = cur
-              return out
-
-          def find_zones(candles, lo, n):
-              # returns zones the price touched for the FIRST time: (kind, bottom, top, candle index of the touch)
-              made = []
-              for c in range(max(2, lo - ZONE_WINDOW), n):
-                  o, h, l, cl = candles[c][1], candles[c][2], candles[c][3], candles[c][4]
-                  a = candles[c - 2]
-                  if l > a[2] and (l - a[2]) / cl >= FVG_MIN:
-                      made.append(("bullish FVG", a[2], l, c))
-                  if h < a[3] and (a[3] - h) / cl >= FVG_MIN:
-                      made.append(("bearish FVG", h, a[3], c))
-                  body = (cl - o) / o if o else 0
-                  if body >= OB_MOVE:
-                      for k in range(c - 1, max(-1, c - 1 - OB_BACK), -1):
-                          if candles[k][4] < candles[k][1]:   # last red candle before the up move
-                              made.append(("bullish order block / demand zone", candles[k][3], candles[k][2], c))
-                              break
-                  elif body <= -OB_MOVE:
-                      for k in range(c - 1, max(-1, c - 1 - OB_BACK), -1):
-                          if candles[k][4] > candles[k][1]:   # last green candle before the down move
-                              made.append(("bearish order block / supply zone", candles[k][3], candles[k][2], c))
-                              break
-              out = []
-              for kind, bot, top, c in made:
-                  for k in range(c + 1, min(n, c + 1 + ZONE_WINDOW)):
-                      if candles[k][3] <= top and candles[k][2] >= bot:
-                          out.append((kind, bot, top, k))
-                          break
-              return out
-
-          def find_divs(candles, rs, es):
-              # Regular bullish: price lower low + RSI higher low (reversal up)
-              # Regular bearish: price higher high + RSI lower high (reversal down)
-              # Hidden bullish: price higher low + RSI lower low, price above EMA200 (continuation up)
-              # Hidden bearish: price lower high + RSI higher high, price below EMA200 (continuation down)
-              # An alert needs price-action confirmation: a candle in the trade direction that closes beyond the previous candle.
-              n = len(candles)
-              lowp, highp = [], []
-              for j in range(DIV_LEFT, n - DIV_RIGHT):
-                  is_l = all(candles[x][3] > candles[j][3] for x in range(j - DIV_LEFT, j)) and \
-                         all(candles[x][3] >= candles[j][3] for x in range(j + 1, j + DIV_RIGHT + 1))
-                  is_h = all(candles[x][2] < candles[j][2] for x in range(j - DIV_LEFT, j)) and \
-                         all(candles[x][2] <= candles[j][2] for x in range(j + 1, j + DIV_RIGHT + 1))
-                  if is_l:
-                      lowp.append(j)
-                  if is_h:
-                      highp.append(j)
-
-              def clear(i1, i2, p1, p2, r1, r2, low):
-                  gap = i2 - i1
-                  for k in range(i1 + 1, i2):
-                      lp = p1 + (p2 - p1) * (k - i1) / gap
-                      lr = r1 + (r2 - r1) * (k - i1) / gap
-                      if low:
-                          if candles[k][3] < lp or (rs[k] is not None and rs[k] < lr):
-                              return False
-                      else:
-                          if candles[k][2] > lp or (rs[k] is not None and rs[k] > lr):
-                              return False
-                  return True
-
-              def confirm(i2, bull):
-                  for k in range(i2 + DIV_RIGHT, min(n, i2 + DIV_RIGHT + DIV_CONF_WINDOW)):
-                      c, o = candles[k][4], candles[k][1]
-                      if bull and c > o and c > candles[k - 1][2]:
-                          return k
-                      if (not bull) and c < o and c < candles[k - 1][3]:
-                          return k
-                  return None
-
-              out = []
-              for a, b in zip(lowp, lowp[1:]):
-                  gap = b - a
-                  r1, r2 = rs[a], rs[b]
-                  if r1 is None or r2 is None or gap < DIV_MIN_GAP or gap > DIV_MAX_GAP:
-                      continue
-                  l1, l2 = candles[a][3], candles[b][3]
-                  if l2 < l1 and r2 > r1 and r1 < DIV_BULL_RSI:
-                      typ = "reg-bull"
-                  elif l2 > l1 and r2 < r1 and es[b] is not None and candles[b][4] > es[b]:
-                      typ = "hid-bull"
-                  else:
-                      continue
-                  if clear(a, b, l1, l2, r1, r2, True):
-                      out.append({"type": typ, "i1": a, "i2": b, "p1": l1, "p2": l2, "r1": r1, "r2": r2, "c": confirm(b, True)})
-              for a, b in zip(highp, highp[1:]):
-                  gap = b - a
-                  r1, r2 = rs[a], rs[b]
-                  if r1 is None or r2 is None or gap < DIV_MIN_GAP or gap > DIV_MAX_GAP:
-                      continue
-                  h1, h2 = candles[a][2], candles[b][2]
-                  if h2 > h1 and r2 < r1 and r1 > DIV_BEAR_RSI:
-                      typ = "reg-bear"
-                  elif h2 < h1 and r2 > r1 and es[b] is not None and candles[b][4] < es[b]:
-                      typ = "hid-bear"
-                  else:
-                      continue
-                  if clear(a, b, h1, h2, r1, r2, False):
-                      out.append({"type": typ, "i1": a, "i2": b, "p1": h1, "p2": h2, "r1": r1, "r2": r2, "c": confirm(b, False)})
-              out.sort(key=lambda d: d["i2"])
-              return out
-
-          DIV_NAME = {"reg-bull": "BULLISH divergence (regular, possible reversal up)",
-                      "hid-bull": "BULLISH HIDDEN divergence (trend continuing up)",
-                      "reg-bear": "BEARISH divergence (regular, possible reversal down)",
-                      "hid-bear": "BEARISH HIDDEN divergence (trend continuing down)"}
-          DIV_PRICE = {"reg-bull": "lower low", "hid-bull": "higher low", "reg-bear": "higher high", "hid-bear": "lower high"}
-
-          def div_text(d):
-              bull = d["type"].endswith("bull")
-              return "%s 1h: price %s %.6g -> %.6g, RSI %.1f -> %.1f, confirmed by a %s candle" % (
-                  DIV_NAME[d["type"]], DIV_PRICE[d["type"]], d["p1"], d["p2"], d["r1"], d["r2"], "bullish" if bull else "bearish")
-
-          def notify(text):
-              try:
-                  r = requests.post("https://ntfy.sh/" + TOPIC, data=text.encode("utf-8"),
-                                    headers={"Title": "RSI Alert", "Priority": "high"},
-                                    timeout=15)
-                  return r.status_code < 300
-              except Exception as e:
-                  print("notify error:", e)
-                  return False
-
-          def start_index(candles, tf, since, now_ms):
-              n = len(candles)
-              if since is None:
-                  return max(1, n - LOOKBACK[tf])
-              since = max(since, now_ms - MAX_CATCHUP)
-              margin = 2 * MINUTES[tf] * 60000
-              lo = n
-              while lo > 1 and candles[lo - 1][0] + MINUTES[tf] * 60000 > since - margin:
-                  lo -= 1
-              return max(1, lo)
-
-          def analyze(sym, res1, res4):
-              candles, source = res1
-              n = len(candles)
-              if n < 2:
-                  return None
-              closes = [x[4] for x in candles]
-              vols = [x[5] for x in candles]
-              rs = rsi_series(closes, PERIOD)
-              es = ema_series(closes, EMA_PERIOD)
-              rl = rsi_series(closes, LONG_RSI_PERIOD)
-              highs, lows = swings(closes)
-              conf1 = hold_labels(trend_labels(candles, es), TREND_HOLD["1h"])
-
-              conf4, candles4, close4 = None, None, []
-              if res4 and len(res4[0]) > 2:
-                  candles4 = res4[0]
-                  es4 = ema_series([x[4] for x in candles4], EMA_PERIOD)
-                  conf4 = hold_labels(trend_labels(candles4, es4), TREND_HOLD["4h"])
-                  close4 = [x[0] + 4 * 3600000 for x in candles4]
-
-              def trend4_at(close_ms):
-                  if conf4 is None:
-                      return ""
-                  k = bisect.bisect_right(close4, close_ms) - 1
-                  if k >= 0 and conf4[k]:
-                      return " [4h %s]" % SHORT[conf4[k]]
-                  return ""
-
-              def sr_at(i):
-                  p0 = closes[i - 1]
-                  res = [v for j, v in highs if j + SR_RIGHT <= i - 1 and j >= i - SR_WINDOW and v > p0]
-                  sup = [v for j, v in lows if j + SR_RIGHT <= i - 1 and j >= i - SR_WINDOW and v < p0]
-                  return (min(res) if res else None), (max(sup) if sup else None)
-
-              chk1 = "_chk|" + sym + "|1h"
-              lo = start_index(candles, "1h", state.get(chk1), now_ms)
-              chks = [chk1]
-              found = []     # (candle close time ms, text)
-              pending = {}
-
-              def add(t, tfname, key, text, suffix, step_ms):
-                  k = sym + "|" + tfname + "|" + key
-                  if t > pending.get(k, state.get(k, 0)):
-                      pending[k] = t
-                      found.append((t + step_ms, text + suffix))
-
-              H1 = 3600000
-              for i in range(lo, n):
-                  t = candles[i][0]
-                  suffix = trend4_at(t + H1)
-                  evs = []
-                  e, ep = es[i], es[i - 1]
-                  if e is not None and ep is not None:
-                      if closes[i - 1] <= ep and closes[i] > e:
-                          evs.append(("ema-up", "Price crossed ABOVE EMA%d (%.6g)" % (EMA_PERIOD, e)))
-                      elif closes[i - 1] >= ep and closes[i] < e:
-                          evs.append(("ema-down", "Price crossed BELOW EMA%d (%.6g)" % (EMA_PERIOD, e)))
-                  r, rp = rs[i], rs[i - 1]
-                  s, sp = rl[i], rl[i - 1]
-                  if r is not None and rp is not None and s is not None and sp is not None \
-                          and any(abs(s - z) <= LONG_RSI_NEAR for z in LONG_RSI_ZONES):
-                      if rp <= sp and r > s:
-                          evs.append(("rsi200-up", "RSI14 crossed UP RSI%d (RSI%d %.1f, RSI14 %.1f)" % (LONG_RSI_PERIOD, LONG_RSI_PERIOD, s, r)))
-                      elif rp >= sp and r < s:
-                          evs.append(("rsi200-down", "RSI14 crossed DOWN RSI%d (RSI%d %.1f, RSI14 %.1f)" % (LONG_RSI_PERIOD, LONG_RSI_PERIOD, s, r)))
-                  # support / resistance: near and broke
-                  p0 = closes[i - 1]
-                  rlv, slv = sr_at(i)
-                  if rlv is not None:
-                      zone = rlv * (1 - SR_NEAR)
-                      if closes[i] > rlv:
-                          evs.append(("res-break|%.6g" % rlv, "Price BROKE ABOVE resistance %.6g" % rlv))
-                      elif closes[i] >= zone and p0 < zone:
-                          evs.append(("res-near|%.6g" % rlv, "Price NEAR resistance %.6g (may break up)" % rlv))
-                  if slv is not None:
-                      zone = slv * (1 + SR_NEAR)
-                      if closes[i] < slv:
-                          evs.append(("sup-break|%.6g" % slv, "Price BROKE BELOW support %.6g" % slv))
-                      elif closes[i] <= zone and p0 > zone:
-                          evs.append(("sup-near|%.6g" % slv, "Price NEAR support %.6g (may break down)" % slv))
-                  # 1h trend change
-                  if conf1[i] and conf1[i - 1] and conf1[i] != conf1[i - 1]:
-                      evs.append(("trend|%s>%s" % (conf1[i - 1], conf1[i]), "TREND 1h changed: %s -> %s" % (conf1[i - 1], conf1[i])))
-                  for key, text in evs:
-                      add(t, "1h", key, text, suffix, H1)
-
-              # RSI divergences (regular + hidden, bullish + bearish) on the 1h chart, once price-action confirms them
-              for d in find_divs(candles, rs, es):
-                  c = d["c"]
-                  if c is not None and c >= lo:
-                      tc = candles[c][0]
-                      add(tc, "1h", "div|%s|%d" % (d["type"], candles[d["i2"]][0]), div_text(d), trend4_at(tc + H1), H1)
-
-              # order blocks, supply/demand zones and fair value gaps: first time price returns to them
-              for kind, bot, top, k in find_zones(candles, lo, n):
-                  if k >= lo:
-                      add(candles[k][0], "1h", "zone|%s|%.6g-%.6g" % (kind, bot, top),
-                          "Price entered %s %.6g - %.6g" % (kind, bot, top), trend4_at(candles[k][0] + H1), H1)
-
-              # 4h trend change
-              if conf4 is not None:
-                  chk4 = "_chk|" + sym + "|4h"
-                  chks.append(chk4)
-                  lo4 = start_index(candles4, "4h", state.get(chk4), now_ms)
-                  for i in range(lo4, len(candles4)):
-                      if conf4[i] and conf4[i - 1] and conf4[i] != conf4[i - 1]:
-                          add(candles4[i][0], "4h", "trend|%s>%s" % (conf4[i - 1], conf4[i]),
-                              "TREND 4h changed: %s -> %s" % (conf4[i - 1], conf4[i]), "", 4 * H1)
-
-              return found, pending, chks, closes[-1], rs[-1], source
-
-          try:
-              state = json.load(open("state.json"))
-          except Exception:
-              state = {}
-
-          SYMBOLS = get_symbols()
-          if SYMBOLS:
-              state["_symbols"] = SYMBOLS
-          else:
-              SYMBOLS = state.get("_symbols") or DEFAULT_SYMBOLS
-          print("watching", len(SYMBOLS), "coins")
-
-          now_ms = int(time.time() * 1000)
-          now_pkt = datetime.fromtimestamp(now_ms / 1000, PKT)
-          sample = ""
-          blocks = []   # one entry per coin that has alerts: (text, pending, chks)
-
-          jobs = [(sym, tf) for sym in SYMBOLS for tf in TIMEFRAMES]
-          with ThreadPoolExecutor(max_workers=10) as pool:
-              results = list(pool.map(fetch, jobs))
-          data = {}
-          for sym, tf, result, err in results:
-              if err is not None or not result:
-                  print("error", sym, tf, err)
-              else:
-                  data[(sym, tf)] = result
-
-          for sym in SYMBOLS:
-              try:
-                  if (sym, "1h") not in data:
-                      continue
-                  out = analyze(sym, data[(sym, "1h")], data.get((sym, "4h")))
-                  if out is None:
-                      continue
-                  found, pending, chks, price, rsi_last, source = out
-                  if sym == "BTCUSDT" and rsi_last is not None:
-                      sample = "BTC 1h RSI %.1f (data: %s)" % (rsi_last, source)
-                  if not found:
-                      for c in chks:
-                          state[c] = now_ms
-                      continue
-                  found.sort(key=lambda x: x[0])
-                  lines = []
-                  for cm, text in found:
-                      close_t = datetime.fromtimestamp(cm / 1000, PKT)
-                      fmt = "%H:%M" if close_t.date() == now_pkt.date() else "%d %b %H:%M"
-                      lines.append(close_t.strftime(fmt) + " PKT  " + text)
-                  extra = ""
-                  if len(lines) > MAX_LINES:
-                      extra = "(%d older alerts not shown)\n" % (len(lines) - MAX_LINES)
-                      lines = lines[-MAX_LINES:]
-                  text = "%s\n%s%s\nPrice: %.6g (%s PKT)\n" % (sym, extra, "\n".join(lines), price, now_pkt.strftime("%d %b %-I:%M %p"))
-                  blocks.append((text, pending, chks))
-              except Exception as e:
-                  print("error", sym, e)
-
-          # send the alerts: several coins per notification, never too long
-          sent = 0
-          i = 0
-          while i < len(blocks) and sent < MAX_MSGS:
-              text, group = "", []
-              while i < len(blocks) and (not group or len(text) + len(blocks[i][0]) + 1 <= MAX_CHARS):
-                  text += blocks[i][0] + "\n"
-                  group.append(blocks[i])
-                  i += 1
-              sent += 1
-              if notify(text.strip()):  # only mark as done if the phone alert was sent
-                  for _, pending, chks in group:
-                      state.update(pending)
-                      for c in chks:
-                          state[c] = now_ms
-          if i < len(blocks):
-              print("not sent this run (will retry next run):", len(blocks) - i, "coins")
-
-          # forget old alert records (older than 3 days)
-          cutoff = now_ms - 3 * 86400000
-          for k in list(state.keys()):
-              v = state[k]
-              if not k.startswith("_") and isinstance(v, (int, float)) and v < cutoff:
-                  del state[k]
-
-          json.dump(state, open("state.json", "w"))
-
-          if os.environ.get("MANUAL") == "true":
-              notify("GitHub alert bot is working.\nWatching %d coins on 1h: RSI divergences (4 types), RSI14/RSI200 cross, trend, support/resistance and zones.\n%s" % (len(SYMBOLS), sample))
-          PY
+load();connect();startScanner();
+</script></body></html>
