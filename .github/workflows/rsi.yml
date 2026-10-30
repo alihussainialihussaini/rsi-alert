@@ -32,13 +32,13 @@ jobs:
           from concurrent.futures import ThreadPoolExecutor
 
           TOPIC = os.environ["NTFY_TOPIC"]
-          TOP_N = 200                    # watch the 200 USDT coins with the highest 24h trading volume
+          TOP_N = 100                    # watch the 100 USDT coins with the highest 24h trading volume
           DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]  # used only if Binance's list cannot be loaded
           STABLES = {"USDC", "FDUSD", "TUSD", "USDP", "BUSD", "DAI", "EUR", "AEUR", "USD1", "XUSD",
                      "USDE", "PYUSD", "EURI", "RLUSD", "BFUSD", "USDS", "UST"}
-          TIMEFRAMES = ["15m", "1h", "4h"]  # 1h = all alerts, 15m = divergence alerts only, 4h = trend only
-          MINUTES = {"15m": 15, "1h": 60, "4h": 240}
-          LOOKBACK = {"15m": 2, "1h": 2, "4h": 1}  # only for the very first run
+          TIMEFRAMES = ["1h", "4h"]      # 1h = all alerts, 4h = trend only
+          MINUTES = {"1h": 60, "4h": 240}
+          LOOKBACK = {"1h": 2, "4h": 1}  # only for the very first run
           MAX_CATCHUP = 24 * 3600 * 1000 # after a long gap, look back at most 24 hours
           MAX_LINES = 25                 # max lines per coin in one notification
           MAX_CHARS = 3500               # max size of one notification
@@ -55,7 +55,6 @@ jobs:
           DIV_BULL_RSI = 45              # regular bullish: the first RSI low must be below 45
           DIV_BEAR_RSI = 55              # regular bearish: the first RSI high must be above 55
           DIV_CONF_WINDOW = 6            # price-action confirmation must come within 6 candles
-          DIV_LOOK = 3                   # compare each swing with the last 3 swings before it (not only the neighbour)
           SR_LEFT = 5                    # support/resistance: a swing needs 5 lower/higher closes on each side
           SR_RIGHT = 5
           SR_WINDOW = 300                # only use swings from the last 300 hours
@@ -72,8 +71,8 @@ jobs:
           SHORT = {"uptrend": "up", "downtrend": "down", "sideways": "side"}
 
           KRAKEN = {"BTCUSDT": "XBTUSDT", "ETHUSDT": "ETHUSDT", "SOLUSDT": "SOLUSDT"}
-          KRAKEN_INT = {"15m": 15, "1h": 60, "4h": 240}
-          BINANCE_INT = {"15m": "15m", "1h": "1h", "4h": "4h"}
+          KRAKEN_INT = {"1h": 60, "4h": 240}
+          BINANCE_INT = {"1h": "1h", "4h": "4h"}
           BASES = ("https://data-api.binance.vision", "https://api.binance.com")
 
           def get_symbols():
@@ -254,7 +253,6 @@ jobs:
               # Regular bearish: price higher high + RSI lower high (reversal down)
               # Hidden bullish: price higher low + RSI lower low, price above EMA200 (continuation up)
               # Hidden bearish: price lower high + RSI higher high, price below EMA200 (continuation down)
-              # Each swing is compared with the last DIV_LOOK swings before it (nearest first), not only the neighbour.
               # An alert needs price-action confirmation: a candle in the trade direction that closes beyond the previous candle.
               n = len(candles)
               lowp, highp = [], []
@@ -268,6 +266,19 @@ jobs:
                   if is_h:
                       highp.append(j)
 
+              def clear(i1, i2, p1, p2, r1, r2, low):
+                  gap = i2 - i1
+                  for k in range(i1 + 1, i2):
+                      lp = p1 + (p2 - p1) * (k - i1) / gap
+                      lr = r1 + (r2 - r1) * (k - i1) / gap
+                      if low:
+                          if candles[k][3] < lp or (rs[k] is not None and rs[k] < lr):
+                              return False
+                      else:
+                          if candles[k][2] > lp or (rs[k] is not None and rs[k] > lr):
+                              return False
+                  return True
+
               def confirm(i2, bull):
                   for k in range(i2 + DIV_RIGHT, min(n, i2 + DIV_RIGHT + DIV_CONF_WINDOW)):
                       c, o = candles[k][4], candles[k][1]
@@ -278,45 +289,35 @@ jobs:
                   return None
 
               out = []
-              for q in range(1, len(lowp)):
-                  b = lowp[q]
-                  got = set()
-                  for a in reversed(lowp[max(0, q - DIV_LOOK):q]):
-                      gap = b - a
-                      r1, r2 = rs[a], rs[b]
-                      if r1 is None or r2 is None or gap < DIV_MIN_GAP or gap > DIV_MAX_GAP:
-                          continue
-                      l1, l2 = candles[a][3], candles[b][3]
-                      if l2 < l1 and r2 > r1 and r1 < DIV_BULL_RSI:
-                          typ = "reg-bull"
-                      elif l2 > l1 and r2 < r1 and es[b] is not None and candles[b][4] > es[b]:
-                          typ = "hid-bull"
-                      else:
-                          continue
-                      if typ in got:
-                          continue
-                      got.add(typ)
+              for a, b in zip(lowp, lowp[1:]):
+                  gap = b - a
+                  r1, r2 = rs[a], rs[b]
+                  if r1 is None or r2 is None or gap < DIV_MIN_GAP or gap > DIV_MAX_GAP:
+                      continue
+                  l1, l2 = candles[a][3], candles[b][3]
+                  if l2 < l1 and r2 > r1 and r1 < DIV_BULL_RSI:
+                      typ = "reg-bull"
+                  elif l2 > l1 and r2 < r1 and es[b] is not None and candles[b][4] > es[b]:
+                      typ = "hid-bull"
+                  else:
+                      continue
+                  if clear(a, b, l1, l2, r1, r2, True):
                       out.append({"type": typ, "i1": a, "i2": b, "p1": l1, "p2": l2, "r1": r1, "r2": r2, "c": confirm(b, True)})
-              for q in range(1, len(highp)):
-                  b = highp[q]
-                  got = set()
-                  for a in reversed(highp[max(0, q - DIV_LOOK):q]):
-                      gap = b - a
-                      r1, r2 = rs[a], rs[b]
-                      if r1 is None or r2 is None or gap < DIV_MIN_GAP or gap > DIV_MAX_GAP:
-                          continue
-                      h1, h2 = candles[a][2], candles[b][2]
-                      if h2 > h1 and r2 < r1 and r1 > DIV_BEAR_RSI:
-                          typ = "reg-bear"
-                      elif h2 < h1 and r2 > r1 and es[b] is not None and candles[b][4] < es[b]:
-                          typ = "hid-bear"
-                      else:
-                          continue
-                      if typ in got:
-                          continue
-                      got.add(typ)
+              for a, b in zip(highp, highp[1:]):
+                  gap = b - a
+                  r1, r2 = rs[a], rs[b]
+                  if r1 is None or r2 is None or gap < DIV_MIN_GAP or gap > DIV_MAX_GAP:
+                      continue
+                  h1, h2 = candles[a][2], candles[b][2]
+                  if h2 > h1 and r2 < r1 and r1 > DIV_BEAR_RSI:
+                      typ = "reg-bear"
+                  elif h2 < h1 and r2 > r1 and es[b] is not None and candles[b][4] < es[b]:
+                      typ = "hid-bear"
+                  else:
+                      continue
+                  if clear(a, b, h1, h2, r1, r2, False):
                       out.append({"type": typ, "i1": a, "i2": b, "p1": h1, "p2": h2, "r1": r1, "r2": r2, "c": confirm(b, False)})
-              out.sort(key=lambda d: (d["i2"], d["i1"]))
+              out.sort(key=lambda d: d["i2"])
               return out
 
           DIV_NAME = {"reg-bull": "BULLISH divergence (regular, possible reversal up)",
@@ -325,9 +326,9 @@ jobs:
                       "hid-bear": "BEARISH HIDDEN divergence (trend continuing down)"}
           DIV_PRICE = {"reg-bull": "lower low", "hid-bull": "higher low", "reg-bear": "higher high", "hid-bear": "lower high"}
 
-          def div_text(d, tfn):
+          def div_text(d):
               bull = d["type"].endswith("bull")
-              return ("%s " + tfn + ": price %s %.6g -> %.6g, RSI %.1f -> %.1f, confirmed by a %s candle") % (
+              return "%s 1h: price %s %.6g -> %.6g, RSI %.1f -> %.1f, confirmed by a %s candle" % (
                   DIV_NAME[d["type"]], DIV_PRICE[d["type"]], d["p1"], d["p2"], d["r1"], d["r2"], "bullish" if bull else "bearish")
 
           def notify(text):
@@ -351,7 +352,7 @@ jobs:
                   lo -= 1
               return max(1, lo)
 
-          def analyze(sym, res1, res4, res15):
+          def analyze(sym, res1, res4):
               candles, source = res1
               n = len(candles)
               if n < 2:
@@ -442,22 +443,7 @@ jobs:
                   c = d["c"]
                   if c is not None and c >= lo:
                       tc = candles[c][0]
-                      add(tc, "1h", "div|%s|%d" % (d["type"], candles[d["i2"]][0]), div_text(d, "1h"), trend4_at(tc + H1), H1)
-
-              # the same divergence rules on the 15m chart
-              if res15 and len(res15[0]) > 60:
-                  c15 = res15[0]
-                  chk15 = "_chk|" + sym + "|15m"
-                  chks.append(chk15)
-                  lo15 = start_index(c15, "15m", state.get(chk15), now_ms)
-                  cl15 = [x[4] for x in c15]
-                  rs15 = rsi_series(cl15, PERIOD)
-                  es15 = ema_series(cl15, EMA_PERIOD)
-                  for d in find_divs(c15, rs15, es15):
-                      c = d["c"]
-                      if c is not None and c >= lo15:
-                          tc = c15[c][0]
-                          add(tc, "15m", "div|%s|%d" % (d["type"], c15[d["i2"]][0]), div_text(d, "15m"), trend4_at(tc + 900000), 900000)
+                      add(tc, "1h", "div|%s|%d" % (d["type"], candles[d["i2"]][0]), div_text(d), trend4_at(tc + H1), H1)
 
               # order blocks, supply/demand zones and fair value gaps: first time price returns to them
               for kind, bot, top, k in find_zones(candles, lo, n):
@@ -508,7 +494,7 @@ jobs:
               try:
                   if (sym, "1h") not in data:
                       continue
-                  out = analyze(sym, data[(sym, "1h")], data.get((sym, "4h")), data.get((sym, "15m")))
+                  out = analyze(sym, data[(sym, "1h")], data.get((sym, "4h")))
                   if out is None:
                       continue
                   found, pending, chks, price, rsi_last, source = out
@@ -561,5 +547,5 @@ jobs:
           json.dump(state, open("state.json", "w"))
 
           if os.environ.get("MANUAL") == "true":
-              notify("GitHub alert bot is working.\nWatching %d coins on 1h: RSI divergences (4 types, 1h + 15m), RSI14/RSI200 cross, trend, support/resistance and zones.\n%s" % (len(SYMBOLS), sample))
+              notify("GitHub alert bot is working.\nWatching %d coins on 1h: RSI divergences (4 types), RSI14/RSI200 cross, trend, support/resistance and zones.\n%s" % (len(SYMBOLS), sample))
           PY
