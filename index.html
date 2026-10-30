@@ -95,7 +95,7 @@ function drawZones(){
   g.restore()}
 requestAnimationFrame(drawZones);
 // ===== RSI divergences (4 types) =====
-const DV={L:5,R:3,MING:5,MAXG:60,BULL:45,BEAR:55,CW:6};
+const DV={L:5,R:3,MING:5,MAXG:60,BULL:45,BEAR:55,CW:6,LOOK:3};
 const DVN={"reg-bull":"Bull div","hid-bull":"Hidden bull","reg-bear":"Bear div","hid-bear":"Hidden bear"};
 const DVL={"reg-bull":"BULLISH divergence (regular, possible reversal up)","hid-bull":"BULLISH HIDDEN divergence (trend continuing up)","reg-bear":"BEARISH divergence (regular, possible reversal down)","hid-bear":"BEARISH HIDDEN divergence (trend continuing down)"};
 const DVP={"reg-bull":"lower low","hid-bull":"higher low","reg-bear":"higher high","hid-bear":"lower high"};
@@ -107,33 +107,33 @@ function findDivs(C,rs,es){
     for(let x=j-DV.L;x<j;x++){if(!(C[x][3]>C[j][3]))isL=false;if(!(C[x][2]<C[j][2]))isH=false}
     for(let x=j+1;x<=j+DV.R;x++){if(!(C[x][3]>=C[j][3]))isL=false;if(!(C[x][2]<=C[j][2]))isH=false}
     if(isL)lowp.push(j);if(isH)highp.push(j)}
-  const clear=(i1,i2,p1,p2,r1,r2,low)=>{const g=i2-i1;
-    for(let k=i1+1;k<i2;k++){const lp=p1+(p2-p1)*(k-i1)/g,lr=r1+(r2-r1)*(k-i1)/g;
-      if(low){if(C[k][3]<lp||(rs[k]!==null&&rs[k]<lr))return false}else{if(C[k][2]>lp||(rs[k]!==null&&rs[k]>lr))return false}}
-    return true};
   const confirm=(i2,bull)=>{for(let k=i2+DV.R;k<Math.min(n,i2+DV.R+DV.CW);k++){
     const c=C[k][4],o=C[k][1];
     if(bull&&c>o&&c>C[k-1][2])return k;
     if(!bull&&c<o&&c<C[k-1][3])return k}
     return null};
   const out=[];
-  for(let q=1;q<lowp.length;q++){const a=lowp[q-1],b=lowp[q],g=b-a,r1=rs[a],r2=rs[b];
-    if(r1===null||r2===null||g<DV.MING||g>DV.MAXG)continue;
-    const l1=C[a][3],l2=C[b][3];let typ;
-    if(l2<l1&&r2>r1&&r1<DV.BULL)typ="reg-bull";
-    else if(l2>l1&&r2<r1&&es[b]!==null&&C[b][4]>es[b])typ="hid-bull";
-    else continue;
-    if(clear(a,b,l1,l2,r1,r2,true))out.push({type:typ,i1:a,i2:b,p1:l1,p2:l2,r1,r2,c:confirm(b,true)})}
-  for(let q=1;q<highp.length;q++){const a=highp[q-1],b=highp[q],g=b-a,r1=rs[a],r2=rs[b];
-    if(r1===null||r2===null||g<DV.MING||g>DV.MAXG)continue;
-    const h1=C[a][2],h2=C[b][2];let typ;
-    if(h2>h1&&r2<r1&&r1>DV.BEAR)typ="reg-bear";
-    else if(h2<h1&&r2>r1&&es[b]!==null&&C[b][4]<es[b])typ="hid-bear";
-    else continue;
-    if(clear(a,b,h1,h2,r1,r2,false))out.push({type:typ,i1:a,i2:b,p1:h1,p2:h2,r1,r2,c:confirm(b,false)})}
-  out.sort((x,y)=>x.i2-y.i2);return out}
-function divText(d){const bull=d.type.slice(-4)==="bull";
-  return DVL[d.type]+" 1h: price "+DVP[d.type]+" "+g6(d.p1)+" -> "+g6(d.p2)+", RSI "+d.r1.toFixed(1)+" -> "+d.r2.toFixed(1)+", confirmed by a "+(bull?"bullish":"bearish")+" candle"}
+  for(let q=1;q<lowp.length;q++){const b=lowp[q],got={};
+    for(let w=q-1;w>=Math.max(0,q-DV.LOOK);w--){const a=lowp[w],g=b-a,r1=rs[a],r2=rs[b];
+      if(r1===null||r2===null||g<DV.MING||g>DV.MAXG)continue;
+      const l1=C[a][3],l2=C[b][3];let typ;
+      if(l2<l1&&r2>r1&&r1<DV.BULL)typ="reg-bull";
+      else if(l2>l1&&r2<r1&&es[b]!==null&&C[b][4]>es[b])typ="hid-bull";
+      else continue;
+      if(got[typ])continue;got[typ]=1;
+      out.push({type:typ,i1:a,i2:b,p1:l1,p2:l2,r1,r2,c:confirm(b,true)})}}
+  for(let q=1;q<highp.length;q++){const b=highp[q],got={};
+    for(let w=q-1;w>=Math.max(0,q-DV.LOOK);w--){const a=highp[w],g=b-a,r1=rs[a],r2=rs[b];
+      if(r1===null||r2===null||g<DV.MING||g>DV.MAXG)continue;
+      const h1=C[a][2],h2=C[b][2];let typ;
+      if(h2>h1&&r2<r1&&r1>DV.BEAR)typ="reg-bear";
+      else if(h2<h1&&r2>r1&&es[b]!==null&&C[b][4]<es[b])typ="hid-bear";
+      else continue;
+      if(got[typ])continue;got[typ]=1;
+      out.push({type:typ,i1:a,i2:b,p1:h1,p2:h2,r1,r2,c:confirm(b,false)})}}
+  out.sort((x,y)=>x.i2-y.i2||x.i1-y.i1);return out}
+function divText(d,tfn){const bull=d.type.slice(-4)==="bull";
+  return DVL[d.type]+" "+tfn+": price "+DVP[d.type]+" "+g6(d.p1)+" -> "+g6(d.p2)+", RSI "+d.r1.toFixed(1)+" -> "+d.r2.toFixed(1)+", confirmed by a "+(bull?"bullish":"bearish")+" candle"}
 function drawDivs(KN,rs,es){
   dvSeries.forEach(x=>{try{chart.removeSeries(x)}catch(e){}});dvSeries=[];
   if(!vis.dv){candles.setMarkers([]);return}
@@ -299,14 +299,14 @@ function analyzeSym(sym,c5,c4,st,nowMs,cx){
     for(const [key,text] of evs)add(t,"5m",key,text,suffix,BMS)}
   if(conf4){const chk4="_chk|"+sym+"|4h";chks.push(chk4);const lo4=startIdx(c4,240,st[chk4],nowMs,1);
     for(let i=lo4;i<c4.length;i++){if(conf4[i]&&conf4[i-1]&&conf4[i]!==conf4[i-1])add(c4[i][0],"4h","trend|"+conf4[i-1]+">"+conf4[i],"TREND 4h changed: "+conf4[i-1]+" -> "+conf4[i],"",H4)}}
-  // RSI divergences on the 1h chart (regular + hidden, bullish + bearish), alert when a confirming candle closes
-  const h1=cx&&cx.h1;
-  if(h1&&h1.length>60){
-    const chk1="_chk|"+sym+"|1h";chks.push(chk1);const lo1=startIdx(h1,60,st[chk1],nowMs,1);
-    const hc=h1.map(x=>x[4]),rh=rsiCalc(hc,14),eh=emaCalc(hc,200);
+  // RSI divergences on the 1h and 15m charts (regular + hidden, bullish + bearish), alert when a confirming candle closes
+  for(const [tfn,tfMin,arr] of [["1h",60,cx&&cx.h1],["15m",15,cx&&cx.m15]]){
+    if(!arr||arr.length<=60)continue;
+    const chkd="_chk|"+sym+"|"+tfn;chks.push(chkd);const lod=startIdx(arr,tfMin,st[chkd],nowMs,1),stepd=tfMin*60000;
+    const hc=arr.map(x=>x[4]),rh=rsiCalc(hc,14),eh=emaCalc(hc,200);
     const t4h=cm=>{if(!conf4)return "";const k=ub(close4,cm)-1;return(k>=0&&conf4[k])?" [4h "+SHORT[conf4[k]]+"]":""};
-    for(const d of findDivs(h1,rh,eh)){if(d.c!==null&&d.c>=lo1){const tc=h1[d.c][0];
-      add(tc,"1h","div|"+d.type+"|"+h1[d.i2][0],divText(d),t4h(tc+36e5),36e5)}}}
+    for(const d of findDivs(arr,rh,eh)){if(d.c!==null&&d.c>=lod){const tc=arr[d.c][0];
+      add(tc,tfn,"div|"+d.type+"|"+arr[d.i2][0],divText(d,tfn),t4h(tc+stepd),stepd)}}}
   return {found,pending,chks,upd,price:closes[n-1]}}
 // ---- scan driver: runs at every 5-minute candle close while this page is open
 let ST={},scanning=false,scanN=0,scanOn=true,autoOpen=false,symCache={t:0,list:[]},c4cache={},c15cache={},c1hcache={},lastInfo="";
