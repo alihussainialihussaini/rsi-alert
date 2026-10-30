@@ -32,7 +32,7 @@ jobs:
           from concurrent.futures import ThreadPoolExecutor
 
           TOPIC = os.environ["NTFY_TOPIC"]
-          TOP_N = 100                    # watch the 100 USDT coins with the highest 24h trading volume
+          TOP_N = 200                    # watch the 100 USDT coins with the highest 24h trading volume
           DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]  # used only if Binance's list cannot be loaded
           STABLES = {"USDC", "FDUSD", "TUSD", "USDP", "BUSD", "DAI", "EUR", "AEUR", "USD1", "XUSD",
                      "USDE", "PYUSD", "EURI", "RLUSD", "BFUSD", "USDS", "UST"}
