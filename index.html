@@ -234,7 +234,7 @@ function connect(){
 }
 // ===== live 5-minute scanner: same alert rules as the GitHub bot =====
 const API="https://data-api.binance.vision";
-const SC={TOP:100,BMIN:5,LOOK:2,MAXCATCH:864e5,MAXLINES:25,MAXCH:3500,LZ:[49,39],LNEAR:2,SRL:5,SRR:5,SRW:300,SRN:0.005,TS:3,TFLAT:0.005,FL:20,HOLD5:2,HOLD4:1,FVG:0.001,OB:0.01,OBB:3,ZW:100};
+const SC={TOP:200,BMIN:5,LOOK:2,MAXCATCH:864e5,MAXLINES:25,MAXCH:3500,LZ:[49,39],LNEAR:2,SRL:5,SRR:5,SRW:300,SRN:0.005,TS:3,TFLAT:0.005,FL:20,HOLD5:2,HOLD4:1,FVG:0.001,OB:0.01,OBB:3,ZW:100};
 const BMS=SC.BMIN*60000,H4=4*3600000;
 const STABLE=new Set(["USDC","FDUSD","TUSD","USDP","BUSD","DAI","EUR","AEUR","USD1","XUSD","USDE","PYUSD","EURI","RLUSD","BFUSD","USDS","UST"]);
 const SHORT={uptrend:"up",downtrend:"down",sideways:"side"};
