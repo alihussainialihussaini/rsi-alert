@@ -1,0 +1,185 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Divergence Test 3 Swings</title>
+<style>
+:root{--bg:#0e1116;--panel:#161b22;--line:#262d36;--fg:#e6edf3;--mut:#8b96a3;--up:#26a69a;--dn:#ef5350;--acc:#f0b90b}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif;height:100vh;display:flex;flex-direction:column}
+header{display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+h1{font-size:16px;margin:0;margin-right:auto}
+button,select,input{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:6px 10px;font:inherit}
+button{cursor:pointer}button.on{border-color:var(--acc);color:var(--acc)}
+main{flex:1;display:flex;min-height:0}
+#chartwrap{flex:1;display:flex;flex-direction:column;min-width:0}
+#bar{padding:8px 14px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}#bar button{padding:4px 8px}
+#sym{font-size:18px;font-weight:700}#px{color:var(--mut)}
+#chart{flex:1;min-height:300px}
+#leg{padding:0 14px 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px}#leg button{padding:3px 8px;font-size:12px}#trend{color:var(--mut)}
+</style></head>
+<body>
+<header><h1>Divergence test: 3 swings</h1><span id="st" style="color:var(--mut)">3 swings in a row · FORMED marker, then CONFIRMED marker (bullish candle closes above previous high)</span><span id="dvn" style="color:var(--acc);font-size:12px"></span></header>
+<main>
+<div id="chartwrap">
+<div id="bar"><span id="sym">BTCUSDT</span><span id="px"></span>
+<span style="flex:1"></span>
+<button data-tf="5m">5m</button><button data-tf="15m">15m</button><button data-tf="30m">30m</button><button data-tf="1h" class="on">1h</button><button data-tf="2h">2h</button><button data-tf="4h">4h</button><button data-tf="1d">1d</button>
+<input id="go" placeholder="coin e.g. SOL" size="9"></div>
+<div id="leg"><button id="bEma" class="on">EMA200 (blue)</button><button id="bSr" class="on">Support / Resistance</button><button id="bRsi" class="on">RSI14 (purple) + RSI200 (orange)</button><button id="bDv" class="on">Divergence + trendlines</button><button id="bZn" class="on">FVG + Order blocks</button><span id="trend"></span></div>
+<div id="chart"></div></div></main>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+const OFF=5*3600; // Pakistan time
+let sym="BTCUSDT",tf="1h",timer;
+const $=id=>document.getElementById(id);
+const chart=LightweightCharts.createChart($("chart"),{layout:{background:{color:"#0e1116"},textColor:"#8b96a3"},grid:{vertLines:{color:"#1b2129"},horzLines:{color:"#1b2129"}},timeScale:{timeVisible:true,borderColor:"#262d36"},rightPriceScale:{borderColor:"#262d36"},autoSize:true});
+const candles=chart.addCandlestickSeries({upColor:"#26a69a",downColor:"#ef5350",wickUpColor:"#26a69a",wickDownColor:"#ef5350",borderVisible:false});
+candles.priceScale().applyOptions({scaleMargins:{top:0.05,bottom:0.32}});
+const rsiL=chart.addLineSeries({priceScaleId:"rsi",color:"#ff9f43",lineWidth:2,priceLineVisible:false,lastValueVisible:false});
+const emaS=chart.addLineSeries({color:"#4aa3ff",lineWidth:2,priceLineVisible:false,lastValueVisible:false});
+const rsiS=chart.addLineSeries({priceScaleId:"rsi",color:"#b48cff",lineWidth:2,priceLineVisible:false,lastValueVisible:false});
+chart.priceScale("rsi").applyOptions({scaleMargins:{top:0.72,bottom:0.03}});
+[[40,"#f0b90b",1],[50,"#e6edf3",2],[70,"#3a4350",1]].forEach(([v,c,w])=>rsiS.createPriceLine({price:v,color:c,lineWidth:w,lineStyle:2,axisLabelVisible:false,title:"RSI "+v}));
+let K=[],srLines=[],vis={ema:true,sr:true,rsi:true,zn:true,dv:true},dvSeries=[];
+function rsiCalc(c,p){const o=new Array(c.length).fill(null);if(c.length<=p)return o;let g=0,l=0;for(let i=1;i<=p;i++){const d=c[i]-c[i-1];if(d>0)g+=d;else l-=d}g/=p;l/=p;o[p]=l===0?100:100-100/(1+g/l);for(let i=p+1;i<c.length;i++){const d=c[i]-c[i-1];g=(g*(p-1)+(d>0?d:0))/p;l=(l*(p-1)+(d<0?-d:0))/p;o[i]=l===0?100:100-100/(1+g/l)}return o}
+function emaCalc(c,p){const o=new Array(c.length).fill(null);if(c.length<p)return o;let e=0;for(let i=0;i<p;i++)e+=c[i];e/=p;o[p-1]=e;const k=2/(p+1);for(let i=p;i<c.length;i++){e=c[i]*k+e*(1-k);o[i]=e}return o}
+function levels(c){const out=[];const n=c.length,a=Math.max(5,n-300);for(let i=a+5;i<n-5;i++){let hi=true,lo=true;for(let j=1;j<=5;j++){if(c[i]<=c[i-j]||c[i]<=c[i+j])hi=false;if(c[i]>=c[i-j]||c[i]>=c[i+j])lo=false}if(hi||lo)out.push(c[i])}return out}
+function pts(arr){const r=[];for(let i=0;i<arr.length;i++)if(arr[i]!==null)r.push({time:K[i][0]/1000+OFF,value:arr[i]});return r}
+
+// ===== FVG + order block zones drawn on the chart (no alerts) =====
+const cv=document.createElement("canvas");cv.style.cssText="position:absolute;left:0;top:0;pointer-events:none;z-index:3";
+$("chart").style.position="relative";$("chart").appendChild(cv);
+let zones=[];
+function calcZones(){
+  zones=[];const n=K.length;if(n<5)return;
+  const FVG=0.001,OBP=0.01,made=[];
+  for(let ci=Math.max(2,n-400);ci<n;ci++){
+    const o=+K[ci][1],h=+K[ci][2],l=+K[ci][3],cl=+K[ci][4],ph=+K[ci-2][2],pl=+K[ci-2][3];
+    if(l>ph&&(l-ph)/cl>=FVG)made.push({k:"FVG",up:1,bot:ph,top:l,t0:ci-2,ci});
+    if(h<pl&&(pl-h)/cl>=FVG)made.push({k:"FVG",up:0,bot:h,top:pl,t0:ci-2,ci});
+    const body=o?(cl-o)/o:0;
+    if(body>=OBP){for(let k=ci-1;k>Math.max(-1,ci-4);k--){if(+K[k][4]<+K[k][1]){made.push({k:"OB",up:1,bot:+K[k][3],top:+K[k][2],t0:k,ci});break}}}
+    else if(body<=-OBP){for(let k=ci-1;k>Math.max(-1,ci-4);k--){if(+K[k][4]>+K[k][1]){made.push({k:"OB",up:0,bot:+K[k][3],top:+K[k][2],t0:k,ci});break}}}
+  }
+  for(const z of made){z.fk=-1;for(let k=z.ci+1;k<n;k++){if(+K[k][3]<=z.top&&+K[k][2]>=z.bot){z.fk=k;break}}}
+  const fv=made.filter(z=>z.k==="FVG"),ob=made.filter(z=>z.k==="OB"&&z.fk<0);
+  zones=fv.filter(z=>z.fk>=0).slice(-6).concat(fv.filter(z=>z.fk<0).slice(-12),ob.slice(-6));
+}
+function drawZones(){
+  requestAnimationFrame(drawZones);
+  const w=$("chart").clientWidth,h=$("chart").clientHeight,dpr=window.devicePixelRatio||1;
+  if(!w||!h)return;
+  if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);cv.style.width=w+"px";cv.style.height=h+"px"}
+  const g=cv.getContext("2d");g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
+  if(!vis.zn||!zones.length||!K.length)return;
+  const ts=chart.timeScale();let xr=w-70;try{xr=ts.width()}catch(e){}
+  g.save();g.beginPath();g.rect(0,0,xr,(h-26)*0.68);g.clip();
+  for(const z of zones){
+    const y1=candles.priceToCoordinate(z.top),y2=candles.priceToCoordinate(z.bot);
+    if(y1===null||y2===null||!K[z.t0])continue;
+    let x1=ts.timeToCoordinate(K[z.t0][0]/1000+OFF);if(x1===null)x1=0;
+    if(x1>=xr)continue;x1=Math.max(0,x1);
+    let x2=xr,filled=z.fk>=0;
+    if(filled){const xf=ts.timeToCoordinate(K[z.fk][0]/1000+OFF);if(xf===null)continue;x2=Math.min(xr,xf)}
+    if(x2<=x1)continue;
+    const top=Math.min(y1,y2),ht=Math.max(2,Math.abs(y2-y1));
+    g.fillStyle=z.up?(filled?"rgba(38,166,154,0.08)":"rgba(38,166,154,0.22)"):(filled?"rgba(239,83,80,0.08)":"rgba(239,83,80,0.22)");g.fillRect(x1,top,x2-x1,ht);
+    g.strokeStyle=z.up?(filled?"rgba(38,166,154,0.35)":"rgba(38,166,154,0.85)"):(filled?"rgba(239,83,80,0.35)":"rgba(239,83,80,0.85)");g.lineWidth=1;g.strokeRect(x1+.5,top+.5,x2-x1-1,ht);
+    g.fillStyle=z.up?"#26a69a":"#ef5350";g.globalAlpha=filled?0.5:1;g.font="10px system-ui,sans-serif";g.fillText((z.k==="FVG"?"FVG ":"OB ")+(z.up?"buy":"sell")+(filled?" (filled)":""),x1+4,top+10);g.globalAlpha=1}
+  g.restore()}
+requestAnimationFrame(drawZones);
+// ===== RSI divergences: 3 swings in a row =====
+const DV={L:5,R:3,MING:5,MAXG:60,BULL:45,BEAR:55,CW:6};
+const DVN={"reg-bull":"Bull div","reg-bear":"Bear div"};
+// C rows: [openTime,o,h,l,c] numbers. f = candle where the divergence is formed, c = confirming candle (or null)
+function findDivs(C,rs,es){
+  const n=C.length,lowp=[],highp=[];
+  for(let j=DV.L;j<n-DV.R;j++){
+    let isL=true,isH=true;
+    for(let x=j-DV.L;x<j;x++){if(!(C[x][3]>C[j][3]))isL=false;if(!(C[x][2]<C[j][2]))isH=false}
+    for(let x=j+1;x<=j+DV.R;x++){if(!(C[x][3]>=C[j][3]))isL=false;if(!(C[x][2]<=C[j][2]))isH=false}
+    if(isL)lowp.push(j);if(isH)highp.push(j)}
+  const clear=(i1,i2,p1,p2,r1,r2,low)=>{const g=i2-i1;
+    for(let k=i1+1;k<i2;k++){const lp=p1+(p2-p1)*(k-i1)/g,lr=r1+(r2-r1)*(k-i1)/g;
+      if(low){if(C[k][3]<lp||(rs[k]!==null&&rs[k]<lr))return false}else{if(C[k][2]>lp||(rs[k]!==null&&rs[k]>lr))return false}}
+    return true};
+  const confirm=(i3,bull)=>{for(let k=i3+DV.R+1;k<Math.min(n,i3+DV.R+1+DV.CW);k++){
+    const c=C[k][4],o=C[k][1];
+    if(bull&&c>o&&c>C[k-1][2])return k;
+    if(!bull&&c<o&&c<C[k-1][3])return k}
+    return null};
+  const pairOk=(a,b,low,first)=>{const g=b-a,r1=rs[a],r2=rs[b];
+    if(r1===null||r2===null||g<DV.MING||g>DV.MAXG)return false;
+    if(low){const p1=C[a][3],p2=C[b][3];if(!(p2<p1&&r2>r1))return false;if(first&&!(r1<DV.BULL))return false;return clear(a,b,p1,p2,r1,r2,true)}
+    const p1=C[a][2],p2=C[b][2];if(!(p2>p1&&r2<r1))return false;if(first&&!(r1>DV.BEAR))return false;return clear(a,b,p1,p2,r1,r2,false)};
+  // 3 swings in a row (first triple of a chain only)
+  const out=[];
+  for(const low of [true,false]){const pts=low?lowp:highp,pi=low?3:2;
+    for(let q=2;q<pts.length;q++){const s1=pts[q-2],s2=pts[q-1],s3=pts[q];
+      if(!(pairOk(s1,s2,low,true)&&pairOk(s2,s3,low,false)))continue;
+      if(q>=3&&pairOk(pts[q-3],s1,low,true))continue;
+      out.push({type:low?"reg-bull":"reg-bear",i1:s1,im:s2,i2:s3,p1:C[s1][pi],pm:C[s2][pi],p2:C[s3][pi],r1:rs[s1],rm:rs[s2],r2:rs[s3],f:s3+DV.R,c:confirm(s3,low)})}}
+  out.sort((x,y)=>x.i2-y.i2);return out}
+function drawDivs(KN,rs,es){
+  dvSeries.forEach(x=>{try{chart.removeSeries(x)}catch(e){}});dvSeries=[];
+  if(!vis.dv){candles.setMarkers([]);return}
+  const all=findDivs(KN,rs,es),ds=all.slice(-8),mk=[];$("dvn").textContent="divergences on chart: "+all.length+" (last 8 drawn)";
+  const T=i=>KN[i][0]/1000+OFF;
+  for(const d of ds){
+    const bull=d.type==="reg-bull",col=bull?"#26a69a":"#ef5350";
+    const ps=chart.addLineSeries({color:col,lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
+    ps.setData([{time:T(d.i1),value:d.p1},{time:T(d.im),value:d.pm},{time:T(d.i2),value:d.p2}]);dvSeries.push(ps);
+    const rl=chart.addLineSeries({priceScaleId:"rsi",color:col,lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
+    rl.setData([{time:T(d.i1),value:d.r1},{time:T(d.im),value:d.rm},{time:T(d.i2),value:d.r2}]);dvSeries.push(rl);
+    mk.push({time:T(d.f),position:bull?"belowBar":"aboveBar",color:col,shape:bull?"arrowUp":"arrowDown",text:DVN[d.type]+" formed"});
+    if(d.c!==null)mk.push({time:T(d.c),position:bull?"belowBar":"aboveBar",color:col,shape:"circle",text:"confirmed"})}
+  mk.sort((a,b)=>a.time-b.time);candles.setMarkers(mk)}
+function paint(){
+  if(!K.length){zones=[];return}
+  calcZones();
+  const c=K.map(x=>+x[4]),last=c[c.length-1];
+  const e=emaCalc(c,200),r14=rsiCalc(c,14),r200=rsiCalc(c,200);
+  emaS.setData(vis.ema?pts(e):[]);
+  rsiS.setData(vis.rsi?pts(r14):[]);rsiL.setData(vis.rsi?pts(r200):[]);
+  drawDivs(K.map(x=>[+x[0],+x[1],+x[2],+x[3],+x[4]]),r14,e);
+  srLines.forEach(l=>candles.removePriceLine(l));srLines=[];
+  if(vis.sr){
+    const lv=levels(c).sort((a,b)=>a-b),u=[];
+    lv.forEach(v=>{if(!u.length||Math.abs(v-u[u.length-1])/v>0.003)u.push(v)});
+    const up=u.filter(v=>v>last).slice(0,3),dn=u.filter(v=>v<=last).slice(-3);
+    up.forEach(v=>srLines.push(candles.createPriceLine({price:v,color:"#ef5350",lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"R"})));
+    dn.forEach(v=>srLines.push(candles.createPriceLine({price:v,color:"#26a69a",lineWidth:1,lineStyle:2,axisLabelVisible:true,title:"S"})));
+  }
+  const ev=e[e.length-1];
+  $("trend").textContent=ev?("Price is "+(last>ev?"above":"below")+" EMA200  ·  RSI14 "+(r14[r14.length-1]||0).toFixed(1)+(r200[r200.length-1]!==null?"  ·  RSI200 "+r200[r200.length-1].toFixed(1):"")):"";
+}
+[["bEma","ema"],["bSr","sr"],["bRsi","rsi"],["bZn","zn"],["bDv","dv"]].forEach(([id,k])=>{$(id).onclick=()=>{vis[k]=!vis[k];$(id).classList.toggle("on",vis[k]);paint()}});
+async function load(){
+  $("sym").textContent=sym;
+  try{
+    const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+tf+"&limit=1000");
+    const k=await r.json();
+    if(!Array.isArray(k))throw 0;
+    K=k;
+    const lp=+k[k.length-1][4],pr=Math.max(2,Math.min(8,4-Math.floor(Math.log10(lp))));candles.applyOptions({priceFormat:{type:"price",precision:pr,minMove:1/Math.pow(10,pr)}});
+    candles.setData(k.map(x=>({time:x[0]/1000+OFF,open:+x[1],high:+x[2],low:+x[3],close:+x[4]})));
+    paint();
+    chart.timeScale().setVisibleLogicalRange({from:k.length-160,to:k.length+6});
+    $("px").textContent=k[k.length-1][4];
+  }catch(e){K=[];zones=[];$("px").textContent="no data for "+sym}
+  clearInterval(timer);timer=setInterval(tick,10000);
+}
+async function tick(){
+  try{
+    const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+tf+"&limit=2");
+    const k=await r.json();
+    k.forEach(x=>{candles.update({time:x[0]/1000+OFF,open:+x[1],high:+x[2],low:+x[3],close:+x[4]});
+      if(K.length&&K[K.length-1][0]===x[0])K[K.length-1]=x;else if(K.length&&x[0]>K[K.length-1][0])K.push(x)});
+    paint();
+    $("px").textContent=k[k.length-1][4];
+  }catch(e){}
+}
+function show(s){s=String(s).trim().toUpperCase().replace(/\s+/g,"");if(!s)return;if(!/USDT$/.test(s))s+="USDT";sym=s;load()}
+document.querySelectorAll("[data-tf]").forEach(b=>b.onclick=()=>{tf=b.dataset.tf;document.querySelectorAll("[data-tf]").forEach(x=>x.classList.toggle("on",x===b));load()});
+$("go").onkeydown=e=>{if(e.key==="Enter"){show($("go").value);$("go").value=""}};
+load();
+</script></body></html>
