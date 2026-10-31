@@ -22,7 +22,7 @@ main{flex:1;display:flex;min-height:0}
 <div id="chartwrap">
 <div id="bar"><span id="sym">BTCUSDT</span><span id="px"></span>
 <span style="flex:1"></span>
-<button data-tf="5m">5m</button><button data-tf="15m">15m</button><button data-tf="30m">30m</button><button data-tf="1h" class="on">1h</button><button data-tf="2h">2h</button><button data-tf="4h">4h</button><button data-tf="1d">1d</button>
+<button data-tf="30s">30s</button><button data-tf="1m">1m</button><button data-tf="5m">5m</button><button data-tf="15m">15m</button><button data-tf="30m">30m</button><button data-tf="1h" class="on">1h</button><button data-tf="2h">2h</button><button data-tf="4h">4h</button><button data-tf="1d">1d</button>
 <input id="go" placeholder="coin e.g. SOL" size="9"></div>
 <div id="leg"><button id="bEma" class="on">EMA200 (blue)</button><button id="bSr" class="on">Support / Resistance</button><button id="bRsi" class="on">RSI14 (purple) + RSI200 (orange)</button><button id="bDv" class="on">Divergence + trendlines</button><button id="bZn" class="on">FVG + Order blocks</button><span id="trend"></span></div>
 <div id="chart"></div></div></main>
@@ -31,7 +31,7 @@ main{flex:1;display:flex;min-height:0}
 const OFF=5*3600; // Pakistan time
 let sym="BTCUSDT",tf="1h",timer;
 const $=id=>document.getElementById(id);
-const chart=LightweightCharts.createChart($("chart"),{layout:{background:{color:"#0e1116"},textColor:"#8b96a3"},grid:{vertLines:{color:"#1b2129"},horzLines:{color:"#1b2129"}},timeScale:{timeVisible:true,borderColor:"#262d36"},rightPriceScale:{borderColor:"#262d36"},autoSize:true});
+const chart=LightweightCharts.createChart($("chart"),{layout:{background:{color:"#0e1116"},textColor:"#8b96a3"},grid:{vertLines:{color:"#1b2129"},horzLines:{color:"#1b2129"}},timeScale:{timeVisible:true,secondsVisible:true,borderColor:"#262d36"},rightPriceScale:{borderColor:"#262d36"},autoSize:true});
 const candles=chart.addCandlestickSeries({upColor:"#26a69a",downColor:"#ef5350",wickUpColor:"#26a69a",wickDownColor:"#ef5350",borderVisible:false});
 candles.priceScale().applyOptions({scaleMargins:{top:0.05,bottom:0.32}});
 const rsiL=chart.addLineSeries({priceScaleId:"rsi",color:"#ff9f43",lineWidth:2,priceLineVisible:false,lastValueVisible:false});
@@ -153,12 +153,16 @@ function paint(){
   $("trend").textContent=ev?("Price is "+(last>ev?"above":"below")+" EMA200  ·  RSI14 "+(r14[r14.length-1]||0).toFixed(1)+(r200[r200.length-1]!==null?"  ·  RSI200 "+r200[r200.length-1].toFixed(1):"")):"";
 }
 [["bEma","ema"],["bSr","sr"],["bRsi","rsi"],["bZn","zn"],["bDv","dv"]].forEach(([id,k])=>{$(id).onclick=()=>{vis[k]=!vis[k];$(id).classList.toggle("on",vis[k]);paint()}});
+const BASE="https://data-api.binance.vision/api/v3/klines?symbol=";
+async function k1s(n){let all=[],end=Date.now();for(let i=0;i<n;i++){const r=await fetch(BASE+encodeURIComponent(sym)+"&interval=1s&limit=1000&endTime="+end);const k=await r.json();if(!Array.isArray(k)||!k.length)break;all=k.concat(all);end=k[0][0]-1}return all}
+function agg(k){const m=new Map();for(const x of k){const b=Math.floor(x[0]/30000)*30000;let c=m.get(b);if(!c){c=[b,+x[1],+x[2],+x[3],+x[4],+x[5]];m.set(b,c)}else{c[2]=Math.max(c[2],+x[2]);c[3]=Math.min(c[3],+x[3]);c[4]=+x[4];c[5]+=+x[5]}}return [...m.values()].sort((a,b)=>a[0]-b[0])}
 async function load(){
   $("sym").textContent=sym;
   try{
-    const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+tf+"&limit=1000");
-    const k=await r.json();
-    if(!Array.isArray(k))throw 0;
+    let k;
+    if(tf==="30s"){k=agg(await k1s(10));if(k.length)k.shift()}
+    else{const r=await fetch(BASE+encodeURIComponent(sym)+"&interval="+tf+"&limit=1000");k=await r.json()}
+    if(!Array.isArray(k)||!k.length)throw 0;
     K=k;
     const lp=+k[k.length-1][4],pr=Math.max(2,Math.min(8,4-Math.floor(Math.log10(lp))));candles.applyOptions({priceFormat:{type:"price",precision:pr,minMove:1/Math.pow(10,pr)}});
     candles.setData(k.map(x=>({time:x[0]/1000+OFF,open:+x[1],high:+x[2],low:+x[3],close:+x[4]})));
@@ -166,12 +170,13 @@ async function load(){
     chart.timeScale().setVisibleLogicalRange({from:k.length-160,to:k.length+6});
     $("px").textContent=k[k.length-1][4];
   }catch(e){K=[];zones=[];$("px").textContent="no data for "+sym}
-  clearInterval(timer);timer=setInterval(tick,10000);
+  clearInterval(timer);timer=setInterval(tick,tf==="30s"?5000:10000);
 }
 async function tick(){
   try{
-    const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+tf+"&limit=2");
-    const k=await r.json();
+    let k;
+    if(tf==="30s"){const r=await fetch(BASE+encodeURIComponent(sym)+"&interval=1s&limit=100");k=agg(await r.json());k.shift()}
+    else{const r=await fetch(BASE+encodeURIComponent(sym)+"&interval="+tf+"&limit=2");k=await r.json()}
     k.forEach(x=>{candles.update({time:x[0]/1000+OFF,open:+x[1],high:+x[2],low:+x[3],close:+x[4]});
       if(K.length&&K[K.length-1][0]===x[0])K[K.length-1]=x;else if(K.length&&x[0]>K[K.length-1][0])K.push(x)});
     paint();
