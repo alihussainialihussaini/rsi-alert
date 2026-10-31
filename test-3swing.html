@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Divergence Test 3 Swings</title>
+<title>Divergence Test Big Swings</title>
 <style>
 :root{--bg:#0e1116;--panel:#161b22;--line:#262d36;--fg:#e6edf3;--mut:#8b96a3;--up:#26a69a;--dn:#ef5350;--acc:#f0b90b}
 *{box-sizing:border-box}
@@ -17,7 +17,7 @@ main{flex:1;display:flex;min-height:0}
 #leg{padding:0 14px 8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px}#leg button{padding:3px 8px;font-size:12px}#trend{color:var(--mut)}
 </style></head>
 <body>
-<header><h1>Divergence test: 3 swings</h1><span id="st" style="color:var(--mut)">3 swings in a row · FORMED marker, then CONFIRMED marker (bullish candle closes above previous high)</span><span id="dvn" style="color:var(--acc);font-size:12px"></span></header>
+<header><h1>Divergence test: 2 big swings</h1><span id="st" style="color:var(--mut)">2 swings (may skip small swings in between) · FORMED marker, then CONFIRMED marker (bullish candle closes above previous high)</span><span id="dvn" style="color:var(--acc);font-size:12px"></span></header>
 <main>
 <div id="chartwrap">
 <div id="bar"><span id="sym">BTCUSDT</span><span id="px"></span>
@@ -87,8 +87,8 @@ function drawZones(){
     g.fillStyle=z.up?"#26a69a":"#ef5350";g.globalAlpha=filled?0.5:1;g.font="10px system-ui,sans-serif";g.fillText((z.k==="FVG"?"FVG ":"OB ")+(z.up?"buy":"sell")+(filled?" (filled)":""),x1+4,top+10);g.globalAlpha=1}
   g.restore()}
 requestAnimationFrame(drawZones);
-// ===== RSI divergences: 3 swings in a row =====
-const DV={L:5,R:3,MING:5,MAXG:60,BULL:45,BEAR:55,CW:6};
+// ===== RSI divergences: 2 big swings (small swings in between may be skipped) =====
+const DV={L:5,R:3,MING:5,MAXG:100,BULL:45,BEAR:55,CW:6};
 const DVN={"reg-bull":"Bull div","reg-bear":"Bear div"};
 // C rows: [openTime,o,h,l,c] numbers. f = candle where the divergence is formed, c = confirming candle (or null)
 function findDivs(C,rs,es){
@@ -111,13 +111,13 @@ function findDivs(C,rs,es){
     if(r1===null||r2===null||g<DV.MING||g>DV.MAXG)return false;
     if(low){const p1=C[a][3],p2=C[b][3];if(!(p2<p1&&r2>r1))return false;if(first&&!(r1<DV.BULL))return false;return clear(a,b,p1,p2,r1,r2,true)}
     const p1=C[a][2],p2=C[b][2];if(!(p2>p1&&r2<r1))return false;if(first&&!(r1>DV.BEAR))return false;return clear(a,b,p1,p2,r1,r2,false)};
-  // 3 swings in a row (first triple of a chain only)
+  // 2 swings: the second swing is paired with the farthest earlier swing (up to MAXG candles back) whose straight line is not crossed
   const out=[];
   for(const low of [true,false]){const pts=low?lowp:highp,pi=low?3:2;
-    for(let q=2;q<pts.length;q++){const s1=pts[q-2],s2=pts[q-1],s3=pts[q];
-      if(!(pairOk(s1,s2,low,true)&&pairOk(s2,s3,low,false)))continue;
-      if(q>=3&&pairOk(pts[q-3],s1,low,true))continue;
-      out.push({type:low?"reg-bull":"reg-bear",i1:s1,im:s2,i2:s3,p1:C[s1][pi],pm:C[s2][pi],p2:C[s3][pi],r1:rs[s1],rm:rs[s2],r2:rs[s3],f:s3+DV.R,c:confirm(s3,low)})}}
+    for(let q=1;q<pts.length;q++){const s2=pts[q];let best=-1;
+      for(let p=q-1;p>=0;p--){const s1=pts[p];if(s2-s1>DV.MAXG)break;if(pairOk(s1,s2,low,true))best=s1}
+      if(best<0)continue;const s1=best;
+      out.push({type:low?"reg-bull":"reg-bear",i1:s1,i2:s2,p1:C[s1][pi],p2:C[s2][pi],r1:rs[s1],r2:rs[s2],f:s2+DV.R,c:confirm(s2,low)})}}
   out.sort((x,y)=>x.i2-y.i2);return out}
 function drawDivs(KN,rs,es){
   dvSeries.forEach(x=>{try{chart.removeSeries(x)}catch(e){}});dvSeries=[];
@@ -127,9 +127,9 @@ function drawDivs(KN,rs,es){
   for(const d of ds){
     const bull=d.type==="reg-bull",col=bull?"#26a69a":"#ef5350";
     const ps=chart.addLineSeries({color:col,lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
-    ps.setData([{time:T(d.i1),value:d.p1},{time:T(d.im),value:d.pm},{time:T(d.i2),value:d.p2}]);dvSeries.push(ps);
+    ps.setData([{time:T(d.i1),value:d.p1},{time:T(d.i2),value:d.p2}]);dvSeries.push(ps);
     const rl=chart.addLineSeries({priceScaleId:"rsi",color:col,lineWidth:2,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});
-    rl.setData([{time:T(d.i1),value:d.r1},{time:T(d.im),value:d.rm},{time:T(d.i2),value:d.r2}]);dvSeries.push(rl);
+    rl.setData([{time:T(d.i1),value:d.r1},{time:T(d.i2),value:d.r2}]);dvSeries.push(rl);
     mk.push({time:T(d.f),position:bull?"belowBar":"aboveBar",color:col,shape:bull?"arrowUp":"arrowDown",text:DVN[d.type]+" formed"});
     if(d.c!==null)mk.push({time:T(d.c),position:bull?"belowBar":"aboveBar",color:col,shape:"circle",text:"confirmed"})}
   mk.sort((a,b)=>a.time-b.time);candles.setMarkers(mk)}
