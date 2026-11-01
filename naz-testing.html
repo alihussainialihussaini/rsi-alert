@@ -103,7 +103,7 @@ tr.r{cursor:pointer}tr.r:hover td{background:var(--panel2)}
 <script>
 const API="https://data-api.binance.vision",OFF=5*3600,$=id=>document.getElementById(id);
 const STABLE=new Set(["USDC","FDUSD","TUSD","USDP","BUSD","DAI","EUR","AEUR","USD1","XUSD","USDE","PYUSD","EURI","RLUSD","BFUSD","USDS","UST"]);
-const TOP=100,TFS=["3m","5m","15m","30m","1h","4h","1d"],WTF=["15m","1h","4h"],RP=14;
+const TOP=500,TFS=["3m","5m","15m","30m","1h","4h","1d"],WTF=["15m","1h","4h"],RP=14;
 const DEF={n70:3,lvl:52,look:40,maLen:14,maType:"SMA",os1:30,os2:25,os3:20};
 let CFG=Object.assign({},DEF);try{Object.assign(CFG,JSON.parse(localStorage.getItem("cfg")||"{}"))}catch(e){}
 function rsiCalc(c,p){const o=new Array(c.length).fill(null);if(c.length<=p)return o;let g=0,l=0;for(let i=1;i<=p;i++){const d=c[i]-c[i-1];if(d>0)g+=d;else l-=d}g/=p;l/=p;o[p]=l===0?100:100-100/(1+g/l);for(let i=p+1;i<c.length;i++){const d=c[i]-c[i-1];g=(g*(p-1)+(d>0?d:0))/p;l=(l*(p-1)+(d<0?-d:0))/p;o[i]=l===0?100:100-100/(1+g/l)}return o}
