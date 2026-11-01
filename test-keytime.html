@@ -236,7 +236,7 @@ async function tick(){
       let fails=0;
       await pool(jobs,8,async([symbol,t])=>{
         (DATA[symbol]=DATA[symbol]||{});
-        const s=(DATA[symbol][t.id]=DATA[symbol][t.id]||{weight:null,live:null,closed:null,active:false,since:null,prevBelow:true,err:null});
+        const s=(DATA[symbol][t.id]=DATA[symbol][t.id]||{weight:null,live:null,closed:null,active:false,since:null,prevBelow:null,err:null});
         try{
           const k=await kl(symbol,category,t.id);
           const n=k.length;
