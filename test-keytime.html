@@ -1,0 +1,292 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Key Time Frame — Test</title>
+<style>
+:root{--bg:#0e1116;--panel:#161b22;--line:#262d36;--fg:#e6edf3;--mut:#8b96a3;--up:#26a69a;--dn:#ef5350;--acc:#f0b90b;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif}
+header{display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+h1{font-size:16px;margin:0;margin-right:auto}
+a{color:var(--acc);text-decoration:none}a:hover{text-decoration:underline}
+button,select,input{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px 9px;font:inherit}
+button{cursor:pointer}button:disabled{opacity:.5;cursor:default}
+.pill{font-size:12px;padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--mut)}
+.pill.live{color:var(--up);border-color:var(--up)}.pill.scan{color:var(--acc);border-color:var(--acc)}.pill.err{color:var(--dn);border-color:var(--dn)}
+#toolbar{display:flex;gap:10px 16px;align-items:center;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+.group{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.gl{color:var(--mut);font-size:12px}
+input[type=text]{width:110px}input[type=number]{width:62px;text-align:right}
+label.t{display:flex;gap:5px;align-items:center;font-size:12px;color:var(--mut);cursor:pointer}
+.dim{color:var(--mut)}
+#summary{display:flex;gap:18px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid var(--line);font-size:12px;color:var(--mut)}
+#summary .card{display:flex;flex-direction:column;gap:2px}
+#summary b{color:var(--fg);font-size:20px}
+#summary b.acc{color:var(--acc)}
+.wrap{overflow-x:auto;padding:0 14px}
+table{border-collapse:collapse;width:100%;font-size:13px;margin-top:10px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--mut);font-weight:600;font-size:12px}
+td.num,th.num{text-align:right}
+.mono{font-variant-numeric:tabular-nums}
+.tf{font-weight:700}
+.st{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;border:1px solid var(--line)}
+.st-below{color:var(--mut)}
+.st-live{color:var(--acc);border-color:var(--acc)}
+.st-active{color:#3ddc97;border-color:#3ddc97}
+.st-err{color:var(--dn);border-color:var(--dn)}
+.live-b{font-size:10px;padding:1px 5px;border-radius:4px;margin-left:6px;font-weight:700;background:#3a2a10;color:var(--acc)}
+tr.active td{background:#10241c}
+#log{padding:10px 14px 30px}
+#log h2{font-size:13px;color:var(--mut);margin:18px 0 8px;font-weight:600}
+.entry{padding:7px 10px;border:1px solid var(--line);border-radius:7px;margin-bottom:6px;font-size:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:baseline}
+.entry b{color:var(--acc);font-size:14px}
+.entry .tfs{color:var(--mut)}
+.entry .t{color:var(--mut);margin-left:auto;font-size:11px}
+#empty{padding:30px 14px;color:var(--mut);text-align:center}
+footer{padding:4px 14px 30px;color:var(--mut);font-size:12px;line-height:1.5}
+.hidden{display:none!important}
+</style></head><body>
+
+<header><h1>Key Time Frame — Test</h1><a href="index.html">← Chart board</a><span id="pill" class="pill">idle</span></header>
+
+<div id="toolbar">
+  <div class="group"><span class="gl">Symbol</span><input type="text" id="symbol" value="BTCUSDT"></div>
+  <div class="group"><span class="gl">Market</span>
+    <select id="category"><option value="linear" selected>Linear perp</option><option value="spot">Spot</option><option value="inverse">Inverse</option></select>
+  </div>
+  <div class="group"><span class="gl">RSI length</span><input type="number" id="rsiLen" value="14" min="2" max="50"></div>
+  <div class="group"><span class="gl">Poll every</span>
+    <select id="pollSec"><option value="10">10s</option><option value="15" selected>15s</option><option value="30">30s</option><option value="60">60s</option></select>
+  </div>
+  <button id="startBtn">Start</button>
+  <label class="t"><input type="checkbox" id="sound" checked> Sound + notification</label>
+  <span class="dim" id="apiNote"></span>
+</div>
+
+<div id="summary">
+  <div class="card"><span class="gl">Number of time</span><b id="sNum">0</b></div>
+  <div class="card"><span class="gl">Total minutes</span><b id="sTot">0</b></div>
+  <div class="card"><span class="gl">Key Time Frame</span><b class="acc" id="sKey">—</b></div>
+  <div class="card"><span class="gl">Triggered timeframes</span><b id="sTfs" style="font-size:13px;font-weight:400">—</b></div>
+</div>
+
+<div class="wrap">
+<table>
+<thead><tr>
+  <th>Timeframe</th><th class="num">Weight (min, editable)</th><th class="num">Live RSI</th><th class="num">Closed RSI</th><th>Status</th><th>Active since</th>
+</tr></thead>
+<tbody id="rows"></tbody>
+</table>
+</div>
+
+<div id="log"><h2>Alert log</h2><div id="logList"><div id="empty">No alerts yet. Start the scan — an entry appears here each time the triggered-timeframe set changes.</div></div></div>
+
+<footer>
+Condition: a timeframe counts the moment its RSI(<span id="fLen">14</span>) reclaims 30 from below — live/forming candle included, marked <span class="live-b">LIVE</span> until the candle closes. Key Time Frame = (sum of weights of triggered timeframes) ÷ (count of triggered timeframes), same formula as the test sheet. Weights default to each timeframe's own duration in minutes — edit them to test other schemes. Data: Bybit public kline API (<code>/v5/market/kline</code>), no key required.
+</footer>
+
+<script>
+const $=id=>document.getElementById(id);
+const BASE="https://api.bybit.com/v5/market/kline";
+
+// Native Bybit intervals only — no synthetic (3h/5h/7h/9h/10h) candle-building in this first version.
+const TFS=[
+  {id:"1",  l:"1m",  min:1},
+  {id:"3",  l:"3m",  min:3},
+  {id:"5",  l:"5m",  min:5},
+  {id:"15", l:"15m", min:15},
+  {id:"30", l:"30m", min:30},
+  {id:"60", l:"1h",  min:60},
+  {id:"120",l:"2h",  min:120},
+  {id:"240",l:"4h",  min:240},
+  {id:"360",l:"6h",  min:360},
+  {id:"720",l:"12h", min:720},
+];
+
+// state per tf
+const S={};
+for(const t of TFS)S[t.id]={weight:t.min,live:null,closed:null,active:false,since:null,err:null};
+
+function rsiCalc(c,p){
+  const o=new Array(c.length).fill(null);
+  if(c.length<=p)return o;
+  let g=0,l=0;
+  for(let i=1;i<=p;i++){const d=c[i]-c[i-1];if(d>0)g+=d;else l-=d}
+  g/=p;l/=p;
+  o[p]=l===0?100:100-100/(1+g/l);
+  for(let i=p+1;i<c.length;i++){
+    const d=c[i]-c[i-1];
+    g=(g*(p-1)+(d>0?d:0))/p;
+    l=(l*(p-1)+(d<0?-d:0))/p;
+    o[i]=l===0?100:100-100/(1+g/l)
+  }
+  return o;
+}
+
+async function kl(symbol,category,interval){
+  const u=BASE+"?category="+category+"&symbol="+encodeURIComponent(symbol)+"&interval="+interval+"&limit=200";
+  const r=await fetch(u);
+  if(!r.ok)throw new Error("HTTP "+r.status);
+  const j=await r.json();
+  if(j.retCode!==0)throw new Error(j.retMsg||"retCode "+j.retCode);
+  const list=j.result.list; // newest first
+  if(!list||!list.length)throw new Error("no data");
+  return list.map(x=>[+x[0],+x[1],+x[2],+x[3],+x[4],+x[5]]).reverse(); // ascending
+}
+
+function beep(){try{const ctx=new (window.AudioContext||window.webkitAudioContext)();[880,1175].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=f;o.connect(g);g.connect(ctx.destination);const t=ctx.currentTime+i*.18;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.25,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+.16);o.start(t);o.stop(t+.17)});setTimeout(()=>ctx.close(),800)}catch(e){}}
+function ping(title,body){
+  if(!$("sound").checked)return;
+  beep();
+  try{
+    if("Notification" in window){
+      if(Notification.permission==="granted")new Notification(title,{body});
+      else if(Notification.permission==="default")Notification.requestPermission();
+    }
+  }catch(e){}
+}
+
+function fmtMin(m){
+  if(m==null)return "—";
+  const h=Math.floor(m/60),mm=Math.round((m%60)*10)/10;
+  if(h===0)return mm+"m";
+  if(mm===0)return h+"h";
+  return h+"h "+mm+"m";
+}
+
+let running=false,timer=null;
+
+function row(t){
+  const s=S[t.id];
+  const tr=document.createElement("tr");
+  tr.id="r-"+t.id;
+  if(s.active)tr.className="active";
+  const statusHtml = s.err
+    ? '<span class="st st-err">error</span>'
+    : s.live==null ? '<span class="st st-below">—</span>'
+    : s.active
+      ? '<span class="st st-active">Active</span>'+(s.live!=null&&s.closed!=null&&s.closed<30?'<span class="live-b">LIVE</span>':'')
+      : s.live<30 ? '<span class="st st-below">Below 30</span>'
+      : '<span class="st st-below">Neutral</span>';
+  tr.innerHTML =
+    '<td class="tf">'+t.l+'</td>'+
+    '<td class="num"><input type="number" class="wIn" data-id="'+t.id+'" value="'+s.weight+'" min="0" style="width:62px"></td>'+
+    '<td class="num mono">'+(s.err?'<span class="dim">err</span>':s.live==null?'—':s.live.toFixed(2))+'</td>'+
+    '<td class="num mono dim">'+(s.closed==null?'—':s.closed.toFixed(2))+'</td>'+
+    '<td>'+statusHtml+(s.err?'<span class="dim" title="'+s.err+'"> ⚠</span>':'')+'</td>'+
+    '<td class="dim">'+(s.since?new Date(s.since).toLocaleTimeString():'—')+'</td>';
+  return tr;
+}
+
+function render(){
+  const tbody=$("rows");
+  tbody.innerHTML="";
+  for(const t of TFS)tbody.appendChild(row(t));
+  for(const inp of tbody.querySelectorAll(".wIn")){
+    inp.addEventListener("change",e=>{
+      const v=parseFloat(e.target.value);
+      if(!isNaN(v))S[e.target.dataset.id].weight=v;
+      updateSummary();
+    });
+  }
+  updateSummary();
+}
+
+function updateSummary(){
+  const activeTfs=TFS.filter(t=>S[t.id].active);
+  const n=activeTfs.length;
+  const tot=activeTfs.reduce((a,t)=>a+S[t.id].weight,0);
+  $("sNum").textContent=n;
+  $("sTot").textContent=Math.round(tot*100)/100;
+  $("sKey").textContent=n?fmtMin(tot/n)+" ("+(Math.round((tot/n)*100)/100)+" min)":"—";
+  $("sTfs").textContent=n?activeTfs.map(t=>t.l).join(", "):"—";
+}
+
+function logAlert(activeTfs,keyMin){
+  $("empty")?.remove();
+  const el=document.createElement("div");
+  el.className="entry";
+  el.innerHTML='<b>'+fmtMin(keyMin)+'</b><span class="tfs">'+activeTfs.map(t=>t.l).join(" · ")+'</span><span class="t">'+new Date().toLocaleTimeString()+'</span>';
+  $("logList").prepend(el);
+}
+
+let lastActiveKey="";
+
+async function pollOnce(){
+  const symbol=$("symbol").value.trim().toUpperCase()||"BTCUSDT";
+  const category=$("category").value;
+  const len=parseInt($("rsiLen").value)||14;
+  $("fLen").textContent=len;
+  $("pill").className="pill scan";$("pill").textContent="scanning…";
+
+  await Promise.all(TFS.map(async t=>{
+    const s=S[t.id];
+    try{
+      const k=await kl(symbol,category,t.id);
+      const n=k.length;
+      const now=Date.now();
+      const ms={"1":6e4,"3":18e4,"5":3e5,"15":9e5,"30":18e5,"60":36e5,"120":72e5,"240":144e5,"360":216e5,"720":432e5}[t.id];
+      const forming=k[n-1][0]+ms>now;
+      const closes=k.map(x=>x[4]);
+      const rsAll=rsiCalc(closes,len);
+      const nc=forming?n-1:n;
+      const closedRsi=nc>0?rsAll[nc-1]:null;
+      const liveRsi=forming?rsAll[n-1]:closedRsi;
+
+      const wasBelow = s.live==null ? true : s.prevBelow;
+      s.closed=closedRsi;
+      s.live=liveRsi;
+      s.err=null;
+
+      if(liveRsi==null){ /* not enough data yet */ }
+      else if(liveRsi<30){
+        s.prevBelow=true;
+        if(s.active){s.active=false;s.since=null;}
+      } else { // liveRsi >= 30
+        if(wasBelow && !s.active){
+          s.active=true;
+          s.since=now;
+        }
+        s.prevBelow=false;
+      }
+    }catch(e){
+      s.err=e.message||String(e);
+    }
+  }));
+
+  render();
+
+  const activeTfs=TFS.filter(t=>S[t.id].active);
+  const key=activeTfs.map(t=>t.id).sort().join(",");
+  if(key!==lastActiveKey){
+    if(activeTfs.length){
+      const tot=activeTfs.reduce((a,t)=>a+S[t.id].weight,0);
+      const keyMin=tot/activeTfs.length;
+      logAlert(activeTfs,keyMin);
+      ping("Key Time Frame: "+fmtMin(keyMin),symbol+" · "+activeTfs.map(t=>t.l).join(", "));
+    }
+    lastActiveKey=key;
+  }
+
+  $("pill").className="pill live";$("pill").textContent="live · "+new Date().toLocaleTimeString();
+}
+
+function start(){
+  running=true;
+  $("startBtn").textContent="Stop";
+  if("Notification" in window && Notification.permission==="default" && $("sound").checked)Notification.requestPermission();
+  pollOnce();
+  const secs=parseInt($("pollSec").value)*1000;
+  timer=setInterval(pollOnce,secs);
+}
+function stop(){
+  running=false;
+  clearInterval(timer);
+  $("startBtn").textContent="Start";
+  $("pill").className="pill";$("pill").textContent="idle";
+}
+$("startBtn").addEventListener("click",()=>running?stop():start());
+$("pollSec").addEventListener("change",()=>{if(running){clearInterval(timer);timer=setInterval(pollOnce,parseInt($("pollSec").value)*1000);}});
+
+render();
+</script>
+</body></html>
