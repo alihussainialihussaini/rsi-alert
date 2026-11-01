@@ -35,6 +35,13 @@ td.num,th.num{text-align:right}
 .tf.live{border-color:var(--acc);color:var(--acc)}
 .up{color:var(--up)}.down{color:var(--dn)}
 tr:hover td{background:#141a21}
+.keyBtn{background:none;border:none;color:var(--acc);font:inherit;font-variant-numeric:tabular-nums;cursor:pointer;padding:0;text-decoration:underline}
+.breakdownRow td{background:#0b0e13;padding:10px 14px}
+.bd{border-collapse:collapse;font-size:12px;max-width:520px}
+.bd th,.bd td{padding:5px 10px;border:1px solid var(--line);white-space:normal}
+.bd th{color:var(--mut);font-weight:600;text-align:left}
+.bd td.n{text-align:right;font-variant-numeric:tabular-nums}
+.bd tr.total td{font-weight:700;color:var(--fg)}
 #empty{padding:30px 14px;color:var(--mut);text-align:center}
 #log{padding:10px 14px 30px}
 #log h2{font-size:13px;color:var(--mut);margin:18px 0 8px;font-weight:600}
@@ -138,6 +145,7 @@ let api={req:0,fail:0};
 let running=false,timer=null,ticking=false;
 let lastKeys={};     // per-symbol last active-set signature, for alert diffing
 let sortK="n",sortDir=-1;
+let expanded=new Set(); // symbols currently showing the sheet-style breakdown row
 
 function fmtMin(m){
   if(m==null)return "—";
@@ -236,7 +244,7 @@ async function tick(){
       let fails=0;
       await pool(jobs,8,async([symbol,t])=>{
         (DATA[symbol]=DATA[symbol]||{});
-        const s=(DATA[symbol][t.id]=DATA[symbol][t.id]||{weight:null,live:null,closed:null,active:false,since:null,prevBelow:null,err:null});
+        const s=(DATA[symbol][t.id]=DATA[symbol][t.id]||{weight:null,live:null,closed:null,active:false,since:null,prevBelow:null,err:null}); // prevBelow starts unknown (null), not true — a null baseline must never itself count as a trigger
         try{
           const k=await kl(symbol,category,t.id);
           const n=k.length;
@@ -305,6 +313,19 @@ function diffAndAlert(){
   if(newlyTriggered.length)ping("Key Time Frame alert: "+newlyTriggered.length+" symbol(s)",newlyTriggered.slice(0,8).join("\n"));
 }
 
+function breakdownHtml(symbol,kt){
+  if(!kt)return "";
+  const n=kt.n;
+  let rows='<tr><th>Sheet row</th><th>Value here</th><th>count</th></tr>';
+  rows+='<tr><td>Number of time (count of flagged TFs)</td><td class="n">'+n+'</td><td class="n">'+n+'</td></tr>';
+  for(const t of kt.tfs){
+    rows+='<tr><td>if '+WEIGHT[t.id]+' minute'+(WEIGHT[t.id]===1?"":"s")+' below 30 RSI ('+t.l+' weight row)</td><td class="n">'+WEIGHT[t.id]+'</td><td class="n">1</td></tr>';
+  }
+  rows+='<tr class="total"><td>Total minutes (SUM of weights of flagged TFs)</td><td class="n">'+kt.tot+'</td><td></td></tr>';
+  rows+='<tr class="total"><td>Total minutes ÷ Number of time</td><td colspan="2">'+kt.tot+' ÷ '+n+' = '+(Math.round(kt.avg*100)/100)+' minute'+(kt.avg===1?"":"s")+'</td></tr>';
+  return '<table class="bd">'+rows+'</table>';
+}
+
 function logAlert(symbol,kt){
   $("logEmpty")?.remove();
   const el=document.createElement("div");
@@ -363,6 +384,9 @@ function render(){
       : r.claimed&&!r.forming ? '<span style="color:#3ddc97">Claimed</span>'
       : '<span style="color:#3ddc97">Claimed</span><span class="dim">+'+r.forming+' forming</span>';
     const volFmt = r.vol? (r.vol>=1e9?(r.vol/1e9).toFixed(2)+"B":r.vol>=1e6?(r.vol/1e6).toFixed(1)+"M":(r.vol/1e3).toFixed(0)+"K") : "—";
+    const keyCell = r.kt
+      ? '<button class="keyBtn" data-sym="'+r.s+'">'+fmtMin(r.kt.avg)+(expanded.has(r.s)?' ▴':' ▾')+'</button>'
+      : "—";
     tr.innerHTML=
       '<td class="sym">'+r.s+'</td>'+
       '<td class="num mono">'+(r.px?r.px.toLocaleString(undefined,{maximumFractionDigits:6}):"—")+'</td>'+
@@ -371,11 +395,23 @@ function render(){
       '<td class="num mono">'+r.n+'</td>'+
       '<td>'+status+'</td>'+
       '<td>'+(tfBadges||'<span class="dim">—</span>')+'</td>'+
-      '<td class="num mono acc">'+(r.kt?fmtMin(r.kt.avg):"—")+'</td>'+
+      '<td class="num mono acc">'+keyCell+'</td>'+
       '<td><a href="https://www.bybit.com/trade/usdt/'+r.s+'" target="_blank" rel="noopener">Bybit ↗</a></td>';
     tbody.appendChild(tr);
+    if(r.kt&&expanded.has(r.s)){
+      const btr=document.createElement("tr");
+      btr.className="breakdownRow";
+      btr.innerHTML='<td colspan="9">'+breakdownHtml(r.s,r.kt)+'</td>';
+      tbody.appendChild(btr);
+    }
   }
 }
+document.getElementById("rows").addEventListener("click",e=>{
+  const btn=e.target.closest(".keyBtn");if(!btn)return;
+  const sym=btn.dataset.sym;
+  if(expanded.has(sym))expanded.delete(sym);else expanded.add(sym);
+  render();
+});
 
 $("mode").addEventListener("change",()=>{
   const list=$("mode").value==="list";
