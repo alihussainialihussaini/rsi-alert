@@ -3,120 +3,185 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RSI Dashboard</title>
+<title>Rahil RSI Dashboard</title>
 
 <style>
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+font-family:Arial,sans-serif;
+}
+
 body{
-    margin:0;
-    background:#0f172a;
-    color:white;
-    font-family:Arial,sans-serif;
+background:#0f172a;
+color:white;
 }
-.header{
-    background:#1e293b;
-    padding:20px;
-    text-align:center;
+
+header{
+background:#1e293b;
+padding:25px;
+text-align:center;
 }
+
 .container{
-    padding:20px;
+max-width:1200px;
+margin:auto;
+padding:20px;
 }
+
+.grid{
+display:grid;
+grid-template-columns:repeat(auto-fit,minmax(250px,1fr));
+gap:15px;
+}
+
 .card{
-    background:#1e293b;
-    padding:20px;
-    border-radius:10px;
-    margin-bottom:15px;
+background:#1e293b;
+padding:20px;
+border-radius:12px;
 }
-h1,h2{
-    margin:0 0 10px;
+
+h1{
+margin-bottom:10px;
 }
-.green{
-    color:#22c55e;
+
+h2{
+color:#38bdf8;
+margin-bottom:10px;
 }
-.blue{
-    color:#38bdf8;
-}
+
 table{
-    width:100%;
-    border-collapse:collapse;
+width:100%;
+border-collapse:collapse;
+margin-top:10px;
 }
+
 th,td{
-    border:1px solid #334155;
-    padding:10px;
+border:1px solid #334155;
+padding:10px;
+text-align:left;
 }
+
 button{
-    padding:10px 15px;
-    border:none;
-    border-radius:8px;
-    background:#38bdf8;
-    cursor:pointer;
+background:#38bdf8;
+border:none;
+padding:10px 15px;
+border-radius:8px;
+cursor:pointer;
+margin-top:10px;
+}
+
+input{
+padding:10px;
+border:none;
+border-radius:8px;
+margin:5px;
+width:120px;
+}
+
+.result{
+margin-top:10px;
+color:#22c55e;
+font-weight:bold;
 }
 </style>
-
 </head>
+
 <body>
 
-<div class="header">
-<h1>Rahil RSI Dashboard</h1>
-<p>Strategy Research Panel</p>
-</div>
+<header>
+<h1>Rahil RSI Research Dashboard</h1>
+<p>Strategies 1-5 Tracker</p>
+</header>
 
 <div class="container">
 
+<div class="grid">
+
 <div class="card">
-<h2 class="blue">Strategy 1</h2>
-<p>Website Strategy</p>
+<h2>Strategy 1</h2>
+<p>Website RSI Strategy</p>
 </div>
 
 <div class="card">
-<h2 class="blue">Strategy 2</h2>
-<p>4 Months Challenge</p>
+<h2>Strategy 2</h2>
+<p>4 Months Challenge Strategy</p>
 </div>
 
 <div class="card">
-<h2 class="blue">Strategy 3</h2>
-<p>Multi Timeframe Combination</p>
-<p class="green">8m + 45m Example = +10%</p>
+<h2>Strategy 3</h2>
+<p>Multi-Timeframe RSI Combination</p>
+<p>8m + 45m Example</p>
 </div>
 
 <div class="card">
-<h2 class="blue">Strategy 4</h2>
-<p>Early Momentum Detection</p>
+<h2>Strategy 4</h2>
+<p>Early Pump Detection</p>
 </div>
 
 <div class="card">
-<h2 class="blue">Strategy 5</h2>
-<p>Private</p>
+<h2>Strategy 5</h2>
+<p>Private Strategy</p>
 </div>
 
+</div>
+
+<br>
+
 <div class="card">
-<h2>Signal Log</h2>
+<h2>Timeframe Combination Tester</h2>
+
+<input id="tf1" placeholder="8m">
+<input id="tf2" placeholder="45m">
+
+<button onclick="checkCombo()">Test Combination</button>
+
+<div class="result" id="result"></div>
+</div>
+
+<br>
+
+<div class="card">
+<h2>Signal Journal</h2>
 
 <table>
+<thead>
 <tr>
 <th>Date</th>
 <th>Coin</th>
-<th>Timeframes</th>
+<th>Combination</th>
 <th>Result</th>
 </tr>
+</thead>
 
+<tbody>
 <tr>
 <td>Sample</td>
 <td>BTCUSDT</td>
 <td>8m + 45m</td>
 <td>+10%</td>
 </tr>
+</tbody>
 
 </table>
-
-<br>
-
-<button onclick="alert('Dashboard Working')">
-Test Button
-</button>
-
 </div>
 
 </div>
+
+<script>
+
+function checkCombo(){
+
+let tf1=document.getElementById("tf1").value;
+let tf2=document.getElementById("tf2").value;
+
+document.getElementById("result").innerHTML=
+"Selected Combination: " + tf1 + " + " + tf2;
+
+}
+
+</script>
 
 </body>
 </html>
