@@ -141,7 +141,7 @@ const RULES={
  retest:["RSI 70 → 52 Retests",()=>"RSI > 70 for ≥ "+CFG.n70+" candles in a row · lookback "+CFG.look+" candles. Status uses the closed candle: Retest Zone 49–52, Alert 52–54, Near Retest 54–57, Early Warning 57–60, Monitoring 60–65. Live-candle preview also lists coins whose forming candle is in a band. Timeframes 3m to 4h.",RTF,a=>a.had],
  os:["Oversold",()=>"RSI14 at or below "+CFG.os1+" on a closed candle (strong "+CFG.os2+", extreme "+CFG.os3+"). Any timeframe.",TFS,a=>a.rsi<=CFG.os1],
  conf:["MTF Confluence",()=>"Coins that sit in the same condition on several timeframes at once: oversold (RSI ≤ "+CFG.os1+", strong "+CFG.os2+", extreme "+CFG.os3+") or a retest after RSI held 70+ (Retest Zone 49–52, Alert 52–54, Near Retest 54–57, Early Warning 57–60; Monitoring 60–65 only if ticked). Pick a preset below.",ALLC,a=>a.above],
- key:["Key Timeframe",()=>"Timeframes: 1m, 3m, 5m, 15m, 30m, 1H, 2H, 4H, 6H, 12H (what Bybit has). Start at the lowest timeframe where RSI is below "+CFG.os1+" and go up one by one while the next is also below; stop at the first that is not. Key timeframe = sum of the minutes ÷ how many timeframes, rounded to the nearest one. Then wait for RSI to claim "+CFG.os1+" on that timeframe. 1m, 6H and 12H are loaded only for coins within 5 points of oversold on some timeframe.",[],a=>false]
+ key:["Key Timeframe",()=>"Timeframes: 1m, 3m, 5m, 15m, 30m, 1H, 2H, 4H, 6H, 12H, 1D, 1W (what Bybit has). Start at the lowest timeframe where RSI is below "+CFG.os1+" and go up one by one while the next is also below; stop at the first that is not. Key timeframe = sum of the minutes ÷ how many timeframes, rounded to the nearest one. Then wait for RSI to claim "+CFG.os1+" on that timeframe. 1m, 6H and 12H are loaded only for coins within 5 points of oversold on some timeframe.",[],a=>false]
 };
 function match(d,k){const R=RULES[k],hit=R[2].filter(t=>(k==="conf"||S.tfOn[t])&&d[t]&&R[3](d[t]));return k==="conf"?(hit.length===R[2].length?hit:[]):hit}
 function getRows(){return Object.keys(S.data).map(s=>({s,d:S.data[s],t:S.tick[s]||{}})).filter(r=>(r.t.v||0)>=S.minv)}
@@ -234,27 +234,33 @@ function retestTable(rr){
     const sb=x.st==="Retest Zone"?'<span class="b dn">Retest Zone ≤ 52</span>':x.st==="Alert"?'<span class="b" style="background:var(--nbg);color:var(--nfg)">Alert ≤ 54</span>':'<span class="b">'+x.st+'</span>';
     return'<tr><td><b>'+x.s.replace("USDT","")+'</b><span class="mu">/USDT</span></td><td><span class="b">'+x.tf+'</span></td><td>'+a.rsi.toFixed(2)+'</td><td class="mu">'+a.live.toFixed(2)+'</td><td>'+(x.dist>=0?"+":"")+x.dist.toFixed(2)+'</td><td>'+a.pk.toFixed(2)+' <span class="mu">'+a.pkAgo+' bars</span></td><td>'+a.bo+'</td><td class="'+(a.rtc?"":"mu")+'">'+a.rtc+'</td><td style="text-align:left">'+sb+(NEXT[x.st]?' <span class="mu">→ '+NEXT[x.st]+'</span>':"")+(x.live?' <span class="b up">LIVE</span>':"")+'</td><td class="'+(x.t.ch>=0?"up":"dn")+'">'+(x.t.ch!==undefined?(x.t.ch>=0?"+":"")+x.t.ch.toFixed(2)+"%":"")+'</td><td>'+(x.t.v!==undefined?"$"+(x.t.v>=1e6?(x.t.v/1e6).toFixed(2)+"M":(x.t.v/1e3).toFixed(1)+"K"):"")+'</td><td><a href="#coin/'+x.s+'" class="mu">Open →</a> <a href="https://www.bybit.com/trade/usdt/'+x.s+'" target="_blank" rel="noopener" class="mu">Bybit ↗</a></td></tr>'}).join(""):'<tr><td colspan="12" class="empty">'+(S.scanning?"Scanning… results appear here as coins are checked.":"No retests match these filters right now.")+'</td></tr>')+'</tbody>'}
 // ===== Key Timeframe =====
-const KM=[[1,"1m"],[3,"3m"],[5,"5m"],[15,"15m"],[30,"30m"],[60,"1h"],[120,"2h"],[240,"4h"],[360,"6h"],[720,"12h"]];
-const KL=[1,3,5,15,30,60,120,240,360,720];
-const kname=m=>KM.find(x=>x[0]===m)[1],klab=m=>m>=60?(m/60)+"H":m+"m";
+const KM=[[1,"1m"],[3,"3m"],[5,"5m"],[15,"15m"],[30,"30m"],[60,"1h"],[120,"2h"],[240,"4h"],[360,"6h"],[720,"12h"],[1440,"1d"],[10080,"1w"]];
+const KL=[1,3,5,15,30,60,120,240,360,720,1440,10080];
+const kname=m=>KM.find(x=>x[0]===m)[1],klab=m=>m===10080?"1W":m===1440?"1D":m>=60?(m/60)+"H":m+"m";
 S.kx={};
+function aggK(k,ms){const o=[];let cur=null;k.forEach(x=>{const bk=Math.floor(x[0]/ms)*ms;if(!cur||cur[0]!==bk){cur=[bk,x[1],x[2],x[3],x[4],x[5]];o.push(cur)}else{if(x[2]>cur[2])cur[2]=x[2];if(x[3]<cur[3])cur[3]=x[3];cur[4]=x[4];cur[5]+=x[5]}});return o}
+async function ckl(sym,tf,lim){if(tf==="3h")return aggK(await kl(sym,"1h",Math.min(1000,lim*3),false),108e5);if(tf==="8h")return aggK(await kl(sym,"4h",Math.min(1000,lim*2),false),288e5);return kl(sym,tf,lim,false)}
 function kget(r,m){const n=kname(m);return r.d[n]||(S.kx[r.s]&&S.kx[r.s][n])||null}
 function kval(a){return S.prev?a.live:a.rsi}
 function kstat(x){const a=x.a;
   if(S.prev&&a.rsi<CFG.os1&&a.live>=CFG.os1)return["Claiming "+CFG.os1+" now · LIVE","up"];
   if(a.rsi>=CFG.os1&&a.c30!==null)return["Claimed "+CFG.os1+" · "+(a.c30===0?"this candle":a.c30+" candles ago"),"up"];
   return x.v<CFG.os1?["Below "+CFG.os1+" · waiting","amber"]:["Above "+CFG.os1,"mu"]}
+function keyCalc(get){const bl=m=>{const a=get(m);return !!a&&kval(a)<CFG.os1};
+  const i=KL.findIndex(bl);if(i<0)return null;
+  const chain=[];for(let j=i;j<KL.length&&bl(KL[j]);j++)chain.push(KL[j]);
+  const sum=chain.reduce((p,q)=>p+q,0),n=chain.length,avg=sum/n;
+  let key=KM[0][0],bd=1e9;KM.forEach(x=>{const d=Math.abs(x[0]-avg);if(d<bd){bd=d;key=x[0]}});
+  const a=get(key);if(!a)return null;return{chain,sum,n,avg,key,a,v:kval(a)}}
 function keyRows(rows){const out=[];
-  rows.forEach(r=>{const bl=m=>{const a=kget(r,m);return !!a&&kval(a)<CFG.os1};
-    const i=KL.findIndex(bl);if(i<0)return;
-    const chain=[];for(let j=i;j<KL.length&&bl(KL[j]);j++)chain.push(KL[j]);
-    const sum=chain.reduce((p,q)=>p+q,0),n=chain.length,avg=sum/n;
-    let key=KM[0][0],bd=1e9;KM.forEach(x=>{const d=Math.abs(x[0]-avg);if(d<bd){bd=d;key=x[0]}});
-    const a=kget(r,key);if(!a)return;
-    out.push({s:r.s,t:r.t,chain,sum,n,avg,key,a,v:kval(a)})});
+  rows.forEach(r=>{const c=keyCalc(m=>kget(r,m));if(c)out.push(Object.assign({s:r.s,t:r.t},c))});
   out.sort((p,q)=>((kstat(q)[1]==="up")-(kstat(p)[1]==="up"))||p.v-q.v);return out}
+function kbox(A){const c=keyCalc(m=>A[kname(m)]||null);
+  const rows=KL.map(m=>{const a=A[kname(m)],v=a?kval(a):null,inC=c&&c.chain.includes(m);return'<div class="rrow"><b>'+klab(m)+'</b><span class="mu">'+(a?"RSI "+v.toFixed(1):"no data")+'</span>'+(a&&v<CFG.os1?'<span class="b dn">'+(inC?"below "+CFG.os1+" · in chain":"below "+CFG.os1+" · not in chain")+'</span>':'<span class="b mu">above</span>')+'</div>'}).join("");
+  const sm=c?'<div class="note g">Chain '+c.chain.map(klab).join(" + ")+' → sum '+c.sum+' ÷ '+c.n+' = '+c.avg.toFixed(1)+' min → key timeframe <b>'+klab(c.key)+'</b><br>'+kstat(c)[0]+'<br><button class="tfb" id="gk" data-k="'+kname(c.key)+'" style="margin-top:6px">Open '+klab(c.key)+' chart</button></div>':'<div class="note">No timeframe is below '+CFG.os1+' right now, so there is no key timeframe.</div>';
+  return'<h3>Key timeframe check</h3>'+rows+sm+'<p class="mu" style="font-size:12px">'+(S.prev?"Uses the live candle. ":"Uses closed candles. ")+'On the chart: amber line = first candle below '+CFG.os1+'; red line = lowest RSI of that dip; green circle = candle that claimed '+CFG.os1+' again.</p>'}
 function renderXK(){const xb=$("xb");
-  xb.innerHTML='<label><input type="checkbox" id="kp"'+(S.prev?" checked":"")+'> Live-candle preview</label><button id="ex4" class="tfb">Export CSV</button><span class="mu">Chain starts at the lowest timeframe below 30 and goes up while the next one is also below · 1m, 6H, 12H are loaded for coins that are near oversold</span>';
+  xb.innerHTML='<label><input type="checkbox" id="kp"'+(S.prev?" checked":"")+'> Live-candle preview</label><button id="ex4" class="tfb">Export CSV</button><span class="mu">Chain starts at the lowest timeframe below 30 and goes up (to 1W) while the next one is also below · 1m, 6H, 12H are loaded for coins that are near oversold</span>';
   $("kp").onchange=e=>{S.prev=e.target.checked;renderScanner(true)};
   $("ex4").onclick=()=>exportKey(keyRows(getRows()).filter(x=>!S.filter||x.s.includes(S.filter)))}
 function exportKey(list){const h=["Symbol","Starts at","Chain (min)","Sum (min)","Count","Average (min)","Key TF","RSI on key TF","Live RSI","Status","24h %","24h volume"];
@@ -347,14 +353,14 @@ function renderScanner(keep){
   $("tbl").querySelectorAll("tr.r").forEach(tr=>tr.onclick=()=>{location.hash="#coin/"+tr.dataset.s})}
 // ===== coin page =====
 let CH=null,cTimer=null;
-const CTF=["3m","5m","15m","30m","1h","2h","4h","1d","1w","1M"],PT=["5m","15m","30m","1h","2h","4h","1d"],GT=TFS;
+const CTF=["1m","3m","5m","15m","30m","1h","2h","3h","4h","6h","8h","12h","1d","1w","1M"],PT=["5m","15m","30m","1h","2h","4h","1d"],GT=TFS;
 async function renderCoin(sym){
   if(CH){try{CH.remove()}catch(e){}CH=null}clearInterval(cTimer);
   const tfNow=window._tf||"1h";
   $("page").innerHTML='<div class="chead"><span class="star" id="st">★</span><h2 style="margin:0">'+(BY[sym]?BY[sym][0]:sym.replace("USDT",""))+'<span class="mu" style="font-size:14px"> '+(BY[sym]||SRC==="bybit"?"· Bybit perpetual":"/USDT · Binance spot")+'</span></h2><span class="p" id="pr">–</span><span id="ch24"></span><span class="mu" id="vol"></span></div><div class="coin"><div class="box"><div class="tfbar" id="tfb"></div><div id="cwrap"></div></div><div class="box side" id="sd"><h3>RSI vs its MA</h3><div id="pnl" class="mu">loading…</div></div></div>';
   const star=$("st");const paintStar=()=>star.classList.toggle("on",wl().includes(sym));paintStar();
   star.onclick=()=>{let a=wl();a=a.includes(sym)?a.filter(x=>x!==sym):a.concat(sym);setWl(a);paintStar()};
-  $("tfb").innerHTML=CTF.map(t=>'<button data-t="'+t+'" class="'+(t===tfNow?"on":"")+'">'+t.toUpperCase()+'</button>').join("");
+  $("tfb").innerHTML=CTF.map(t=>'<button data-t="'+t+'" class="'+(t===tfNow?"on":"")+'">'+(/m$/.test(t)?t:t.toUpperCase())+'</button>').join("");
   $("tfb").querySelectorAll("button").forEach(b=>b.onclick=()=>{window._tf=b.dataset.t;renderCoin(sym)});
   const chart=LightweightCharts.createChart($("cwrap"),{layout:{background:{color:cv("--panel")},textColor:cv("--mut")},grid:{vertLines:{color:cv("--line")},horzLines:{color:cv("--line")}},timeScale:{timeVisible:true,borderColor:cv("--line")},rightPriceScale:{borderColor:cv("--line")},autoSize:true});CH=chart;
   const cs=chart.addCandlestickSeries({upColor:"#2ebd85",downColor:"#f6465d",wickUpColor:"#2ebd85",wickDownColor:"#f6465d",borderVisible:false});
@@ -363,26 +369,33 @@ async function renderCoin(sym){
   const ml=chart.addLineSeries({priceScaleId:"rsi",color:"#f0b90b",lineWidth:2,priceLineVisible:false,lastValueVisible:false});
   chart.priceScale("rsi").applyOptions({scaleMargins:{top:0.7,bottom:0.03}});
   [[30,"#2ebd85"],[50,"#8591a0"],[70,"#f6465d"]].forEach(([v,c])=>rl.createPriceLine({price:v,color:c,lineWidth:1,lineStyle:2,axisLabelVisible:false,title:""+v}));
+  const vl=chart.addHistogramSeries({priceScaleId:"vl",color:"rgba(246,70,93,.6)",priceLineVisible:false,lastValueVisible:false});chart.priceScale("vl").applyOptions({scaleMargins:{top:0,bottom:0},visible:false});const vf=chart.addHistogramSeries({priceScaleId:"vl",color:"rgba(240,185,11,.7)",priceLineVisible:false,lastValueVisible:false});
   async function load(first){
     try{
-      const k=await kl(sym,tfNow,500,false);
+      const k=await ckl(sym,tfNow,500);
       if(!first&&CH!==chart)return;
       const cl=k.map(x=>x[4]),r=rsiCalc(cl,RP),m=maCalc(r,CFG.maType,CFG.maLen);
       const lp=cl[cl.length-1],pr=Math.max(2,Math.min(8,4-Math.floor(Math.log10(lp))));cs.applyOptions({priceFormat:{type:"price",precision:pr,minMove:1/Math.pow(10,pr)}});
       cs.setData(k.map(x=>({time:x[0]/1000+OFF,open:x[1],high:x[2],low:x[3],close:x[4]})));
       rl.setData(k.map((x,i)=>r[i]===null?null:{time:x[0]/1000+OFF,value:r[i]}).filter(Boolean));
       ml.setData(k.map((x,i)=>m[i]===null?null:{time:x[0]/1000+OFF,value:m[i]}).filter(Boolean));
+      const ep=[];{let i=0;while(i<r.length){if(r[i]!==null&&r[i]<CFG.os1){let j=i,lo=i;while(j+1<r.length&&r[j+1]!==null&&r[j+1]<CFG.os1){j++;if(r[j]<r[lo])lo=j}ep.push({st:i,lo,end:j});i=j+1}else i++}}
+      const eps=ep.slice(-8),tt=i=>k[i][0]/1000+OFF;
+      vf.setData(eps.map(e=>({time:tt(e.st),value:1})));
+      vl.setData(eps.map(e=>({time:tt(e.lo),value:1})));
+      cs.setMarkers(eps.flatMap(e=>{const m=[{time:tt(e.st),position:"aboveBar",color:"#f0b90b",shape:"arrowDown",text:"first <"+CFG.os1},{time:tt(e.lo),position:"belowBar",color:"#f6465d",shape:"arrowUp",text:"RSI "+r[e.lo].toFixed(1)}];if(e.end+1<k.length)m.push({time:tt(e.end+1),position:"belowBar",color:"#2ebd85",shape:"circle",text:"claimed "+CFG.os1});return m}).sort((a,b)=>a.time-b.time));
       if(first)chart.timeScale().setVisibleLogicalRange({from:k.length-120,to:k.length+5});
       $("pr").textContent=g6(lp);
       const t=await tk(sym);
       $("ch24").innerHTML='<span class="'+(+t.priceChangePercent>=0?"up":"dn")+'">'+(+t.priceChangePercent>=0?"+":"")+(+t.priceChangePercent).toFixed(2)+'% 24h</span>';
       $("vol").textContent="24h volume "+(+t.quoteVolume/1e6).toFixed(1)+"M USDT";
-      const A={};await pool(GT,6,async tf=>{A[tf]=anTf(await kl(sym,tf,300,false))});
+      const A={};await pool(GT.concat(["1m","6h","12h"]),6,async tf=>{A[tf]=anTf(await kl(sym,tf,300,false))});
       if(CH!==chart)return;
       const below=PT.filter(t=>A[t]&&!A[t].above),above=PT.filter(t=>A[t]&&A[t].above);
       const msg=!below.length?"RSI is above its MA on all of "+above.join(", ")+".":!above.length?"RSI is below its MA on all of "+below.join(", ")+". Better to wait for longs until it crosses back above.":"RSI is above its MA on "+above.join(", ")+" and below it on "+below.join(", ")+".";
       $("pnl").className="";
-      $("pnl").innerHTML=PT.map(t=>'<div class="rrow"><b>'+t+'</b><span class="mu">'+(A[t]?"RSI "+A[t].rsi.toFixed(1)+" · MA "+A[t].ma.toFixed(1):"no data")+'</span>'+(A[t]?'<span class="b '+(A[t].above?"up":"dn")+'">'+(A[t].above?"Above":"Below")+'</span>':"")+'</div>').join("")+'<div class="note '+(!below.length?"g":"")+'">'+msg+'</div><h3>RSI by timeframe</h3><div class="grid6">'+GT.map(t=>'<div><small>'+t+'</small><b class="'+rc(A[t]&&A[t].rsi)+'">'+(A[t]?Math.round(A[t].rsi):"–")+'</b></div>').join("")+'</div><p class="mu" style="font-size:12px">MA = '+CFG.maLen+'-period '+CFG.maType+' of RSI14, closed candles. Purple line = RSI14, yellow line = its MA.</p>';
+      $("pnl").innerHTML=PT.map(t=>'<div class="rrow"><b>'+t+'</b><span class="mu">'+(A[t]?"RSI "+A[t].rsi.toFixed(1)+" · MA "+A[t].ma.toFixed(1):"no data")+'</span>'+(A[t]?'<span class="b '+(A[t].above?"up":"dn")+'">'+(A[t].above?"Above":"Below")+'</span>':"")+'</div>').join("")+'<div class="note '+(!below.length?"g":"")+'">'+msg+'</div>'+kbox(A)+'<h3>RSI by timeframe</h3><div class="grid6">'+GT.map(t=>'<div><small>'+t+'</small><b class="'+rc(A[t]&&A[t].rsi)+'">'+(A[t]?Math.round(A[t].rsi):"–")+'</b></div>').join("")+'</div><p class="mu" style="font-size:12px">MA = '+CFG.maLen+'-period '+CFG.maType+' of RSI14, closed candles. Purple line = RSI14, yellow line = its MA.</p>';
+      const gk=$("gk");if(gk)gk.onclick=()=>{window._tf=gk.dataset.k;renderCoin(sym)};
     }catch(e){if($("pr"))$("pr").textContent="no data for "+sym}
   }
   await load(true);cTimer=setInterval(()=>load(false),20000)}
