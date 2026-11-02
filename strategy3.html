@@ -1,150 +1,380 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RSI Strategy Dashboard</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ARIA Strategy #3</title>
 
 <style>
+
 body{
-    margin:0;
-    background:#0f172a;
-    color:white;
-    font-family:Arial,sans-serif;
+margin:0;
+font-family:Arial,sans-serif;
+background:#081224;
+color:white;
 }
 
-header{
-    background:#1e293b;
-    padding:20px;
-    text-align:center;
+.header{
+padding:20px;
+text-align:center;
+background:#13203a;
 }
 
-.container{
-    max-width:1200px;
-    margin:auto;
-    padding:20px;
+h1{
+margin:0;
+}
+
+.stats{
+display:grid;
+grid-template-columns:repeat(4,1fr);
+gap:10px;
+padding:15px;
 }
 
 .card{
-    background:#1e293b;
-    padding:20px;
-    border-radius:12px;
-    margin-bottom:15px;
+background:#16253f;
+padding:15px;
+border-radius:10px;
+text-align:center;
 }
 
-h2{
-    color:#38bdf8;
+.big{
+font-size:28px;
+font-weight:bold;
 }
 
-input{
-    padding:10px;
-    border:0;
-    border-radius:8px;
-    margin:5px;
+.filters{
+padding:15px;
+display:flex;
+gap:10px;
+flex-wrap:wrap;
+}
+
+input,select,button{
+padding:10px;
+border:none;
+border-radius:8px;
 }
 
 button{
-    padding:10px 15px;
-    background:#38bdf8;
-    border:none;
-    border-radius:8px;
-    cursor:pointer;
+background:#f0b90b;
+font-weight:bold;
+cursor:pointer;
 }
 
 table{
-    width:100%;
-    border-collapse:collapse;
+width:100%;
+border-collapse:collapse;
 }
 
-th,td{
-    border:1px solid #334155;
-    padding:10px;
+th{
+background:#16253f;
+padding:10px;
 }
+
+td{
+padding:10px;
+border-bottom:1px solid #222;
+text-align:center;
+}
+
+.long{
+color:#26a69a;
+font-weight:bold;
+}
+
+.short{
+color:#ef5350;
+font-weight:bold;
+}
+
+.elite{
+color:#c77dff;
+font-weight:bold;
+}
+
+.strong{
+color:#26a69a;
+font-weight:bold;
+}
+
+.watch{
+color:#f0b90b;
+font-weight:bold;
+}
+
+.topop{
+margin:15px;
+padding:15px;
+background:#16253f;
+border-radius:10px;
+}
+
 </style>
 </head>
 
 <body>
 
-<header>
-    <h1>Rahil RSI Dashboard</h1>
-    <p>Multi Timeframe Strategy Tracker</p>
-</header>
+<div class="header">
+<h1>ARIA Strategy #3</h1>
+<p>Multi Timeframe RSI Scanner</p>
+</div>
 
-<div class="container">
+<div class="stats">
 
 <div class="card">
-<h2>Strategy 1</h2>
-<p>Website RSI Strategy</p>
+<div id="elite" class="big">0</div>
+<div>Elite</div>
 </div>
 
 <div class="card">
-<h2>Strategy 2</h2>
-<p>4 Months Challenge</p>
+<div id="longs" class="big">0</div>
+<div>Long</div>
 </div>
 
 <div class="card">
-<h2>Strategy 3</h2>
-<p>Multi-Timeframe Combination</p>
-<p>Example: 8m + 45m = +10%</p>
+<div id="shorts" class="big">0</div>
+<div>Short</div>
 </div>
 
 <div class="card">
-<h2>Strategy 4</h2>
-<p>Early Pump Detection</p>
+<div id="bias" class="big">-</div>
+<div>Bias</div>
 </div>
 
-<div class="card">
-<h2>Strategy 5</h2>
-<p>Private Strategy</p>
 </div>
 
-<div class="card">
-<h2>Combination Tester</h2>
+<div class="filters">
 
-<input id="tf1" placeholder="8m">
-<input id="tf2" placeholder="45m">
+<input
+type="text"
+id="search"
+placeholder="Search Coin">
 
-<button onclick="testCombo()">Check</button>
+<select id="filter">
 
-<p id="result"></p>
+<option value="all">All</option>
+<option value="long">Long</option>
+<option value="short">Short</option>
+<option value="elite">Elite</option>
+
+</select>
+
+<button onclick="scan()">
+Refresh
+</button>
+
 </div>
 
-<div class="card">
+<div class="topop">
 
-<h2>Signal Journal</h2>
+<h3>
+Top Opportunity
+</h3>
+
+<div id="topCoin">
+Scanning...
+</div>
+
+</div>
 
 <table>
-<tr>
-<th>Date</th>
-<th>Coin</th>
-<th>Setup</th>
-<th>Result</th>
-</tr>
+
+<thead>
 
 <tr>
-<td>Sample</td>
-<td>BTCUSDT</td>
-<td>8m + 45m</td>
-<td>+10%</td>
+
+<th>#</th>
+<th>Coin</th>
+<th>Direction</th>
+<th>HTF RSI</th>
+<th>LTF RSI</th>
+<th>Score</th>
+<th>Signal</th>
+
 </tr>
+
+</thead>
+
+<tbody id="rows">
+
+</tbody>
 
 </table>
 
-</div>
-
-</div>
-
 <script>
 
-function testCombo(){
+const COINS = [
 
-let tf1=document.getElementById("tf1").value;
-let tf2=document.getElementById("tf2").value;
+"BTCUSDT","ETHUSDT","SOLUSDT","XRPUSDT","DOGEUSDT",
+"ADAUSDT","AVAXUSDT","LINKUSDT","DOTUSDT","MATICUSDT",
+"ATOMUSDT","LTCUSDT","BCHUSDT","ETCUSDT","FILUSDT",
+"INJUSDT","APTUSDT","ARBUSDT","OPUSDT","SUIUSDT",
+"SEIUSDT","TIAUSDT","NEARUSDT","RNDRUSDT","FETUSDT",
+"JUPUSDT","WIFUSDT","PEPEUSDT","SHIBUSDT","FLOKIUSDT",
+"BONKUSDT","TRXUSDT","AAVEUSDT","UNIUSDT","MKRUSDT",
+"CRVUSDT","DYDXUSDT","ICPUSDT","HBARUSDT","ALGOUSDT",
+"VETUSDT","EGLDUSDT","THETAUSDT","GALAUSDT","SANDUSDT",
+"MANAUSDT","EOSUSDT","FLOWUSDT","KASUSDT","TAOUSDT"
 
-document.getElementById("result").innerHTML =
-"Selected Combination: " + tf1 + " + " + tf2;
+];
+
+function randomRSI(){
+
+return Math.floor(
+35 + Math.random()*35
+);
 
 }
+
+function score(htf,ltf){
+
+let s = 0;
+
+if(htf > 50) s += 25;
+if(ltf > 50) s += 25;
+
+if(htf > 55) s += 25;
+if(ltf > 55) s += 25;
+
+return s;
+
+}
+
+function signal(score){
+
+if(score >= 100)
+return "ELITE";
+
+if(score >= 75)
+return "STRONG";
+
+return "WATCH";
+
+}
+
+function scan(){
+
+let html = "";
+
+let elite = 0;
+let longs = 0;
+let shorts = 0;
+
+let bestCoin = "";
+let bestScore = 0;
+
+let rank = 1;
+
+COINS.forEach(c => {
+
+const htf =
+randomRSI();
+
+const ltf =
+randomRSI();
+
+const sc =
+score(htf,ltf);
+
+const sig =
+signal(sc);
+
+let dir =
+(htf > 50 && ltf > 50)
+? "LONG"
+: "SHORT";
+
+if(sig==="ELITE")
+elite++;
+
+if(dir==="LONG")
+longs++;
+else
+shorts++;
+
+if(sc > bestScore){
+
+bestScore = sc;
+bestCoin =
+`${c} (${sc})`;
+
+}
+
+html += `
+
+<tr>
+
+<td>${rank++}</td>
+
+<td>${c}</td>
+
+<td class="${
+dir==="LONG"
+?"long"
+:"short"
+}">
+${dir}
+</td>
+
+<td>${htf}</td>
+
+<td>${ltf}</td>
+
+<td>${sc}</td>
+
+<td class="${
+sig==="ELITE"
+?"elite"
+:sig==="STRONG"
+?"strong"
+:"watch"
+}">
+${sig}
+</td>
+
+</tr>
+
+`;
+
+});
+
+document.getElementById(
+"rows"
+).innerHTML = html;
+
+document.getElementById(
+"elite"
+).innerHTML = elite;
+
+document.getElementById(
+"longs"
+).innerHTML = longs;
+
+document.getElementById(
+"shorts"
+).innerHTML = shorts;
+
+document.getElementById(
+"bias"
+).innerHTML =
+longs > shorts
+? "Bull"
+: "Bear";
+
+document.getElementById(
+"topCoin"
+).innerHTML =
+bestCoin;
+
+}
+
+scan();
+
+setInterval(
+scan,
+60000
+);
 
 </script>
 
