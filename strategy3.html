@@ -1,321 +1,132 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>ARIA Strategy #3 Scanner</title>
-
-<style>
-
-:root{
- --bg:#0e1116;
- --panel:#161b22;
- --line:#26303a;
- --fg:#e6edf3;
- --mut:#8b96a3;
- --green:#26a69a;
- --red:#ef5350;
- --yellow:#f0b90b;
- --purple:#b26bff;
-}
-
-*{
- box-sizing:border-box;
-}
-
-body{
- margin:0;
- background:var(--bg);
- color:var(--fg);
- font-family:system-ui;
-}
-
-header{
- padding:14px;
- border-bottom:1px solid var(--line);
-}
-
-h1{
- margin:0;
- font-size:18px;
-}
-
-.sub{
- color:var(--mut);
- font-size:13px;
- margin-top:4px;
-}
-
-.stats{
- display:grid;
- grid-template-columns:repeat(auto-fit,minmax(120px,1fr));
- gap:10px;
- padding:14px;
-}
-
-.card{
- background:var(--panel);
- border:1px solid var(--line);
- border-radius:10px;
- padding:12px;
-}
-
-.big{
- font-size:26px;
- font-weight:bold;
-}
-
-.label{
- color:var(--mut);
- font-size:12px;
-}
-
-.table-wrap{
- overflow:auto;
- margin:14px;
- border:1px solid var(--line);
- border-radius:10px;
-}
-
-table{
- width:100%;
- border-collapse:collapse;
-}
-
-th{
- background:#1b222c;
- padding:10px;
- text-align:left;
- font-size:12px;
-}
-
-td{
- padding:10px;
- border-top:1px solid var(--line);
-}
-
-.elite{
- color:var(--purple);
- font-weight:bold;
-}
-
-.strong{
- color:var(--green);
- font-weight:bold;
-}
-
-.watch{
- color:var(--yellow);
- font-weight:bold;
-}
-
-.bad{
- color:var(--red);
-}
-
-.good{
- color:var(--green);
-}
-
-button{
- background:#232b36;
- color:white;
- border:1px solid var(--line);
- padding:8px 14px;
- border-radius:6px;
- cursor:pointer;
- margin:14px;
-}
-
-</style>
-</head>
-
-<body>
-
-<header>
-<h1>ARIA Strategy #3 Scanner</h1>
-<div class="sub">
-Higher TF Direction + Lower TF Trigger
-</div>
-</header>
-
-<div class="stats">
-
-<div class="card">
-<div class="big" id="eliteCount">0</div>
-<div class="label">Elite Signals</div>
-</div>
-
-<div class="card">
-<div class="big" id="strongCount">0</div>
-<div class="label">Strong Signals</div>
-</div>
-
-<div class="card">
-<div class="big" id="watchCount">0</div>
-<div class="label">Watchlist</div>
-</div>
-
-</div>
-
-<button onclick="scan()">
-Refresh Scanner
-</button>
-
-<div class="table-wrap">
-
-<table>
-
-<thead>
-<tr>
-<th>Coin</th>
-<th>Combo</th>
-<th>HTF RSI</th>
-<th>LTF RSI</th>
-<th>Confidence</th>
-<th>Signal</th>
-</tr>
-</thead>
-
-<tbody id="rows"></tbody>
-
-</table>
-
-</div>
-
 <script>
 
-const combinations = [
+async function getBybitKlines(symbol, interval){
 
- {
-   name:"8m + 45m",
-   htf:"45m",
-   ltf:"8m"
- },
+    const url =
+    `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${interval}&limit=100`;
 
- {
-   name:"15m + 1H",
-   htf:"1H",
-   ltf:"15m"
- },
+    const response = await fetch(url);
 
- {
-   name:"15m + 4H",
-   htf:"4H",
-   ltf:"15m"
- }
+    const json = await response.json();
 
-];
-
-const coins = [
-
-"BTCUSDT",
-"ETHUSDT",
-"SOLUSDT",
-"DOGEUSDT",
-"XRPUSDT",
-"ADAUSDT",
-"LINKUSDT",
-"AVAXUSDT"
-
-];
-
-function randomRsi(){
-
- return +(30 + Math.random()*45).toFixed(2);
+    return json.result.list
+        .reverse()
+        .map(c => parseFloat(c[4]));
 
 }
 
-function confidence(htf,ltf){
+function calculateRSI(closes, period = 14){
 
- let score=0;
+    let gains = 0;
+    let losses = 0;
 
- if(htf > 50) score += 25;
- if(ltf > 50) score += 25;
+    for(let i = 1; i <= period; i++){
 
- if(htf > 55) score += 15;
- if(ltf > 55) score += 15;
+        const diff = closes[i] - closes[i - 1];
 
- if(htf > 60) score += 10;
- if(ltf > 60) score += 10;
+        if(diff > 0)
+            gains += diff;
+        else
+            losses -= diff;
+    }
 
- return Math.min(score,100);
+    let avgGain = gains / period;
+    let avgLoss = losses / period;
+
+    for(let i = period + 1; i < closes.length; i++){
+
+        const diff = closes[i] - closes[i - 1];
+
+        const gain = diff > 0 ? diff : 0;
+        const loss = diff < 0 ? -diff : 0;
+
+        avgGain = ((avgGain * (period - 1)) + gain) / period;
+        avgLoss = ((avgLoss * (period - 1)) + loss) / period;
+    }
+
+    if(avgLoss === 0)
+        return 100;
+
+    const rs = avgGain / avgLoss;
+
+    return 100 - (100 / (1 + rs));
+
 }
 
-function rating(score){
+async function getRSI(symbol, interval){
 
- if(score >= 85) return "ELITE";
+    const closes =
+        await getBybitKlines(
+            symbol,
+            interval
+        );
 
- if(score >= 70) return "STRONG";
+    return calculateRSI(closes);
 
- if(score >= 50) return "WATCH";
-
- return "IGNORE";
 }
 
-function scan(){
+async function strategy3(symbol){
 
- let html="";
+    const rsi15 =
+        await getRSI(symbol,"15");
 
- let elite=0;
- let strong=0;
- let watch=0;
+    const rsi60 =
+        await getRSI(symbol,"60");
 
- coins.forEach(symbol=>{
+    const rsi240 =
+        await getRSI(symbol,"240");
 
-   combinations.forEach(combo=>{
+    let signal = "NONE";
 
-      const htf=randomRsi();
-      const ltf=randomRsi();
+    if(
+        rsi15 > 50 &&
+        rsi60 > 50 &&
+        rsi240 > 50
+    ){
+        signal = "ELITE";
+    }
+    else if(
+        rsi15 > 50 &&
+        rsi60 > 50
+    ){
+        signal = "STRONG";
+    }
+    else if(
+        rsi15 > 50
+    ){
+        signal = "WATCH";
+    }
 
-      const score=confidence(htf,ltf);
-
-      const sig=rating(score);
-
-      if(sig==="IGNORE") return;
-
-      if(sig==="ELITE") elite++;
-      if(sig==="STRONG") strong++;
-      if(sig==="WATCH") watch++;
-
-      const cls=
-        sig==="ELITE"
-        ? "elite"
-        : sig==="STRONG"
-        ? "strong"
-        : "watch";
-
-      html += `
-      <tr>
-        <td>${symbol}</td>
-        <td>${combo.name}</td>
-        <td class="${htf>50?'good':'bad'}">
-           ${htf}
-        </td>
-        <td class="${ltf>50?'good':'bad'}">
-           ${ltf}
-        </td>
-        <td>${score}%</td>
-        <td class="${cls}">
-           ${sig}
-        </td>
-      </tr>
-      `;
-
-   });
-
- });
-
- document.getElementById("rows").innerHTML = html;
-
- document.getElementById("eliteCount").textContent = elite;
- document.getElementById("strongCount").textContent = strong;
- document.getElementById("watchCount").textContent = watch;
+    return {
+        symbol,
+        rsi15: rsi15.toFixed(2),
+        rsi60: rsi60.toFixed(2),
+        rsi240: rsi240.toFixed(2),
+        signal
+    };
 }
 
-scan();
+async function runScanner(){
+
+    const coins = [
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "DOGEUSDT",
+        "XRPUSDT"
+    ];
+
+    for(const coin of coins){
+
+        const result =
+            await strategy3(coin);
+
+        console.log(result);
+
+    }
+
+}
+
+runScanner();
 
 </script>
-
-</body>
-</html>
