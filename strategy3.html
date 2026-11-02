@@ -1,132 +1,447 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<title>ARIA Strategy #3 Live Scanner</title>
+
+<style>
+
+body{
+margin:0;
+background:#0e1116;
+color:white;
+font-family:Arial,sans-serif;
+}
+
+header{
+padding:15px;
+border-bottom:1px solid #222;
+}
+
+h1{
+margin:0;
+}
+
+.sub{
+color:#888;
+margin-top:5px;
+}
+
+.stats{
+display:grid;
+grid-template-columns:repeat(3,1fr);
+gap:10px;
+padding:15px;
+}
+
+.card{
+background:#161b22;
+padding:15px;
+border-radius:10px;
+text-align:center;
+}
+
+.big{
+font-size:30px;
+font-weight:bold;
+}
+
+button{
+margin:15px;
+padding:10px 20px;
+border:none;
+border-radius:8px;
+background:#f0b90b;
+color:black;
+font-weight:bold;
+cursor:pointer;
+}
+
+table{
+width:100%;
+border-collapse:collapse;
+}
+
+th{
+background:#161b22;
+padding:10px;
+}
+
+td{
+padding:10px;
+border-top:1px solid #222;
+text-align:center;
+}
+
+.green{
+color:#26a69a;
+}
+
+.red{
+color:#ef5350;
+}
+
+.elite{
+color:#c77dff;
+font-weight:bold;
+}
+
+.strong{
+color:#26a69a;
+font-weight:bold;
+}
+
+.watch{
+color:#f0b90b;
+font-weight:bold;
+}
+
+.loading{
+padding:20px;
+text-align:center;
+}
+
+</style>
+</head>
+
+<body>
+
+<header>
+<h1>ARIA Strategy #3</h1>
+<div class="sub">
+Bybit Live RSI Scanner
+</div>
+</header>
+
+<div class="stats">
+
+<div class="card">
+<div class="big" id="eliteCount">0</div>
+<div>Elite</div>
+</div>
+
+<div class="card">
+<div class="big" id="strongCount">0</div>
+<div>Strong</div>
+</div>
+
+<div class="card">
+<div class="big" id="watchCount">0</div>
+<div>Watch</div>
+</div>
+
+</div>
+
+<button onclick="scan()">
+Refresh Scanner
+</button>
+
+<div id="status" class="loading">
+Loading...
+</div>
+
+<table>
+
+<thead>
+<tr>
+<th>Coin</th>
+<th>Combo</th>
+<th>HTF RSI</th>
+<th>LTF RSI</th>
+<th>Score</th>
+<th>Signal</th>
+</tr>
+</thead>
+
+<tbody id="rows">
+</tbody>
+
+</table>
+
 <script>
 
-async function getBybitKlines(symbol, interval){
+const COINS = [
+"BTCUSDT",
+"ETHUSDT",
+"SOLUSDT",
+"XRPUSDT",
+"DOGEUSDT",
+"AVAXUSDT",
+"ADAUSDT",
+"LINKUSDT"
+];
 
-    const url =
-    `https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${interval}&limit=100`;
+const COMBOS = [
 
-    const response = await fetch(url);
+{
+name:"5m + 1H",
+ltf:"5",
+htf:"60"
+},
 
-    const json = await response.json();
+{
+name:"15m + 1H",
+ltf:"15",
+htf:"60"
+},
 
-    return json.result.list
-        .reverse()
-        .map(c => parseFloat(c[4]));
+{
+name:"15m + 4H",
+ltf:"15",
+htf:"240"
+}
+
+];
+
+async function getKlines(symbol, interval){
+
+const url =
+`https://api.bybit.com/v5/market/kline?category=linear&symbol=${symbol}&interval=${interval}&limit=100`;
+
+const res = await fetch(url);
+
+const data = await res.json();
+
+const closes =
+data.result.list
+.reverse()
+.map(c => parseFloat(c[4]));
+
+return closes;
 
 }
 
-function calculateRSI(closes, period = 14){
+function rsi(closes, period=14){
 
-    let gains = 0;
-    let losses = 0;
+let gains=0;
+let losses=0;
 
-    for(let i = 1; i <= period; i++){
+for(let i=1;i<=period;i++){
 
-        const diff = closes[i] - closes[i - 1];
+const diff =
+closes[i]-closes[i-1];
 
-        if(diff > 0)
-            gains += diff;
-        else
-            losses -= diff;
-    }
-
-    let avgGain = gains / period;
-    let avgLoss = losses / period;
-
-    for(let i = period + 1; i < closes.length; i++){
-
-        const diff = closes[i] - closes[i - 1];
-
-        const gain = diff > 0 ? diff : 0;
-        const loss = diff < 0 ? -diff : 0;
-
-        avgGain = ((avgGain * (period - 1)) + gain) / period;
-        avgLoss = ((avgLoss * (period - 1)) + loss) / period;
-    }
-
-    if(avgLoss === 0)
-        return 100;
-
-    const rs = avgGain / avgLoss;
-
-    return 100 - (100 / (1 + rs));
+if(diff>0)
+gains += diff;
+else
+losses -= diff;
 
 }
 
-async function getRSI(symbol, interval){
+let avgGain =
+gains/period;
 
-    const closes =
-        await getBybitKlines(
-            symbol,
-            interval
-        );
+let avgLoss =
+losses/period;
 
-    return calculateRSI(closes);
+for(let i=period+1;i<closes.length;i++){
 
-}
+const diff =
+closes[i]-closes[i-1];
 
-async function strategy3(symbol){
+const gain =
+diff>0 ? diff : 0;
 
-    const rsi15 =
-        await getRSI(symbol,"15");
+const loss =
+diff<0 ? -diff : 0;
 
-    const rsi60 =
-        await getRSI(symbol,"60");
+avgGain =
+((avgGain*(period-1))+gain)/period;
 
-    const rsi240 =
-        await getRSI(symbol,"240");
-
-    let signal = "NONE";
-
-    if(
-        rsi15 > 50 &&
-        rsi60 > 50 &&
-        rsi240 > 50
-    ){
-        signal = "ELITE";
-    }
-    else if(
-        rsi15 > 50 &&
-        rsi60 > 50
-    ){
-        signal = "STRONG";
-    }
-    else if(
-        rsi15 > 50
-    ){
-        signal = "WATCH";
-    }
-
-    return {
-        symbol,
-        rsi15: rsi15.toFixed(2),
-        rsi60: rsi60.toFixed(2),
-        rsi240: rsi240.toFixed(2),
-        signal
-    };
-}
-
-async function runScanner(){
-
-    const coins = [
-        "BTCUSDT",
-        "ETHUSDT",
-        "SOLUSDT",
-        "DOGEUSDT",
-        "XRPUSDT"
-    ];
-
-    for(const coin of coins){
-
-        const result =
-            await strategy3(coin);
-
-        console.log(result);
-
-    }
+avgLoss =
+((avgLoss*(period-1))+loss)/period;
 
 }
 
-runScanner();
+if(avgLoss===0)
+return 100;
+
+const rs =
+avgGain/avgLoss;
+
+return +(100-(100/(1+rs))).toFixed(2);
+
+}
+
+async function getRSI(symbol, tf){
+
+const closes =
+await getKlines(symbol,tf);
+
+const current =
+rsi(closes);
+
+const previous =
+rsi(
+closes.slice(
+0,
+closes.length-1
+)
+);
+
+return{
+rsi:current,
+rising:current>previous
+};
+
+}
+
+function confidence(htf,ltf){
+
+let score=0;
+
+if(htf.rsi>50)
+score += 25;
+
+if(ltf.rsi>50)
+score += 25;
+
+if(htf.rising)
+score += 25;
+
+if(ltf.rising)
+score += 25;
+
+return score;
+
+}
+
+function rating(score){
+
+if(score>=100)
+return "ELITE";
+
+if(score>=75)
+return "STRONG";
+
+if(score>=50)
+return "WATCH";
+
+return "IGNORE";
+
+}
+
+async function scan(){
+
+document.getElementById("status").innerHTML =
+"Scanning Bybit...";
+
+let elite=0;
+let strong=0;
+let watch=0;
+
+let html="";
+
+for(const coin of COINS){
+
+for(const combo of COMBOS){
+
+try{
+
+const htf =
+await getRSI(
+coin,
+combo.htf
+);
+
+const ltf =
+await getRSI(
+coin,
+combo.ltf
+);
+
+const score =
+confidence(
+htf,
+ltf
+);
+
+const signal =
+rating(score);
+
+if(signal==="IGNORE")
+continue;
+
+if(signal==="ELITE")
+elite++;
+
+if(signal==="STRONG")
+strong++;
+
+if(signal==="WATCH")
+watch++;
+
+const signalClass =
+signal==="ELITE"
+?"elite"
+:signal==="STRONG"
+?"strong"
+:"watch";
+
+html += `
+<tr>
+
+<td>${coin}</td>
+
+<td>${combo.name}</td>
+
+<td class="${htf.rsi>50?'green':'red'}">
+${htf.rsi}
+${htf.rising?'↑':'↓'}
+</td>
+
+<td class="${ltf.rsi>50?'green':'red'}">
+${ltf.rsi}
+${ltf.rising?'↑':'↓'}
+</td>
+
+<td>${score}%</td>
+
+<td class="${signalClass}">
+${signal}
+</td>
+
+</tr>
+`;
+
+}
+catch(e){
+
+console.log(e);
+
+}
+
+}
+
+}
+
+document.getElementById("rows").innerHTML =
+html;
+
+document.getElementById("eliteCount").innerHTML =
+elite;
+
+document.getElementById("strongCount").innerHTML =
+strong;
+
+document.getElementById("watchCount").innerHTML =
+watch;
+
+document.getElementById("status").innerHTML =
+"Live Bybit Scan Complete";
+
+}
+
+scan();
+
+setInterval(
+scan,
+60000
+);
 
 </script>
+
+</body>
+</html>
