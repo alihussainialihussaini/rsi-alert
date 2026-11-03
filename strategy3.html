@@ -543,7 +543,7 @@ function render(){
       <td class="num mono">${best.htfS?best.htfS.rsiNow.toFixed(1):"—"}</td>
       <td>${best.htfS?(best.htfS.rising>0?"rising":"falling"):"—"}</td>
       <td class="num mono">${best.ltfS?best.ltfS.rsiNow.toFixed(1):"—"}</td>
-      <td>${best.ltfS&&best.ltfS.hadPullback?"pullback+turn":"—"}</td>
+      <td>${best.ltfS?`<span class="flag ${best.ltfS.hadPullback?'ok':''}">Pullback</span><span class="flag ${best.ltfS.turningUp?'ok':''}">Turn</span><span class="flag ${best.ltfS.momentumCandle?'ok':''}">Momentum</span><span class="flag ${best.ltfS.reclaim?'ok':''}">Reclaim</span>`:"—"}</td>
       <td>${flags}</td>
       <td><span class="tier ${best.tier}">${best.tier}</span></td>
       <td class="${best.dir==='LONG'?'up':'down'}">${best.dir}</td>
