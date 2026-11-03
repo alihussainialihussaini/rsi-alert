@@ -34,7 +34,7 @@ th{color:var(--mut);font-weight:600;font-size:12px}
 td.num,th.num{text-align:right}
 .mono{font-variant-numeric:tabular-nums}
 .sym{font-weight:700}
-.up{color:var(--up)}.down{color:var(--dn)}
+.up{color:var(--up)}.down{color:var(--dn)}.acc{color:var(--acc)}
 tr:hover td{background:#141a21}
 .tag{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;margin:1px 2px 1px 0;border:1px solid var(--line)}
 .tier{font-weight:700;padding:2px 9px;border-radius:5px;font-size:12px}
@@ -53,6 +53,13 @@ tr:hover td{background:#141a21}
 .bd th,.bd td{padding:5px 9px;border:1px solid var(--line);white-space:nowrap}
 .bd th{color:var(--mut);font-weight:600;text-align:left}
 #empty{padding:30px 14px;color:var(--mut);text-align:center}
+#dash{padding:14px}
+#dash h2{font-size:14px;margin:0 0 10px}
+.cards{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;text-align:center}
+.card .big{font-size:26px;font-weight:700}
+.card .lbl{font-size:12px;color:var(--mut);margin-top:2px}
+@media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}}
 #journal{padding:14px}
 #journal h2{font-size:14px;margin:0 0 8px}
 .jbar{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
@@ -137,6 +144,17 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
 <div id="empty">Not scanning yet. Press Start.</div>
 </div>
 
+<div id="dash">
+  <h2>Performance</h2>
+  <div class="cards">
+    <div class="card"><div class="big" id="dashTotal">0</div><div class="lbl">Total signals</div></div>
+    <div class="card"><div class="big up" id="dashWins">0</div><div class="lbl">Target hit</div></div>
+    <div class="card"><div class="big down" id="dashLosses">0</div><div class="lbl">SL hit</div></div>
+    <div class="card"><div class="big" id="dashTimeouts">0</div><div class="lbl">Timeout</div></div>
+    <div class="card"><div class="big acc" id="dashWinRate">—</div><div class="lbl">Win rate</div></div>
+  </div>
+</div>
+
 <div id="journal">
   <h2>Signal journal</h2>
   <div class="jbar">
@@ -156,7 +174,7 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
 </div>
 
 <footer>
-Methodology: higher timeframe RSI sets direction (bullish = RSI&gt;50 and rising), lower timeframe RSI sets entry timing (pullback, turn up, momentum candle, resistance reclaim). On conflict the higher timeframe wins — a lower-timeframe trigger against the higher-timeframe bias is tagged "Conflict" and logged nowhere. Confluence badges: Vol = current volume above its rolling average, Struct = higher-timeframe swing structure (HH/HL or LH/LL) — green only when it matches the trade's own direction, red when it opposes it, plain when Mixed. Sweep = a wick through the recent swing extreme that closed back inside it. Elite requires all three plus a clearly-rising HTF RSI; Strong requires the HTF/LTF alignment alone; Medium requires HTF above 50 but not clearly rising; Weak/Conflict are not logged. Timeframes not native to Bybit (8m, 45m) are built by resampling 1-minute candles — these need a short warm-up window after Start before RSI stabilizes. Data: Bybit public v5 market API, no key required. This is a pattern-matching research tool against public price data only — it has no way to detect, and makes no claim about, a move that is being organized rather than discovered.
+Methodology: higher timeframe RSI sets direction (bullish = RSI&gt;50 and rising), lower timeframe RSI sets entry timing (pullback, turn up, momentum candle, resistance reclaim). On conflict the higher timeframe wins — a lower-timeframe trigger against the higher-timeframe bias is tagged "Conflict" and logged nowhere. Confluence badges: Vol = current volume above its rolling average, Struct = higher-timeframe swing structure (HH/HL or LH/LL), Sweep = a wick through the recent swing extreme that closed back inside it. Elite requires all three plus a clearly-rising HTF RSI; Strong requires the HTF/LTF alignment alone; Medium requires HTF above 50 but not clearly rising; Weak/Conflict are not logged. Timeframes not native to Bybit (8m, 45m) are built by resampling 1-minute candles — these need a short warm-up window after Start before RSI stabilizes. Data: Bybit public v5 market API, no key required. This is a pattern-matching research tool against public price data only — it has no way to detect, and makes no claim about, a move that is being organized rather than discovered.
 </footer>
 
 <script>
@@ -540,7 +558,11 @@ function render(){
   const timeouts=JOURNAL.filter(j=>j.result==="TIMEOUT").length;
   const decided=wins+losses;
   $("ovWins").textContent=wins;$("ovLosses").textContent=losses;$("ovTimeouts").textContent=timeouts;
-  $("ovWinRate").textContent=decided>0?Math.round(wins/decided*100)+"%":"—";
+  const winRateStr=decided>0?Math.round(wins/decided*100)+"%":"—";
+  $("ovWinRate").textContent=winRateStr;
+  $("dashTotal").textContent=JOURNAL.length;
+  $("dashWins").textContent=wins;$("dashLosses").textContent=losses;$("dashTimeouts").textContent=timeouts;
+  $("dashWinRate").textContent=winRateStr;
   $("ovReq").textContent=api.req;$("ovFail").textContent=api.fail;
   $("ovLast").textContent="last tick: "+new Date().toLocaleTimeString();
 
