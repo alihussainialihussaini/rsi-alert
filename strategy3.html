@@ -108,7 +108,7 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
     <select id="pollSec"><option value="20" selected>20s</option><option value="30">30s</option><option value="60">60s</option><option value="120">2m</option></select>
   </div>
   <button id="startBtn">Start</button>
-  <label class="chk"><input type="checkbox" id="sound"> Sound on new Strong/Elite</label>
+  <label class="chk"><input type="checkbox" id="sound" checked> Sound + notification on new Strong/Elite</label>
 </div>
 
 <div id="ov">
@@ -116,6 +116,10 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
   <span><b id="ovStrong">0</b>strong</span>
   <span><b id="ovMedium">0</b>medium</span>
   <span><b id="ovTracked">0</b>tracked</span>
+  <span><b class="up" id="ovWins">0</b>wins</span>
+  <span><b class="down" id="ovLosses">0</b>losses</span>
+  <span><b id="ovTimeouts">0</b>timeout</span>
+  <span><b class="acc" id="ovWinRate">—</b>win rate</span>
   <span><b id="ovReq">0</b>requests</span>
   <span><b id="ovFail">0</b>failed</span>
   <span id="ovLast">last tick: —</span>
@@ -152,7 +156,7 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
 </div>
 
 <footer>
-Methodology: higher timeframe RSI sets direction (bullish = RSI&gt;50 and rising), lower timeframe RSI sets entry timing (pullback, turn up, momentum candle, resistance reclaim). On conflict the higher timeframe wins — a lower-timeframe trigger against the higher-timeframe bias is tagged "Conflict" and logged nowhere. Confluence badges: Vol = current volume above its rolling average, Struct = higher-timeframe swing structure (HH/HL or LH/LL), Sweep = a wick through the recent swing extreme that closed back inside it. Elite requires all three plus a clearly-rising HTF RSI; Strong requires the HTF/LTF alignment alone; Medium requires HTF above 50 but not clearly rising; Weak/Conflict are not logged. Timeframes not native to Bybit (8m, 45m) are built by resampling 1-minute candles — these need a short warm-up window after Start before RSI stabilizes. Data: Bybit public v5 market API, no key required. This is a pattern-matching research tool against public price data only — it has no way to detect, and makes no claim about, a move that is being organized rather than discovered.
+Methodology: higher timeframe RSI sets direction (bullish = RSI&gt;50 and rising), lower timeframe RSI sets entry timing (pullback, turn up, momentum candle, resistance reclaim). On conflict the higher timeframe wins — a lower-timeframe trigger against the higher-timeframe bias is tagged "Conflict" and logged nowhere. Confluence badges: Vol = current volume above its rolling average, Struct = higher-timeframe swing structure (HH/HL or LH/LL) — green only when it matches the trade's own direction, red when it opposes it, plain when Mixed. Sweep = a wick through the recent swing extreme that closed back inside it. Elite requires all three plus a clearly-rising HTF RSI; Strong requires the HTF/LTF alignment alone; Medium requires HTF above 50 but not clearly rising; Weak/Conflict are not logged. Timeframes not native to Bybit (8m, 45m) are built by resampling 1-minute candles — these need a short warm-up window after Start before RSI stabilizes. Data: Bybit public v5 market API, no key required. This is a pattern-matching research tool against public price data only — it has no way to detect, and makes no claim about, a move that is being organized rather than discovered.
 </footer>
 
 <script>
@@ -384,7 +388,48 @@ function evalPair(htfS,ltfS,bull){
 
 const TIER_RANK={None:0,Weak:1,Conflict:1,Medium:2,Strong:3,Elite:4};
 
-function beep(){try{const ctx=new (window.AudioContext||window.webkitAudioContext)();[880,1175].forEach((f,i)=>{const o=ctx.createOscillator(),g=ctx.createGain();o.frequency.value=f;o.connect(g);g.connect(ctx.destination);const t=ctx.currentTime+i*.18;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.25,t+.02);g.gain.exponentialRampToValueAtTime(.0001,t+.16);o.start(t);o.stop(t+.17)});setTimeout(()=>ctx.close(),800)}catch(e){}}
+function beep(tier){
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const freqs=tier==="Elite"?[880,1100,1320]:[880,1175];
+    freqs.forEach((f,i)=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.frequency.value=f;o.connect(g);g.connect(ctx.destination);
+      const t=ctx.currentTime+i*.18;
+      g.gain.setValueAtTime(.0001,t);
+      g.gain.exponentialRampToValueAtTime(.3,t+.02);
+      g.gain.exponentialRampToValueAtTime(.0001,t+.16);
+      o.start(t);o.stop(t+.17);
+    });
+    setTimeout(()=>ctx.close(),900);
+  }catch(e){}
+}
+function notify(title,body){
+  try{
+    if(!("Notification" in window))return;
+    if(Notification.permission==="granted")new Notification(title,{body});
+    else if(Notification.permission==="default")Notification.requestPermission();
+  }catch(e){}
+}
+let originalTitle=document.title;
+let unseen=0,titleFlashTimer=null;
+function bumpUnseen(){
+  unseen++;
+  if(document.hidden&&!titleFlashTimer){
+    let on=false;
+    titleFlashTimer=setInterval(()=>{
+      document.title=on?originalTitle:("\u{1F534} "+unseen+" new signal"+(unseen>1?"s":""));
+      on=!on;
+    },1000);
+  }
+}
+document.addEventListener("visibilitychange",()=>{
+  if(!document.hidden){
+    unseen=0;
+    clearInterval(titleFlashTimer);titleFlashTimer=null;
+    document.title=originalTitle;
+  }
+});
 
 let RESULTS=[]; // per-symbol best result this tick, for render
 
@@ -409,20 +454,27 @@ async function evalSymbol(sym,htfList,ltfList,rsiLen){
   return pairs;
 }
 
+function computeSlTarget(best,price){
+  const ltfS=best.ltfS;
+  const sl=ltfS?(best.dir==="LONG"?ltfS.recentLow:ltfS.recentHigh):null;
+  const risk=sl!=null?Math.abs(price-sl):price*0.01;
+  const rr=parseFloat($("rrMult").value)||2;
+  const target=best.dir==="LONG"?price+risk*rr:price-risk*rr;
+  return {sl,target};
+}
+
 function logSignal(sym,best,price){
   const combo=tfLabel(best.l)+"+"+tfLabel(best.h);
   const key=sym+"|"+combo+"|"+best.dir;
   if(openKeys.has(key))return;
-  const ltfS=best.ltfS;
-  const sl=best.dir==="LONG"?ltfS.recentLow:ltfS.recentHigh;
-  const risk=sl!=null?Math.abs(price-sl):price*0.01;
-  const target=best.dir==="LONG"?price+risk*parseFloat($("rrMult").value):price-risk*parseFloat($("rrMult").value);
+  const {sl,target}=computeSlTarget(best,price);
   const notes=[];
   if(best.tier==="Elite"){notes.push("vol confirmed","structure "+best.htfS.structure.toLowerCase(),"liquidity sweep")}
   JOURNAL.unshift({t:Date.now(),sym,combo,type:best.type,dir:best.dir,entry:price,sl,target,now:price,tier:best.tier,result:"OPEN",notes:notes.join(", ")});
   openKeys.add(key);
   saveJournal();
-  if($("sound").checked)beep();
+  bumpUnseen();
+  if($("sound").checked){beep(best.tier);notify(sym+" "+best.dir+" — "+best.tier,combo+" · entry "+price.toFixed(4))}
 }
 
 function updateJournal(priceMap){
@@ -462,8 +514,9 @@ function render(){
     if(!best||best.tier==="None")return "";
     if(best.tier==="Elite")elite++;else if(best.tier==="Strong")strong++;else if(best.tier==="Medium")medium++;
     const combo=tfLabel(best.l)+"+"+tfLabel(best.h);
-    const flags=best.ltfS?`<span class="flag ${best.ltfS.volOk?'ok':''}">Vol</span><span class="flag ${best.htfS.structure==='Bullish'||best.htfS.structure==='Bearish'?'ok':''}">${best.htfS.structure}</span><span class="flag ${best.ltfS.sweep?'ok':''}">Sweep</span>`:"";
-    const sl=best.ltfS?(best.dir==="LONG"?best.ltfS.recentLow:best.ltfS.recentHigh):null;
+    const wantStruct=best.dir==='LONG'?'Bullish':'Bearish';
+    const flags=best.ltfS?`<span class="flag ${best.ltfS.volOk?'ok':''}">Vol</span><span class="flag ${best.htfS.structure===wantStruct?'ok':(best.htfS.structure==='Mixed'?'':'warn')}">${best.htfS.structure}</span><span class="flag ${best.ltfS.sweep?'ok':''}">Sweep</span>`:"";
+    const {sl,target}=best.ltfS?computeSlTarget(best,r.px):{sl:null,target:null};
     return `<tr>
       <td class="sym">${r.sym}</td>
       <td class="num mono">${r.px!=null?r.px:"—"}</td>
@@ -476,12 +529,18 @@ function render(){
       <td>${flags}</td>
       <td><span class="tier ${best.tier}">${best.tier}</span></td>
       <td class="${best.dir==='LONG'?'up':'down'}">${best.dir}</td>
-      <td class="mono">${sl!=null?sl.toFixed(4):"—"} / ${best.ltfS?"":""}</td>
+      <td class="mono">${sl!=null?sl.toFixed(4):"—"} / ${target!=null?target.toFixed(4):"—"}</td>
       <td><button class="expandBtn" data-i="${idx}">${r.pairs.length}combos</button></td>
     </tr>`;
   }).filter(Boolean).join("");
   $("ovElite").textContent=elite;$("ovStrong").textContent=strong;$("ovMedium").textContent=medium;
   $("ovTracked").textContent=rows.length;
+  const wins=JOURNAL.filter(j=>j.result==="WIN").length;
+  const losses=JOURNAL.filter(j=>j.result==="LOSS").length;
+  const timeouts=JOURNAL.filter(j=>j.result==="TIMEOUT").length;
+  const decided=wins+losses;
+  $("ovWins").textContent=wins;$("ovLosses").textContent=losses;$("ovTimeouts").textContent=timeouts;
+  $("ovWinRate").textContent=decided>0?Math.round(wins/decided*100)+"%":"—";
   $("ovReq").textContent=api.req;$("ovFail").textContent=api.fail;
   $("ovLast").textContent="last tick: "+new Date().toLocaleTimeString();
 
@@ -588,6 +647,7 @@ async function tick(){
 
 function start(){
   running=true;$("startBtn").textContent="Stop";
+  if($("sound").checked&&"Notification" in window&&Notification.permission==="default")Notification.requestPermission();
   tick();
   timer=setInterval(tick,parseInt($("pollSec").value)*1000);
 }
