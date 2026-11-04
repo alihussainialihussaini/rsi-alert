@@ -166,7 +166,7 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
 <thead><tr>
   <th>Symbol</th><th class="num">Price</th><th>Best combo</th><th>Type</th>
   <th>HTF RSI</th><th>HTF dir</th><th>LTF RSI</th><th>LTF setup</th>
-  <th>Confluence</th><th>Tier</th><th>Direction</th><th>SL / Target</th><th></th>
+  <th>Confluence</th><th>Dom</th><th>Tier</th><th>Direction</th><th>SL / Target</th><th></th>
 </tr></thead>
 <tbody id="rows"></tbody>
 </table>
@@ -232,7 +232,7 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
 </div>
 
 <footer>
-Methodology: higher timeframe RSI sets direction (bullish = RSI&gt;50 and rising), lower timeframe RSI sets entry timing (pullback, turn up, momentum candle, resistance reclaim). On conflict the higher timeframe wins — a lower-timeframe trigger against the higher-timeframe bias is tagged "Conflict" and logged nowhere. Confluence badges: Vol = current volume above its rolling average, Struct = higher-timeframe swing structure (HH/HL or LH/LL), Sweep = a wick through the recent swing extreme that closed back inside it. Elite requires all three plus a clearly-rising HTF RSI; Strong requires the HTF/LTF alignment alone; Medium requires HTF above 50 but not clearly rising; Weak/Conflict are not logged. Timeframes not native to Bybit (8m, 45m) are built by resampling 1-minute candles — these need a short warm-up window after Start before RSI stabilizes. Data: Bybit public v5 market API, no key required. This is a pattern-matching research tool against public price data only — it has no way to detect, and makes no claim about, a move that is being organized rather than discovered. Peak favorable % tracks the best price reached in your favor since entry, even if the trade never hits target and later reverses — shown per signal in the journal and summarized for still-open signals in the "Open positions" report above. Click any Wins/Losses/Timeout/Open count to filter the journal to just those signals; click again to clear.
+Methodology: higher timeframe RSI sets direction (bullish = RSI&gt;50 and rising), lower timeframe RSI sets entry timing (pullback, turn up, momentum candle, resistance reclaim). On conflict the higher timeframe wins — a lower-timeframe trigger against the higher-timeframe bias is tagged "Conflict" and logged nowhere. Confluence badges: Vol = current volume above its rolling average, Struct = higher-timeframe swing structure (HH/HL or LH/LL), Sweep = a wick through the recent swing extreme that closed back inside it. Elite requires all three plus a clearly-rising HTF RSI; Strong requires the HTF/LTF alignment alone; Medium requires HTF above 50 but not clearly rising; Weak/Conflict are not logged. Timeframes not native to Bybit (8m, 45m) are built by resampling 1-minute candles — these need a short warm-up window after Start before RSI stabilizes. Data: Bybit public v5 market API, no key required. This is a pattern-matching research tool against public price data only — it has no way to detect, and makes no claim about, a move that is being organized rather than discovered. Peak favorable % tracks the best price reached in your favor since entry, even if the trade never hits target and later reverses — shown per signal in the journal and summarized for still-open signals in the "Open positions" report above. Click any Wins/Losses/Timeout/Open count to filter the journal to just those signals; click again to clear. The "Dom" column gates logging: a qualifying setup is only journaled when BTC.D, USDT.D, and BTC.D+ETH.D+Stable (Dominance tab, same RSI-alignment engine) all confirm its direction — shown as ✓; a disagreement shows ✗ and is skipped; "…" means the Dominance engine (which starts accumulating automatically on page load) hasn't warmed up enough yet. Expect no new journal entries for roughly the first day the page stays open, since all three dominance reads need that long to settle on the 45m timeframe.
 </footer>
 </div>
 
@@ -721,6 +721,8 @@ function render(){
     const wantStruct=best.dir==='LONG'?'Bullish':'Bearish';
     const flags=best.ltfS?`<span class="flag ${best.ltfS.volOk?'ok':''}">Vol</span><span class="flag ${best.htfS.structure===wantStruct?'ok':(best.htfS.structure==='Mixed'?'':'warn')}">${best.htfS.structure}</span><span class="flag ${best.ltfS.sweep?'ok':''}">Sweep</span>`:"";
     const {sl,target}=best.ltfS?computeSlTarget(best,r.px):{sl:null,target:null};
+    const dc=domCheck(r.sym,best.dir);
+    const domCell=!dc.ready?`<span class="flag" title="Dominance engine still warming up">… Dom</span>`:(dc.ok?`<span class="flag ok" title="BTC.D, USDT.D and BTC.D+ETH.D+Stable all confirm this direction">✓ Dom</span>`:`<span class="flag warn" title="Dominance direction disagrees — signal withheld">✗ Dom</span>`);
     return `<tr>
       <td class="sym">${r.sym}</td>
       <td class="num mono">${r.px!=null?r.px:"—"}</td>
@@ -731,6 +733,7 @@ function render(){
       <td class="num mono">${best.ltfS?best.ltfS.rsiNow.toFixed(1):"—"}</td>
       <td>${best.ltfS?`<span class="flag ${best.ltfS.hadPullback?'ok':''}">Pullback</span><span class="flag ${best.ltfS.turningUp?'ok':''}">Turn</span><span class="flag ${best.ltfS.momentumCandle?'ok':''}">Momentum</span><span class="flag ${best.ltfS.reclaim?'ok':''}">Reclaim</span>`:"—"}</td>
       <td>${flags}</td>
+      <td>${domCell}</td>
       <td><span class="tier ${best.tier}">${best.tier}</span></td>
       <td class="${best.dir==='LONG'?'up':'down'}">${best.dir}</td>
       <td class="mono">${sl!=null?sl.toFixed(4):"—"} / ${target!=null?target.toFixed(4):"—"}</td>
@@ -866,7 +869,7 @@ document.addEventListener("click",e=>{
     const tr=document.createElement("tr");
     tr.className="detailRow";tr.id="detail-"+idx;
     const body=r.pairs.map(p=>`<tr><td>${tfLabel(p.l)}+${tfLabel(p.h)}</td><td>Type ${p.type}</td><td>${p.dir}</td><td><span class="tier ${p.tier}">${p.tier}</span></td></tr>`).join("");
-    tr.innerHTML=`<td colspan="12"><table class="bd"><thead><tr><th>Combo</th><th>Distance</th><th>Dir</th><th>Tier</th></tr></thead><tbody>${body}</tbody></table></td>`;
+    tr.innerHTML=`<td colspan="13"><table class="bd"><thead><tr><th>Combo</th><th>Distance</th><th>Dir</th><th>Tier</th></tr></thead><tbody>${body}</tbody></table></td>`;
     e.target.closest("tr").after(tr);
   }
 });
@@ -925,7 +928,7 @@ async function tick(){
         }
         results.push({sym:sym.s,px,pairs});
         const minTier=$("minLogTier").value;
-        if(best&&TIER_RANK[best.tier]>=TIER_RANK[minTier]&&best.tier!=="Conflict"&&best.tier!=="None"){
+        if(best&&TIER_RANK[best.tier]>=TIER_RANK[minTier]&&best.tier!=="Conflict"&&best.tier!=="None"&&domCheck(sym.s,best.dir).ok){
           logSignal(sym.s,best,px);
         }
       }catch(e){/* skip symbol on error */}
@@ -969,7 +972,32 @@ const DOM_DEFS=[
 let domSamples=(()=>{try{return JSON.parse(localStorage.getItem("s3_domSamples"))||{}}catch(e){return {}}})();
 for(const k of ["btcD","usdtD","comboD"])if(!Array.isArray(domSamples[k]))domSamples[k]=[];
 let domRunning=false,domTimer=null,domTicking=false;
+let lastDomResults={};
 const DOM_MAX_SAMPLES=30000;
+
+// Whether BTC.D / USDT.D / BTC.D+ETH.D+Stable all confirm a coin's direction,
+// using the same RSI-alignment tier/direction already computed for the
+// Dominance tab — this just checks agreement, it doesn't change the rule.
+// USDT.D is a broad risk gauge: falling (SHORT) = risk-on, confirms coin LONGs.
+// BTC.D and the combo are rotation gauges: for BTC/majors, rising confirms
+// that coin's own LONG; for everything else (alts), rising confirms SHORT
+// (capital concentrating in majors/cash, away from alts) and vice versa.
+function domCheck(sym,coinDir){
+  function bestOf(key){
+    const r=lastDomResults[key];
+    const best=r&&r.pairs&&r.pairs[0];
+    if(!best||!best.tier||best.tier==="None"||best.tier==="Conflict")return null;
+    return best.dir;
+  }
+  const usdtDir=bestOf("usdtD"), btcDir=bestOf("btcD"), comboDir=bestOf("comboD");
+  if(usdtDir==null||btcDir==null||comboDir==null)return {ready:false,ok:false};
+  const symIsBtc=/^BTC/i.test(sym);
+  const symIsMajor=/^(BTC|ETH)/i.test(sym);
+  const usdtOk=usdtDir!==coinDir;
+  const btcOk=symIsBtc?(btcDir===coinDir):(btcDir!==coinDir);
+  const comboOk=symIsMajor?(comboDir===coinDir):(comboDir!==coinDir);
+  return {ready:true,ok:usdtOk&&btcOk&&comboOk};
+}
 
 function saveDomSamples(){
   try{localStorage.setItem("s3_domSamples",JSON.stringify(domSamples))}catch(e){}
@@ -1075,6 +1103,7 @@ async function domTick(){
     if(htfList.length&&ltfList.length){
       for(const def of DOM_DEFS){domResults[def.key]={pairs:domEvalSymbol(def.key,htfList,ltfList,rsiLen)}}
     }
+    lastDomResults=domResults;
     renderDominance(domResults);
     $("domPill").className="pill live";$("domPill").textContent="live";
   }catch(e){
@@ -1097,6 +1126,7 @@ document.querySelectorAll("#domHtfChk input,#domLtfChk input").forEach(cb=>{
   cb.addEventListener("change",()=>cb.closest("label").classList.toggle("on",cb.checked));
 });
 renderDominance({});
+domStart(); // start accumulating dominance candles immediately, independent of which tab is open or whether the coin scanner has been started
 
 document.querySelectorAll(".tabBtn").forEach(btn=>{
   btn.addEventListener("click",()=>{
