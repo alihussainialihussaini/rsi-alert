@@ -55,11 +55,20 @@ tr:hover td{background:#141a21}
 #empty{padding:30px 14px;color:var(--mut);text-align:center}
 #dash{padding:14px}
 #dash h2{font-size:14px;margin:0 0 10px}
-.cards{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.cards{display:grid;grid-template-columns:repeat(6,1fr);gap:10px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;text-align:center}
 .card .big{font-size:26px;font-weight:700}
 .card .lbl{font-size:12px;color:var(--mut);margin-top:2px}
-@media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}}
+.card.clickable{cursor:pointer}
+.card.clickable:hover{border-color:var(--acc)}
+@media(max-width:900px){.cards{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:480px){.cards{grid-template-columns:repeat(2,1fr)}}
+.statClick{cursor:pointer;border-bottom:1px dashed currentColor}
+#filterChip{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:4px 10px;border-radius:99px;background:#2a2310;border:1px solid var(--acc);color:var(--acc)}
+#filterChip button{background:none;border:none;color:inherit;cursor:pointer;font:inherit;padding:0;line-height:1}
+#openPos{padding:14px}
+#openPos h2{font-size:14px;margin:0 0 8px}
+.peak{color:var(--up)}
 #journal{padding:14px}
 #journal h2{font-size:14px;margin:0 0 8px}
 .jbar{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
@@ -123,9 +132,9 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
   <span><b id="ovStrong">0</b>strong</span>
   <span><b id="ovMedium">0</b>medium</span>
   <span><b id="ovTracked">0</b>tracked</span>
-  <span><b class="up" id="ovWins">0</b>wins</span>
-  <span><b class="down" id="ovLosses">0</b>losses</span>
-  <span><b id="ovTimeouts">0</b>timeout</span>
+  <span><b class="up statClick" id="ovWins" data-filter="WIN" title="Click to list coins that hit TP">0</b>wins</span>
+  <span><b class="down statClick" id="ovLosses" data-filter="LOSS" title="Click to list coins that hit SL">0</b>losses</span>
+  <span><b class="statClick" id="ovTimeouts" data-filter="TIMEOUT" title="Click to list timed-out coins">0</b>timeout</span>
   <span><b class="acc" id="ovWinRate">—</b>win rate</span>
   <span><b id="ovReq">0</b>requests</span>
   <span><b id="ovFail">0</b>failed</span>
@@ -144,13 +153,28 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
 <div id="empty">Not scanning yet. Press Start.</div>
 </div>
 
+<div id="openPos">
+  <h2>Open positions — running report</h2>
+  <div class="wrap" style="padding:0">
+  <table>
+  <thead><tr>
+    <th>Coin</th><th>Combo</th><th>Dir</th><th class="num">Entry</th><th class="num">Now</th>
+    <th class="num">Current move %</th><th class="num">Peak favorable %</th><th>Elapsed</th><th>Tier</th>
+  </tr></thead>
+  <tbody id="openRows"></tbody>
+  </table>
+  </div>
+  <div id="openEmpty" class="dim" style="padding:10px 2px">No open positions.</div>
+</div>
+
 <div id="dash">
   <h2>Performance</h2>
   <div class="cards">
     <div class="card"><div class="big" id="dashTotal">0</div><div class="lbl">Total signals</div></div>
-    <div class="card"><div class="big up" id="dashWins">0</div><div class="lbl">Target hit</div></div>
-    <div class="card"><div class="big down" id="dashLosses">0</div><div class="lbl">SL hit</div></div>
-    <div class="card"><div class="big" id="dashTimeouts">0</div><div class="lbl">Timeout</div></div>
+    <div class="card clickable" data-filter="OPEN" title="Click to list open coins"><div class="big" id="dashOpen">0</div><div class="lbl">Open</div></div>
+    <div class="card clickable" data-filter="WIN" title="Click to list coins that hit TP"><div class="big up" id="dashWins">0</div><div class="lbl">Target hit</div></div>
+    <div class="card clickable" data-filter="LOSS" title="Click to list coins that hit SL"><div class="big down" id="dashLosses">0</div><div class="lbl">SL hit</div></div>
+    <div class="card clickable" data-filter="TIMEOUT" title="Click to list timed-out coins"><div class="big" id="dashTimeouts">0</div><div class="lbl">Timeout</div></div>
     <div class="card"><div class="big acc" id="dashWinRate">—</div><div class="lbl">Win rate</div></div>
   </div>
 </div>
@@ -161,12 +185,13 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
     <button id="exportCsv">Export CSV</button>
     <button id="clearJournal">Clear journal</button>
     <span class="dim" id="jcount">0 entries</span>
+    <span id="filterChip" class="hidden"></span>
   </div>
   <div class="wrap" style="padding:0">
   <table>
   <thead><tr>
     <th>Time</th><th>Coin</th><th>Combo</th><th>Dir</th><th class="num">Entry</th><th class="num">SL</th><th class="num">Target</th>
-    <th class="num">Now</th><th class="num">Move %</th><th>Elapsed</th><th>Tier</th><th>Result</th><th>Notes</th>
+    <th class="num">Now</th><th class="num">Move %</th><th class="num">Peak favorable %</th><th>Elapsed</th><th>Tier</th><th>Result</th><th>Notes</th>
   </tr></thead>
   <tbody id="jrows"></tbody>
   </table>
@@ -174,7 +199,7 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
 </div>
 
 <footer>
-Methodology: higher timeframe RSI sets direction (bullish = RSI&gt;50 and rising), lower timeframe RSI sets entry timing (pullback, turn up, momentum candle, resistance reclaim). On conflict the higher timeframe wins — a lower-timeframe trigger against the higher-timeframe bias is tagged "Conflict" and logged nowhere. Confluence badges: Vol = current volume above its rolling average, Struct = higher-timeframe swing structure (HH/HL or LH/LL), Sweep = a wick through the recent swing extreme that closed back inside it. Elite requires all three plus a clearly-rising HTF RSI; Strong requires the HTF/LTF alignment alone; Medium requires HTF above 50 but not clearly rising; Weak/Conflict are not logged. Timeframes not native to Bybit (8m, 45m) are built by resampling 1-minute candles — these need a short warm-up window after Start before RSI stabilizes. Data: Bybit public v5 market API, no key required. This is a pattern-matching research tool against public price data only — it has no way to detect, and makes no claim about, a move that is being organized rather than discovered.
+Methodology: higher timeframe RSI sets direction (bullish = RSI&gt;50 and rising), lower timeframe RSI sets entry timing (pullback, turn up, momentum candle, resistance reclaim). On conflict the higher timeframe wins — a lower-timeframe trigger against the higher-timeframe bias is tagged "Conflict" and logged nowhere. Confluence badges: Vol = current volume above its rolling average, Struct = higher-timeframe swing structure (HH/HL or LH/LL), Sweep = a wick through the recent swing extreme that closed back inside it. Elite requires all three plus a clearly-rising HTF RSI; Strong requires the HTF/LTF alignment alone; Medium requires HTF above 50 but not clearly rising; Weak/Conflict are not logged. Timeframes not native to Bybit (8m, 45m) are built by resampling 1-minute candles — these need a short warm-up window after Start before RSI stabilizes. Data: Bybit public v5 market API, no key required. This is a pattern-matching research tool against public price data only — it has no way to detect, and makes no claim about, a move that is being organized rather than discovered. Peak favorable % tracks the best price reached in your favor since entry, even if the trade never hits target and later reverses — shown per signal in the journal and summarized for still-open signals in the "Open positions" report above. Click any Wins/Losses/Timeout/Open count to filter the journal to just those signals; click again to clear.
 </footer>
 
 <script>
@@ -198,6 +223,7 @@ let SYMS=[];
 let JOURNAL=JSON.parse(localStorage.getItem("s3_journal")||"[]");
 let openKeys=new Set(JOURNAL.filter(j=>j.result==="OPEN").map(j=>j.sym+"|"+j.combo+"|"+j.dir));
 let lastBest={}; // symbol -> last tier, to detect new triggers
+let journalFilter=null; // null | "OPEN" | "WIN" | "LOSS" | "TIMEOUT" — set by clicking a stat/card
 
 function saveJournal(){localStorage.setItem("s3_journal",JSON.stringify(JOURNAL))}
 
@@ -488,7 +514,7 @@ function logSignal(sym,best,price){
   const {sl,target}=computeSlTarget(best,price);
   const notes=[];
   if(best.tier==="Elite"){notes.push("vol confirmed","structure "+best.htfS.structure.toLowerCase(),"liquidity sweep")}
-  JOURNAL.unshift({t:Date.now(),sym,combo,type:best.type,dir:best.dir,entry:price,sl,target,now:price,tier:best.tier,result:"OPEN",notes:notes.join(", ")});
+  JOURNAL.unshift({t:Date.now(),sym,combo,type:best.type,dir:best.dir,entry:price,sl,target,now:price,mfe:price,tier:best.tier,result:"OPEN",notes:notes.join(", ")});
   openKeys.add(key);
   saveJournal();
   bumpUnseen();
@@ -501,6 +527,8 @@ function updateJournal(priceMap){
     if(j.result!=="OPEN")continue;
     const px=priceMap[j.sym];
     if(px!=null)j.now=px;
+    if(j.mfe==null)j.mfe=j.entry;
+    j.mfe=j.dir==="LONG"?Math.max(j.mfe,j.now):Math.min(j.mfe,j.now);
     const elapsedHrs=(Date.now()-j.t)/36e5;
     const favorable=j.dir==="LONG"?(j.now-j.entry):(j.entry-j.now);
     const targetHit=j.dir==="LONG"?(j.now>=j.target):(j.now<=j.target);
@@ -560,14 +588,24 @@ function render(){
   $("ovWins").textContent=wins;$("ovLosses").textContent=losses;$("ovTimeouts").textContent=timeouts;
   const winRateStr=decided>0?Math.round(wins/decided*100)+"%":"—";
   $("ovWinRate").textContent=winRateStr;
+  const open=JOURNAL.filter(j=>j.result==="OPEN").length;
   $("dashTotal").textContent=JOURNAL.length;
+  $("dashOpen").textContent=open;
   $("dashWins").textContent=wins;$("dashLosses").textContent=losses;$("dashTimeouts").textContent=timeouts;
   $("dashWinRate").textContent=winRateStr;
   $("ovReq").textContent=api.req;$("ovFail").textContent=api.fail;
   $("ovLast").textContent="last tick: "+new Date().toLocaleTimeString();
 
-  $("jcount").textContent=JOURNAL.length+" entries";
-  $("jrows").innerHTML=JOURNAL.map(j=>`<tr>
+  const chip=$("filterChip");
+  if(journalFilter){
+    chip.classList.remove("hidden");
+    chip.innerHTML=`Showing: ${journalFilter}<button id="clearFilterBtn" title="Clear filter">✕</button>`;
+  }else{
+    chip.classList.add("hidden");chip.innerHTML="";
+  }
+  const filtered=journalFilter?JOURNAL.filter(j=>j.result===journalFilter):JOURNAL;
+  $("jcount").textContent=filtered.length+" entries"+(journalFilter?" (filtered)":"");
+  $("jrows").innerHTML=filtered.map(j=>`<tr>
     <td class="mono">${new Date(j.t).toLocaleString()}</td>
     <td class="sym">${j.sym}</td><td>${j.combo}</td>
     <td class="${j.dir==='LONG'?'up':'down'}">${j.dir}</td>
@@ -576,14 +614,42 @@ function render(){
     <td class="num mono">${j.target!=null?j.target.toFixed(4):"—"}</td>
     <td class="num mono">${j.now!=null?j.now.toFixed(4):"—"}</td>
     <td class="num mono">${fmtMove(j.entry,j.now,j.dir)}</td>
+    <td class="num mono peak">${fmtMove(j.entry,j.mfe!=null?j.mfe:j.now,j.dir)}</td>
     <td>${j.result==="OPEN"?fmtElapsed(j.t):"—"}</td>
     <td><span class="tier ${j.tier}">${j.tier}</span></td>
     <td>${j.result}</td>
     <td contenteditable data-t="${j.t}">${j.notes||""}</td>
   </tr>`).join("");
+
+  renderOpenPositions();
+}
+
+function renderOpenPositions(){
+  const open=JOURNAL.filter(j=>j.result==="OPEN");
+  $("openEmpty").classList.toggle("hidden",open.length>0);
+  const favPct=j=>((( (j.mfe!=null?j.mfe:j.now)-j.entry)/j.entry)*100)*(j.dir==="SHORT"?-1:1);
+  const sorted=open.slice().sort((a,b)=>favPct(b)-favPct(a));
+  $("openRows").innerHTML=sorted.map(j=>`<tr>
+    <td class="sym">${j.sym}</td><td>${j.combo}</td>
+    <td class="${j.dir==='LONG'?'up':'down'}">${j.dir}</td>
+    <td class="num mono">${j.entry.toFixed(4)}</td>
+    <td class="num mono">${j.now!=null?j.now.toFixed(4):"—"}</td>
+    <td class="num mono">${fmtMove(j.entry,j.now,j.dir)}</td>
+    <td class="num mono peak">${fmtMove(j.entry,j.mfe!=null?j.mfe:j.now,j.dir)}</td>
+    <td>${fmtElapsed(j.t)}</td>
+    <td><span class="tier ${j.tier}">${j.tier}</span></td>
+  </tr>`).join("");
 }
 
 document.addEventListener("click",e=>{
+  if(e.target.id==="clearFilterBtn"){journalFilter=null;render();return}
+  const fEl=e.target.closest("[data-filter]");
+  if(fEl){
+    journalFilter=(journalFilter===fEl.dataset.filter)?null:fEl.dataset.filter;
+    render();
+    if(journalFilter)$("journal").scrollIntoView({behavior:"smooth",block:"start"});
+    return;
+  }
   if(e.target.classList.contains("expandBtn")){
     const idx=+e.target.dataset.i;
     const r=RESULTS[idx];
