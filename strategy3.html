@@ -69,6 +69,16 @@ tr:hover td{background:#141a21}
 #openPos{padding:14px}
 #openPos h2{font-size:14px;margin:0 0 8px}
 .peak{color:var(--up)}
+.cards.openCards{grid-template-columns:repeat(7,1fr);margin-bottom:14px}
+@media(max-width:1100px){.cards.openCards{grid-template-columns:repeat(4,1fr)}}
+@media(max-width:600px){.cards.openCards{grid-template-columns:repeat(2,1fr)}}
+.rbar{position:relative;width:130px;height:6px;background:#2a2f37;border-radius:3px}
+.rbar .fill{position:absolute;top:0;left:0;height:100%;border-radius:3px}
+.rbar .fill.up{background:var(--up)}
+.rbar .fill.down{background:var(--dn)}
+.rbar .entry{position:absolute;top:-3px;width:2px;height:12px;background:var(--fg);opacity:.7}
+.bybitLink{color:var(--acc);text-decoration:none;font-weight:600}
+.bybitLink:hover{text-decoration:underline}
 #journal{padding:14px}
 #journal h2{font-size:14px;margin:0 0 8px}
 .jbar{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
@@ -154,17 +164,30 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
 </div>
 
 <div id="openPos">
-  <h2>Open positions — running report</h2>
+  <h2>Open trades: still running</h2>
+  <div class="cards openCards">
+    <div class="card"><div class="big" id="opOpen">0</div><div class="lbl">Open trades</div></div>
+    <div class="card"><div class="big" id="opLong">0</div><div class="lbl">Long</div></div>
+    <div class="card"><div class="big" id="opShort">0</div><div class="lbl">Short</div></div>
+    <div class="card"><div class="big up" id="opProfit">0</div><div class="lbl">In profit now</div></div>
+    <div class="card"><div class="big down" id="opLoss">0</div><div class="lbl">In loss now</div></div>
+    <div class="card"><div class="big" id="opAvgMove">—</div><div class="lbl">Average move</div></div>
+    <div class="card"><div class="big" id="opPL">—</div><div class="lbl">Open P/L (before fees)</div></div>
+  </div>
   <div class="wrap" style="padding:0">
   <table>
   <thead><tr>
-    <th>Coin</th><th>Combo</th><th>Dir</th><th class="num">Entry</th><th class="num">Now</th>
-    <th class="num">Current move %</th><th class="num">Peak favorable %</th><th>Elapsed</th><th>Tier</th>
+    <th>Coin</th><th>Dir</th><th>Combo</th><th>Tier</th>
+    <th class="num">Entry</th><th class="num">Price now</th><th class="num">Move now</th><th class="num">Now (R)</th>
+    <th>Peak so far</th><th class="num">Given back</th><th class="num">Max drawdown</th>
+    <th class="num">To target</th><th class="num">To stop</th><th>Stop → entry → target</th>
+    <th>Open for</th><th>Time left</th><th></th>
   </tr></thead>
   <tbody id="openRows"></tbody>
   </table>
   </div>
   <div id="openEmpty" class="dim" style="padding:10px 2px">No open positions.</div>
+  <p class="dim" style="font-size:11px;margin:10px 2px 0;line-height:1.5">Sorted best to worst. "Move now" uses the last price and refreshes every tick. "Given back" = how much of the peak profit has already been lost (100% means back at entry or worse). "Time left" is before the 24h timeout. Trades logged before this version show a dash for peak and drawdown.</p>
 </div>
 
 <div id="dash">
@@ -514,7 +537,7 @@ function logSignal(sym,best,price){
   const {sl,target}=computeSlTarget(best,price);
   const notes=[];
   if(best.tier==="Elite"){notes.push("vol confirmed","structure "+best.htfS.structure.toLowerCase(),"liquidity sweep")}
-  JOURNAL.unshift({t:Date.now(),sym,combo,type:best.type,dir:best.dir,entry:price,sl,target,now:price,mfe:price,tier:best.tier,result:"OPEN",notes:notes.join(", ")});
+  JOURNAL.unshift({t:Date.now(),sym,combo,type:best.type,dir:best.dir,entry:price,sl,target,now:price,mfe:price,mae:price,tier:best.tier,result:"OPEN",notes:notes.join(", ")});
   openKeys.add(key);
   saveJournal();
   bumpUnseen();
@@ -529,6 +552,8 @@ function updateJournal(priceMap){
     if(px!=null)j.now=px;
     if(j.mfe==null)j.mfe=j.entry;
     j.mfe=j.dir==="LONG"?Math.max(j.mfe,j.now):Math.min(j.mfe,j.now);
+    if(j.mae==null)j.mae=j.entry;
+    j.mae=j.dir==="LONG"?Math.min(j.mae,j.now):Math.max(j.mae,j.now);
     const elapsedHrs=(Date.now()-j.t)/36e5;
     const favorable=j.dir==="LONG"?(j.now-j.entry):(j.entry-j.now);
     const targetHit=j.dir==="LONG"?(j.now>=j.target):(j.now<=j.target);
@@ -549,6 +574,56 @@ function fmtElapsed(t){
   const m=Math.round((Date.now()-t)/60000);
   if(m<60)return m+"m";
   return Math.floor(m/60)+"h "+(m%60)+"m";
+}
+function fmtTimeLeft(t,maxHrs){
+  maxHrs=maxHrs||24;
+  const remMs=(t+maxHrs*3600000)-Date.now();
+  if(remMs<=0)return "overdue";
+  const m=Math.round(remMs/60000);
+  if(m<60)return m+"m";
+  return Math.floor(m/60)+"h "+(m%60)+"m";
+}
+function riskOf(entry,sl,dir){
+  if(sl==null)return null;
+  const r=dir==="LONG"?(entry-sl):(sl-entry);
+  return r>0?r:null;
+}
+function rMultiple(entry,price,dir,sl){
+  const risk=riskOf(entry,sl,dir);
+  if(risk==null||price==null)return null;
+  const amt=dir==="LONG"?(price-entry):(entry-price);
+  return amt/risk;
+}
+function fmtR(v){
+  if(v==null)return "—";
+  return (v>=0?"+":"")+v.toFixed(2)+"R";
+}
+function peakStr(j){
+  if(j.mfe==null)return "—";
+  const pctNum=((j.mfe-j.entry)/j.entry*100)*(j.dir==="SHORT"?-1:1);
+  if(pctNum<=0)return "—";
+  const r=rMultiple(j.entry,j.mfe,j.dir,j.sl);
+  return pctNum.toFixed(2)+"%"+(r!=null?(" · "+r.toFixed(2)+"R"):"");
+}
+function givenBackStr(j){
+  if(j.mfe==null)return "—";
+  const peakFav=j.dir==="LONG"?(j.mfe-j.entry):(j.entry-j.mfe);
+  if(peakFav<=0)return "—";
+  const nowFav=j.dir==="LONG"?(j.now-j.entry):(j.entry-j.now);
+  const pct=Math.max(0,Math.min(100,((peakFav-nowFav)/peakFav)*100));
+  return Math.round(pct)+"%";
+}
+function drawdownStr(j){
+  if(j.mae==null)return "—";
+  const adverse=j.dir==="LONG"?(j.entry-j.mae):(j.mae-j.entry);
+  if(adverse<=0)return "—";
+  return ((adverse/j.entry)*100).toFixed(2)+"%";
+}
+function barPct(entry,sl,target,price,dir){
+  if(sl==null||target==null||price==null)return null;
+  const lo=dir==="LONG"?sl:target, hi=dir==="LONG"?target:sl;
+  if(hi===lo)return null;
+  return Math.max(0,Math.min(1,(price-lo)/(hi-lo)));
 }
 
 function render(){
@@ -627,18 +702,58 @@ function render(){
 function renderOpenPositions(){
   const open=JOURNAL.filter(j=>j.result==="OPEN");
   $("openEmpty").classList.toggle("hidden",open.length>0);
-  const favPct=j=>((( (j.mfe!=null?j.mfe:j.now)-j.entry)/j.entry)*100)*(j.dir==="SHORT"?-1:1);
-  const sorted=open.slice().sort((a,b)=>favPct(b)-favPct(a));
-  $("openRows").innerHTML=sorted.map(j=>`<tr>
-    <td class="sym">${j.sym}</td><td>${j.combo}</td>
-    <td class="${j.dir==='LONG'?'up':'down'}">${j.dir}</td>
-    <td class="num mono">${j.entry.toFixed(4)}</td>
-    <td class="num mono">${j.now!=null?j.now.toFixed(4):"—"}</td>
-    <td class="num mono">${fmtMove(j.entry,j.now,j.dir)}</td>
-    <td class="num mono peak">${fmtMove(j.entry,j.mfe!=null?j.mfe:j.now,j.dir)}</td>
-    <td>${fmtElapsed(j.t)}</td>
-    <td><span class="tier ${j.tier}">${j.tier}</span></td>
-  </tr>`).join("");
+  const moveNum=j=>((j.now-j.entry)/j.entry*100)*(j.dir==="SHORT"?-1:1);
+  const sorted=open.slice().sort((a,b)=>moveNum(b)-moveNum(a));
+
+  const longCount=open.filter(j=>j.dir==="LONG").length;
+  const shortCount=open.length-longCount;
+  const profitCount=open.filter(j=>moveNum(j)>0).length;
+  const lossCount=open.length-profitCount;
+  const avgMove=open.length?open.reduce((s,j)=>s+moveNum(j),0)/open.length:null;
+  const totalR=open.reduce((s,j)=>s+(rMultiple(j.entry,j.now,j.dir,j.sl)||0),0);
+
+  $("opOpen").textContent=open.length;
+  $("opLong").textContent=longCount;
+  $("opShort").textContent=shortCount;
+  $("opProfit").textContent=profitCount;
+  $("opLoss").textContent=lossCount;
+  const avgEl=$("opAvgMove");
+  avgEl.textContent=avgMove!=null?(avgMove>=0?"+":"")+avgMove.toFixed(2)+"%":"—";
+  avgEl.className="big "+(avgMove>0?"up":avgMove<0?"down":"");
+  const plEl=$("opPL");
+  plEl.textContent=open.length?(totalR>=0?"+":"")+totalR.toFixed(2)+"R":"—";
+  plEl.className="big "+(totalR>0?"up":totalR<0?"down":"");
+
+  $("openRows").innerHTML=sorted.map(j=>{
+    const mv=moveNum(j);
+    const r=rMultiple(j.entry,j.now,j.dir,j.sl);
+    const bp=barPct(j.entry,j.sl,j.target,j.now,j.dir);
+    const ep=barPct(j.entry,j.sl,j.target,j.entry,j.dir);
+    const barHtml=bp==null?"—":`<div class="rbar"><div class="fill ${mv>=0?'up':'down'}" style="width:${(bp*100).toFixed(1)}%"></div>${ep!=null?`<div class="entry" style="left:${(ep*100).toFixed(1)}%"></div>`:""}</div>`;
+    const toTarget=j.target!=null&&j.now?(Math.abs(j.target-j.now)/j.now*100).toFixed(2)+"%":"—";
+    const toStop=j.sl!=null&&j.now?(Math.abs(j.now-j.sl)/j.now*100).toFixed(2)+"%":"—";
+    const gb=givenBackStr(j), gbCls=gb==="—"?"":"down";
+    const dd=drawdownStr(j), ddCls=dd==="—"?"":"down";
+    return `<tr>
+      <td class="sym">${j.sym}</td>
+      <td class="${j.dir==='LONG'?'up':'down'}">${j.dir}</td>
+      <td>${j.combo}</td>
+      <td><span class="tier ${j.tier}">${j.tier}</span></td>
+      <td class="num mono">${j.entry.toFixed(4)}</td>
+      <td class="num mono">${j.now!=null?j.now.toFixed(4):"—"}</td>
+      <td class="num mono ${mv>=0?'up':'down'}">${(mv>=0?"+":"")+mv.toFixed(2)}%</td>
+      <td class="num mono ${r!=null?(r>=0?'up':'down'):''}">${fmtR(r)}</td>
+      <td class="mono">${peakStr(j)}</td>
+      <td class="num mono ${gbCls}">${gb}</td>
+      <td class="num mono ${ddCls}">${dd}</td>
+      <td class="num mono">${toTarget}</td>
+      <td class="num mono">${toStop}</td>
+      <td>${barHtml}</td>
+      <td>${fmtElapsed(j.t)}</td>
+      <td>${fmtTimeLeft(j.t)}</td>
+      <td><a class="bybitLink" href="https://www.bybit.com/trade/usdt/${j.sym}" target="_blank" rel="noopener">Bybit ↗</a></td>
+    </tr>`;
+  }).join("");
 }
 
 document.addEventListener("click",e=>{
