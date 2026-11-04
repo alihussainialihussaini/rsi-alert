@@ -61,6 +61,11 @@ tr:hover td{background:#141a21}
 .card[data-f]{cursor:pointer}.card[data-f]:hover,.card.sel{border-color:var(--acc)}
 #ov span[data-f]{cursor:pointer;text-decoration:underline dotted}
 #resList{margin-top:14px}
+#openRep{padding:14px;border-top:1px solid var(--line)}
+#openRep h2{font-size:14px;margin:0 0 10px}
+.prog{position:relative;display:inline-block;width:120px;height:8px;background:var(--line);border-radius:4px;vertical-align:middle}
+.prog i{position:absolute;top:-3px;width:3px;height:14px;border-radius:2px;background:var(--fg)}
+.prog b{position:absolute;left:0;top:0;height:8px;border-radius:4px}
 #report{padding:14px;border-top:1px solid var(--line)}
 #report h2{font-size:14px;margin:0 0 6px}
 #report h3{font-size:13px;margin:18px 0 4px;color:var(--fg)}
@@ -172,6 +177,12 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
   </div>
   <div class="dim" style="margin-top:8px;font-size:12px">Click Total, Target hit, SL hit or Timeout to see the coins.</div>
   <div id="resList" class="hidden"></div>
+</div>
+
+<div id="openRep">
+  <h2>Open trades: still running</h2>
+  <div id="openCards" class="cards"></div>
+  <div id="openBody"></div>
 </div>
 
 <div id="report">
@@ -664,6 +675,44 @@ function renderReport(){
   <p class="note">Assumes you can exit at exactly that price, so real fills will be slightly worse. Peaks are measured on 1-minute candles. Levels in % are price moves from the entry price.</p>`;
 }
 
+
+// ===== Open trades report =====
+function renderOpen(){
+  const O=JOURNAL.filter(j=>j.result==="OPEN"&&j.risk>0&&j.now!=null);
+  const cards=$("openCards"),body=$("openBody");
+  if(!O.length){cards.innerHTML="";body.innerHTML='<div class="dim">No open trades right now.</div>';return}
+  const sg=j=>j.dir==="LONG"?1:-1;
+  const rNow=j=>(j.now-j.entry)*sg(j)/j.risk;
+  const pNow=j=>(j.now-j.entry)*sg(j)/j.entry*100;
+  const inProf=O.filter(j=>pNow(j)>0).length;
+  const totR=O.reduce((a,j)=>a+rNow(j),0);
+  const avgP=O.reduce((a,j)=>a+pNow(j),0)/O.length;
+  const card=(v,l,c)=>`<div class="card"><div class="big ${c||""}">${v}</div><div class="lbl">${l}</div></div>`;
+  cards.innerHTML=card(O.length,"Open trades")+card(O.filter(j=>j.dir==="LONG").length,"Long","up")+card(O.filter(j=>j.dir==="SHORT").length,"Short","down")
+    +card(inProf,"In profit now","up")+card(O.length-inProf,"In loss now","down")
+    +card((avgP>=0?"+":"")+avgP.toFixed(2)+"%","Average move",avgP>=0?"up":"down")+card((totR>=0?"+":"")+totR.toFixed(2)+"R","Open P/L (before fees)",totR>=0?"up":"down");
+  const rows=O.slice().sort((a,b)=>rNow(b)-rNow(a)).map(j=>{
+    const r=rNow(j),p=pNow(j);
+    const toTgt=Math.abs(j.target-j.now)/j.now*100,toSl=Math.abs(j.now-j.sl)/j.now*100;
+    // bar spans -1R (stop) to +rr R (target)
+    const lo=-1,hi=j.rr||2,pos=Math.max(0,Math.min(1,(r-lo)/(hi-lo)))*100,zero=(0-lo)/(hi-lo)*100;
+    const fill=r>=0?`left:${zero}%;width:${Math.max(0,pos-zero)}%;background:var(--up)`:`left:${pos}%;width:${Math.max(0,zero-pos)}%;background:var(--dn)`;
+    const left=Math.max(0,MAXH*60-Math.round((Date.now()-j.t)/60000));
+    const pk=j.mfeOk?peakP(j).toFixed(2)+"% · "+peakR(j).toFixed(2)+"R":"—";
+    const giveBack=(j.mfeOk&&j.mfe>0)?Math.min(100,Math.max(0,(j.mfe-(j.now-j.entry)*sg(j))/j.mfe*100)):null;
+    return `<tr><td class="sym">${esc(j.sym)}</td><td class="${j.dir==='LONG'?'up':'down'}">${j.dir}</td><td>${esc(j.combo)}</td><td><span class="tier ${j.tier}">${j.tier}</span></td>
+      <td class="num mono">${j.entry.toFixed(4)}</td><td class="num mono">${j.now.toFixed(4)}</td>
+      <td class="num mono ${p>=0?'up':'down'}">${(p>=0?"+":"")+p.toFixed(2)}%</td><td class="num mono ${r>=0?'up':'down'}">${(r>=0?"+":"")+r.toFixed(2)}R</td>
+      <td class="num mono up">${pk}</td><td class="num mono">${giveBack==null?"—":Math.round(giveBack)+"%"}</td>
+      <td class="num mono down">${j.mfeOk?maeP(j).toFixed(2)+"%":"—"}</td>
+      <td class="num mono">${toTgt.toFixed(2)}%</td><td class="num mono">${toSl.toFixed(2)}%</td>
+      <td><span class="prog"><b style="${fill}"></b><i style="left:calc(${zero}% - 1px);opacity:.5"></i></span></td>
+      <td>${fmtElapsed(j.t)}</td><td>${Math.floor(left/60)}h ${left%60}m</td>
+      <td><a class="acc" target="_blank" rel="noopener" href="https://www.bybit.com/trade/usdt/${encodeURIComponent(j.sym)}">Bybit ↗</a></td></tr>`}).join("");
+  body.innerHTML=`<div class="wrap" style="padding:0"><table><thead><tr><th>Coin</th><th>Dir</th><th>Combo</th><th>Tier</th><th class="num">Entry</th><th class="num">Price now</th><th class="num">Move now</th><th class="num">Now (R)</th><th class="num">Peak so far</th><th class="num">Given back</th><th class="num">Max drawdown</th><th class="num">To target</th><th class="num">To stop</th><th>Stop &larr; entry &rarr; target</th><th>Open for</th><th>Time left</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+  <p class="note" style="color:var(--mut);font-size:12px;max-width:900px;line-height:1.5">Sorted best to worst. "Move now" uses the last 1-minute close and refreshes every tick. "Given back" = how much of the peak profit has already been lost (100% means back at entry or worse). "Time left" is before the 24h timeout. Trades logged before this version show a dash for peak and drawdown.</p>`;
+}
+
 function fmtMove(entry,now,dir){
   if(entry==null||now==null)return "—";
   const pct=((now-entry)/entry)*100*(dir==="SHORT"?-1:1);
@@ -743,6 +792,7 @@ function render(){
     <td contenteditable data-t="${j.t}">${esc(j.notes||"")}</td>
   </tr>`).join("");
   renderResList();
+  renderOpen();
   renderReport();
 }
 
