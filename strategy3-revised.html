@@ -1,4 +1,4 @@
-  <!doctype html>
+<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Strategy #3 — Revised</title>
 <style>
@@ -61,6 +61,14 @@ tr:hover td{background:#141a21}
 .card[data-f]{cursor:pointer}.card[data-f]:hover,.card.sel{border-color:var(--acc)}
 #ov span[data-f]{cursor:pointer;text-decoration:underline dotted}
 #resList{margin-top:14px}
+#report{padding:14px;border-top:1px solid var(--line)}
+#report h2{font-size:14px;margin:0 0 6px}
+#report h3{font-size:13px;margin:18px 0 4px;color:var(--fg)}
+#report .note{color:var(--mut);font-size:12px;line-height:1.5;margin:0 0 6px;max-width:900px}
+.segbtn.on{border-color:var(--acc);color:var(--acc)}
+.bar{display:inline-block;height:9px;border-radius:3px;vertical-align:middle;margin-right:6px}
+.insight{margin:10px 0;padding:10px 12px;border:1px solid var(--acc);border-radius:8px;font-size:13px;line-height:1.5;max-width:900px}
+.warnbox{margin:8px 0;padding:8px 12px;border:1px solid var(--dn);border-radius:8px;font-size:12px;color:#ffb3ab;max-width:900px}
 .card .lbl{font-size:12px;color:var(--mut);margin-top:2px}
 #journal{padding:14px}
 #journal h2{font-size:14px;margin:0 0 8px}
@@ -166,6 +174,14 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
   <div id="resList" class="hidden"></div>
 </div>
 
+<div id="report">
+  <h2>Profit after entry: how far did price go my way?</h2>
+  <p class="note">For every closed signal the page records the best price reached in your favour after entry (peak profit) and the worst price against you (max drawdown), even if the target was never hit. Long: highest price minus entry. Short: entry minus lowest price. Tracking stops when the trade closes (target, stop-loss or timeout). In the candle that hits the stop-loss, the favourable move is not counted, so the peaks shown are conservative. Only signals logged by this version are included.</p>
+  <div id="repBody"></div>
+  <div class="jbar" style="margin-top:14px"><span class="gl">Early-exit levels in</span><button id="uR" class="segbtn on">R (multiples of the stop distance)</button><button id="uP" class="segbtn">% price move</button></div>
+  <div id="simBody"></div>
+</div>
+
 <div id="journal">
   <h2>Signal journal</h2>
   <div class="jbar">
@@ -177,7 +193,7 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
   <table>
   <thead><tr>
     <th>Time</th><th>Coin</th><th>Combo</th><th>Dir</th><th class="num">Entry</th><th class="num">SL</th><th class="num">Target</th>
-    <th class="num">Now</th><th class="num">Move %</th><th>Elapsed</th><th>Tier</th><th>Result</th><th class="num">Net R</th><th>Notes</th>
+    <th class="num">Now</th><th class="num">Move %</th><th class="num">Peak profit</th><th class="num">Max drawdown</th><th>Elapsed</th><th>Tier</th><th>Result</th><th class="num">Net R</th><th>Notes</th>
   </tr></thead>
   <tbody id="jrows"></tbody>
   </table>
@@ -185,7 +201,7 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
 </div>
 
 <footer>
-Revised version. Signals use only CLOSED candles (nothing repaints). TP/SL are checked against every 1-minute candle high/low since entry; if one candle touches both, it counts as a loss. 45m is built from native 15m candles, 8m from 1m candles. Results are shown in R (target = +RR, stop = −1R) after fees on both sides. Signals with a stop that is too tight or too wide are skipped, and the same setup cannot re-fire during the cooldown. Methodology: higher timeframe RSI sets direction (bullish = RSI&gt;50 and rising), lower timeframe RSI sets entry timing (pullback, turn up, momentum candle, resistance reclaim). On conflict the higher timeframe wins — a lower-timeframe trigger against the higher-timeframe bias is tagged "Conflict" and logged nowhere. Confluence badges: Vol = current volume above its rolling average, Struct = higher-timeframe swing structure (HH/HL or LH/LL), Sweep = a wick through the recent swing extreme that closed back inside it. Elite requires all three plus a clearly-rising HTF RSI; Strong requires the HTF/LTF alignment alone; Medium requires HTF above 50 but not clearly rising; Weak/Conflict are not logged. Timeframes not native to Bybit (8m, 45m) are built by resampling 1-minute candles — these need a short warm-up window after Start before RSI stabilizes. Data: Bybit public v5 market API, no key required. This is a pattern-matching research tool against public price data only — it has no way to detect, and makes no claim about, a move that is being organized rather than discovered.
+Revised version with a profit-after-entry report. Signals use only CLOSED candles (nothing repaints). TP/SL are checked against every 1-minute candle high/low since entry; if one candle touches both, it counts as a loss. 45m is built from native 15m candles, 8m from 1m candles. Results are shown in R (target = +RR, stop = −1R) after fees on both sides. Signals with a stop that is too tight or too wide are skipped, and the same setup cannot re-fire during the cooldown. Methodology: higher timeframe RSI sets direction (bullish = RSI&gt;50 and rising), lower timeframe RSI sets entry timing (pullback, turn up, momentum candle, resistance reclaim). On conflict the higher timeframe wins — a lower-timeframe trigger against the higher-timeframe bias is tagged "Conflict" and logged nowhere. Confluence badges: Vol = current volume above its rolling average, Struct = higher-timeframe swing structure (HH/HL or LH/LL), Sweep = a wick through the recent swing extreme that closed back inside it. Elite requires all three plus a clearly-rising HTF RSI; Strong requires the HTF/LTF alignment alone; Medium requires HTF above 50 but not clearly rising; Weak/Conflict are not logged. Timeframes not native to Bybit (8m, 45m) are built by resampling 1-minute candles — these need a short warm-up window after Start before RSI stabilizes. Data: Bybit public v5 market API, no key required. This is a pattern-matching research tool against public price data only — it has no way to detect, and makes no claim about, a move that is being organized rather than discovered.
 </footer>
 
 <script>
@@ -517,7 +533,7 @@ function logSignal(sym,best,price){
   const notes=[];
   if(best.tier==="Elite"){notes.push("vol confirmed","structure "+best.htfS.structure.toLowerCase(),"liquidity sweep")}
   notes.push("SL "+st.slPct.toFixed(2)+"%");
-  JOURNAL.unshift({t:Date.now(),sym,combo,type:best.type,dir:best.dir,entry:price,sl:st.sl,target:st.target,risk:st.risk,rr:st.rr,fee:parseFloat($("feePct").value)||0,now:price,tier:best.tier,result:"OPEN",notes:notes.join(", ")});
+  JOURNAL.unshift({t:Date.now(),sym,combo,type:best.type,dir:best.dir,entry:price,sl:st.sl,target:st.target,risk:st.risk,rr:st.rr,fee:parseFloat($("feePct").value)||0,now:price,tier:best.tier,result:"OPEN",mfe:0,mae:0,mfeT:null,mfeOk:true,notes:notes.join(", ")});
   saveJournal();
   bumpUnseen();
   if($("sound").checked){beep(best.tier);notify(sym+" "+best.dir+" — "+best.tier,combo+" · entry "+price.toFixed(4))}
@@ -541,6 +557,14 @@ function resolveWithCandles(j,c1,nowMs){
     if(c[0]<from)continue;
     const hitSL=long?c[3]<=j.sl:c[2]>=j.sl;
     const hitTP=long?c[2]>=j.target:c[3]<=j.target;
+    if(j.mfeOk){
+      const adv=long?(j.entry-c[3]):(c[2]-j.entry);
+      if(adv>(j.mae||0))j.mae=adv;
+      if(!hitSL){ // favourable extreme of the stop-loss candle is not counted (conservative)
+        const fav=long?(c[2]-j.entry):(j.entry-c[3]);
+        if(fav>(j.mfe||0)){j.mfe=fav;j.mfeT=c[0]}
+      }
+    }
     if(hitSL){
       finishTrade(j,"LOSS",j.sl,Math.min(nowMs,c[0]+60000));
       if(hitTP)j.notes=(j.notes?j.notes+"; ":"")+"SL and target in the same candle, counted as loss";
@@ -564,6 +588,80 @@ async function resolveOpen(){
     js.forEach(j=>resolveWithCandles(j,c1,Date.now()));
   });
   saveJournal();
+}
+
+
+// ===== Profit-after-entry report =====
+let SIMU="R";
+const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+function median(a){if(!a.length)return null;const q=a.slice().sort((x,y)=>x-y),m=q.length>>1;return q.length%2?q[m]:(q[m-1]+q[m])/2}
+const f2=v=>v==null?"—":v.toFixed(2);
+const sgn=v=>v==null?"—":(v>=0?"+":"")+v.toFixed(2);
+const peakP=j=>j.mfe/j.entry*100, peakR=j=>j.mfe/j.risk, maeP=j=>j.mae/j.entry*100;
+const feeR=j=>2*((j.fee||0)/100)*j.entry/j.risk;
+const repSet=()=>JOURNAL.filter(j=>j.mfeOk&&j.result!=="OPEN"&&j.risk>0&&j.entry>0);
+function simNet(L,x,unit){let net=0,reached=0;
+  for(const j of L){const d=unit==="R"?x*j.risk:x/100*j.entry;
+    if(j.mfe>=d){reached++;net+=d/j.risk-feeR(j)}else net+=(j.rNet!=null?j.rNet:0)}
+  return {reached,net}}
+const origNet=L=>L.reduce((a,j)=>a+(j.rNet||0),0);
+const LEVELS={R:[0.25,0.5,0.75,1,1.5,2],P:[0.25,0.5,1,1.5,2,3,5]};
+
+function grpRow(name,L){
+  if(!L.length)return `<tr><td><b>${name}</b></td><td class="num">0</td><td colspan="10" class="dim">no closed trades yet</td></tr>`;
+  const pp=L.map(peakP),pr=L.map(peakR);
+  const share=n=>Math.round(n/L.length*100)+"%";
+  const tt=L.filter(j=>j.mfeT&&j.mfe>0).map(j=>(j.mfeT-j.t)/60000);
+  return `<tr><td><b>${name}</b></td><td class="num">${L.length}</td>
+    <td class="num up">${f2(avg(pp))}%</td><td class="num">${f2(median(pp))}%</td><td class="num">${f2(avg(pr))}R</td>
+    <td class="num">${share(L.filter(j=>peakR(j)>=0.5).length)}</td><td class="num">${share(L.filter(j=>peakR(j)>=1).length)}</td><td class="num">${share(L.filter(j=>peakP(j)>=1).length)}</td>
+    <td class="num">${share(L.filter(j=>j.result==="WIN").length)}</td>
+    <td class="num down">${f2(avg(L.map(maeP)))}%</td><td class="num">${tt.length?Math.round(median(tt))+"m":"—"}</td></tr>`;
+}
+function lossRow(name,L0){
+  const L=L0.filter(j=>j.result==="LOSS");
+  if(!L.length)return `<tr><td><b>${name}</b></td><td class="num">0</td><td colspan="6" class="dim">no stop-loss trades yet</td></tr>`;
+  const share=n=>Math.round(n/L.length*100)+"%";
+  return `<tr><td><b>${name}</b></td><td class="num">${L.length}</td>
+    <td class="num acc">${share(L.filter(j=>j.mfe>0).length)}</td><td class="num">${share(L.filter(j=>peakR(j)>=0.25).length)}</td><td class="num">${share(L.filter(j=>peakR(j)>=0.5).length)}</td><td class="num">${share(L.filter(j=>peakR(j)>=1).length)}</td>
+    <td class="num up">${f2(avg(L.map(peakP)))}%</td><td class="num">${f2(avg(L.map(peakR)))}R</td></tr>`;
+}
+function histBlock(lg,sh){
+  const B=[["No profit at all",p=>p<=0],["0 – 0.5%",p=>p>0&&p<0.5],["0.5 – 1%",p=>p>=0.5&&p<1],["1 – 2%",p=>p>=1&&p<2],["2 – 3%",p=>p>=2&&p<3],["3 – 5%",p=>p>=3&&p<5],["5% or more",p=>p>=5]];
+  const cnt=(L,f)=>L.filter(j=>f(peakP(j))).length;
+  const mx=Math.max(1,...B.flatMap(b=>[cnt(lg,b[1]),cnt(sh,b[1])]));
+  const bar=(n,col)=>`<span class="bar" style="width:${Math.round(n/mx*140)}px;background:${col}"></span>${n}`;
+  return `<table style="max-width:560px"><thead><tr><th>Peak profit after entry</th><th>Long signals</th><th>Short signals</th></tr></thead><tbody>${B.map(b=>`<tr><td>${b[0]}</td><td>${bar(cnt(lg,b[1]),"var(--up)")}</td><td>${bar(cnt(sh,b[1]),"var(--dn)")}</td></tr>`).join("")}</tbody></table>`;
+}
+function renderReport(){
+  const body=$("repBody"),sim=$("simBody");
+  const all=repSet(),lg=all.filter(j=>j.dir==="LONG"),sh=all.filter(j=>j.dir==="SHORT");
+  const openN=JOURNAL.filter(j=>j.mfeOk&&j.result==="OPEN").length;
+  if(!all.length){body.innerHTML=`<div class="dim" style="padding:10px 0">No closed signals with profit tracking yet${openN?` (${openN} open trade${openN>1?"s":""} being tracked now)`:""}. The report fills in as trades close.</div>`;sim.innerHTML="";return}
+  const warn=all.length<30?`<div class="warnbox">Only ${all.length} closed trade${all.length>1?"s":""}. Fewer than 30 is too few to trust these averages, so treat the numbers as a first look, not a rule.</div>`:"";
+  body.innerHTML=warn+`
+  <h3>1. How far did price go in my favour after entry?</h3>
+  <div class="wrap" style="padding:0"><table><thead><tr><th>Signals</th><th class="num">Closed trades</th><th class="num">Avg peak profit</th><th class="num">Median peak</th><th class="num">Avg peak (R)</th><th class="num">Reached +0.5R</th><th class="num">Reached +1R</th><th class="num">Reached +1%</th><th class="num">Hit full target</th><th class="num">Avg worst drawdown</th><th class="num">Median time to peak</th></tr></thead><tbody>${grpRow("All",all)}${grpRow("Long",lg)}${grpRow("Short",sh)}</tbody></table></div>
+  <h3>2. Trades that ended at the stop-loss: were they in profit first?</h3>
+  <div class="wrap" style="padding:0"><table><thead><tr><th>Signals</th><th class="num">Stop-loss trades</th><th class="num">Were in profit first</th><th class="num">Reached +0.25R</th><th class="num">Reached +0.5R</th><th class="num">Reached +1R</th><th class="num">Avg peak before reversing</th><th class="num">Avg peak (R)</th></tr></thead><tbody>${lossRow("All",all)}${lossRow("Long",lg)}${lossRow("Short",sh)}</tbody></table></div>
+  <h3>3. Peak profit distribution</h3>
+  <div class="wrap" style="padding:0">${histBlock(lg,sh)}</div>
+  <p class="note">${openN?openN+" open trade"+(openN>1?"s are":" is")+" not counted until closed. ":""}Closed = target hit, stop-loss hit or 24h timeout.</p>`;
+
+  const lv=LEVELS[SIMU],u=SIMU==="R"?"R":"%";
+  const o=[origNet(all),origNet(lg),origNet(sh)];
+  const rows=lv.map(x=>{const a=simNet(all,x,SIMU),l=simNet(lg,x,SIMU),sx=simNet(sh,x,SIMU);
+    const pc=(r,t)=>t?r+" ("+Math.round(r/t*100)+"%)":"—";
+    return {x,a,l,sx,html:`<tr><td><b>+${x}${u}</b></td><td class="num">${pc(a.reached,all.length)}</td><td class="num">${pc(l.reached,lg.length)}</td><td class="num">${pc(sx.reached,sh.length)}</td><td class="num ${a.net>=0?"up":"down"}">${sgn(a.net)}R</td><td class="num ${l.net>=0?"up":"down"}">${lg.length?sgn(l.net)+"R":"—"}</td><td class="num ${sx.net>=0?"up":"down"}">${sh.length?sgn(sx.net)+"R":"—"}</td><td class="num ${a.net-o[0]>=0?"up":"down"}">${sgn(a.net-o[0])}R</td></tr>`}});
+  const best=rows.reduce((b,r)=>r.a.net>b.a.net?r:b,rows[0]);
+  const insight=all.length>=30
+    ?`<div class="insight">In this sample, taking a full exit at <b>+${best.x}${u}</b> would have given the highest total (${sgn(best.a.net)}R after fees) compared with ${sgn(o[0])}R for your normal target/stop rules (${sgn(best.a.net-o[0])}R difference).</div>`
+    :`<div class="insight">Early-exit comparison is shown below. A recommendation appears once there are 30 closed trades.</div>`;
+  sim.innerHTML=`<h3>4. What if I exited early at a fixed profit level?</h3>
+  <p class="note">For every closed trade: if price reached the level, the trade is counted as closed there (level minus fees on both sides). If it never reached the level, the normal result (target, stop-loss or timeout) is used. "Original" = your normal result: All ${sgn(o[0])}R, Long ${lg.length?sgn(o[1])+"R":"—"}, Short ${sh.length?sgn(o[2])+"R":"—"}.</p>
+  ${insight}
+  <div class="wrap" style="padding:0"><table><thead><tr><th>Exit level</th><th class="num">Reached (All)</th><th class="num">Reached (Long)</th><th class="num">Reached (Short)</th><th class="num">Net R (All)</th><th class="num">Net R (Long)</th><th class="num">Net R (Short)</th><th class="num">Change vs original</th></tr></thead><tbody>${rows.map(r=>r.html).join("")}</tbody></table></div>
+  <p class="note">Assumes you can exit at exactly that price, so real fills will be slightly worse. Peaks are measured on 1-minute candles. Levels in % are price moves from the entry price.</p>`;
 }
 
 function fmtMove(entry,now,dir){
@@ -636,6 +734,8 @@ function render(){
     <td class="num mono">${j.target!=null?j.target.toFixed(4):"—"}</td>
     <td class="num mono">${j.now!=null?j.now.toFixed(4):"—"}</td>
     <td class="num mono">${fmtMove(j.entry,j.now,j.dir)}</td>
+    <td class="num mono up">${j.mfeOk?peakP(j).toFixed(2)+"% · "+peakR(j).toFixed(2)+"R":"—"}</td>
+    <td class="num mono down">${j.mfeOk?maeP(j).toFixed(2)+"%":"—"}</td>
     <td>${j.result==="OPEN"?fmtElapsed(j.t):"—"}</td>
     <td><span class="tier ${j.tier}">${j.tier}</span></td>
     <td>${j.result}</td>
@@ -643,6 +743,7 @@ function render(){
     <td contenteditable data-t="${j.t}">${esc(j.notes||"")}</td>
   </tr>`).join("");
   renderResList();
+  renderReport();
 }
 
 function renderResList(){
@@ -653,7 +754,7 @@ function renderResList(){
   const title={WIN:"Coins that hit target",LOSS:"Coins that hit SL",TIMEOUT:"Coins that timed out",ALL:"All signals"}[RFILTER];
   box.classList.remove("hidden");
   const took=j=>j.closedT?fmtElapsed2(j.closedT-j.t):(j.result==="OPEN"?fmtElapsed(j.t)+" (open)":"—");
-  box.innerHTML=`<div class="jbar"><b>${title}: ${L.length}</b><button id="resClose">Close</button></div>`+(L.length?`<div class="wrap" style="padding:0"><table><thead><tr><th>Coin</th><th>Dir</th><th>Combo</th><th>Tier</th><th class="num">Entry</th><th class="num">SL</th><th class="num">Target</th><th class="num">Price now / at close</th><th class="num">Move %</th><th>Opened</th><th>Took</th><th>Result</th><th class="num">Net R</th><th></th></tr></thead><tbody>${L.map(j=>`<tr><td class="sym">${esc(j.sym)}</td><td class="${j.dir==='LONG'?'up':'down'}">${j.dir}</td><td>${esc(j.combo)}</td><td><span class="tier ${j.tier}">${j.tier}</span></td><td class="num mono">${j.entry.toFixed(4)}</td><td class="num mono">${j.sl!=null?j.sl.toFixed(4):"—"}</td><td class="num mono">${j.target!=null?j.target.toFixed(4):"—"}</td><td class="num mono">${j.now!=null?j.now.toFixed(4):"—"}</td><td class="num mono ${j.result==='WIN'?'up':j.result==='LOSS'?'down':''}">${fmtMove(j.entry,j.now,j.dir)}</td><td class="mono">${new Date(j.t).toLocaleString()}</td><td>${took(j)}</td><td>${j.result}</td><td class="num mono ${j.rNet>0?"up":j.rNet<0?"down":""}">${j.rNet!=null?(j.rNet>=0?"+":"")+j.rNet.toFixed(2):"—"}</td><td><a class="acc" target="_blank" rel="noopener" href="https://www.bybit.com/trade/usdt/${encodeURIComponent(j.sym)}">Bybit ↗</a></td></tr>`).join("")}</tbody></table></div>`:`<div class="dim">None yet.</div>`);
+  box.innerHTML=`<div class="jbar"><b>${title}: ${L.length}</b><button id="resClose">Close</button></div>`+(L.length?`<div class="wrap" style="padding:0"><table><thead><tr><th>Coin</th><th>Dir</th><th>Combo</th><th>Tier</th><th class="num">Entry</th><th class="num">SL</th><th class="num">Target</th><th class="num">Price now / at close</th><th class="num">Move %</th><th class="num">Peak profit</th><th>Opened</th><th>Took</th><th>Result</th><th class="num">Net R</th><th></th></tr></thead><tbody>${L.map(j=>`<tr><td class="sym">${esc(j.sym)}</td><td class="${j.dir==='LONG'?'up':'down'}">${j.dir}</td><td>${esc(j.combo)}</td><td><span class="tier ${j.tier}">${j.tier}</span></td><td class="num mono">${j.entry.toFixed(4)}</td><td class="num mono">${j.sl!=null?j.sl.toFixed(4):"—"}</td><td class="num mono">${j.target!=null?j.target.toFixed(4):"—"}</td><td class="num mono">${j.now!=null?j.now.toFixed(4):"—"}</td><td class="num mono ${j.result==='WIN'?'up':j.result==='LOSS'?'down':''}">${fmtMove(j.entry,j.now,j.dir)}</td><td class="num mono up">${j.mfeOk?peakP(j).toFixed(2)+"% · "+peakR(j).toFixed(2)+"R":"—"}</td><td class="mono">${new Date(j.t).toLocaleString()}</td><td>${took(j)}</td><td>${j.result}</td><td class="num mono ${j.rNet>0?"up":j.rNet<0?"down":""}">${j.rNet!=null?(j.rNet>=0?"+":"")+j.rNet.toFixed(2):"—"}</td><td><a class="acc" target="_blank" rel="noopener" href="https://www.bybit.com/trade/usdt/${encodeURIComponent(j.sym)}">Bybit ↗</a></td></tr>`).join("")}</tbody></table></div>`:`<div class="dim">None yet.</div>`);
 }
 function fmtElapsed2(ms){const m=Math.max(0,Math.round(ms/60000));return m<60?m+"m":Math.floor(m/60)+"h "+(m%60)+"m"}
 
@@ -682,11 +783,13 @@ document.getElementById("jrows").addEventListener("blur",e=>{
 },true);
 
 $("exportCsv").onclick=()=>{
-  const cols=["time","sym","combo","type","dir","entry","sl","target","now","move%","tier","result","net_R","closed_at","notes"];
-  const rows=JOURNAL.map(j=>[new Date(j.t).toISOString(),j.sym,j.combo,j.type,j.dir,j.entry,j.sl,j.target,j.now,fmtMove(j.entry,j.now,j.dir),j.tier,j.result,j.rNet!=null?j.rNet:"",j.closedT?new Date(j.closedT).toISOString():"",'"'+(j.notes||"").replace(/"/g,'""')+'"']);
+  const cols=["time","sym","combo","type","dir","entry","sl","target","now","move%","peak_profit_pct","peak_profit_R","max_drawdown_pct","tier","result","net_R","closed_at","notes"];
+  const rows=JOURNAL.map(j=>[new Date(j.t).toISOString(),j.sym,j.combo,j.type,j.dir,j.entry,j.sl,j.target,j.now,fmtMove(j.entry,j.now,j.dir),j.mfeOk?peakP(j).toFixed(3):"",j.mfeOk?peakR(j).toFixed(3):"",j.mfeOk?maeP(j).toFixed(3):"",j.tier,j.result,j.rNet!=null?j.rNet:"",j.closedT?new Date(j.closedT).toISOString():"",'"'+(j.notes||"").replace(/"/g,'""')+'"']);
   const csv=[cols.join(",")].concat(rows.map(r=>r.join(","))).join("\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="strategy3-revised-journal.csv";document.body.appendChild(a);a.click();a.remove();
 };
+$("uR").onclick=()=>{SIMU="R";$("uR").classList.add("on");$("uP").classList.remove("on");renderReport()};
+$("uP").onclick=()=>{SIMU="P";$("uP").classList.add("on");$("uR").classList.remove("on");renderReport()};
 $("clearJournal").onclick=()=>{
   if(!confirm("Clear the entire journal? This cannot be undone."))return;
   JOURNAL=[];saveJournal();render();
