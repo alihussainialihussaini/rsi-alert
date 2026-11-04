@@ -1,0 +1,761 @@
+  <!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Strategy #3 — Revised</title>
+<style>
+:root{--bg:#0e1116;--panel:#161b22;--line:#262d36;--fg:#e6edf3;--mut:#8b96a3;--up:#26a69a;--dn:#ef5350;--acc:#f0b90b;--elite:#c77dff;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px system-ui,sans-serif}
+header{display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+h1{font-size:16px;margin:0;margin-right:auto}
+.sub{color:var(--mut);font-size:12px}
+button,select,input{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px 9px;font:inherit}
+button{cursor:pointer}button:disabled{opacity:.5;cursor:default}
+.pill{font-size:12px;padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--mut)}
+.pill.live{color:var(--up);border-color:var(--up)}.pill.scan{color:var(--acc);border-color:var(--acc)}.pill.err{color:var(--dn);border-color:var(--dn)}
+#banner{padding:8px 14px;background:#3a1414;color:#ffb3ab;font-size:13px;border-bottom:1px solid var(--line)}
+#toolbar{display:flex;gap:10px 18px;align-items:flex-start;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+.group{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.gl{color:var(--mut);font-size:12px;margin-right:2px}
+.colgrp{display:flex;flex-direction:column;gap:4px}
+.colgrp .gl{margin-bottom:2px}
+.chk{display:flex;gap:4px;align-items:center;font-size:12px;color:var(--mut);cursor:pointer;border:1px solid var(--line);border-radius:6px;padding:3px 8px}
+.chk input{margin:0}
+.chk.on{color:var(--fg);border-color:var(--acc)}
+input[type=text]{width:170px}
+input[type=number]{width:62px;text-align:right}
+.dim{color:var(--mut)}
+#ov{display:flex;gap:18px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--line);font-size:12px;color:var(--mut)}
+#ov b{color:var(--fg);font-size:17px;margin-right:4px}
+#ov b.acc{color:var(--acc)}
+.wrap{overflow-x:auto;padding:0 14px}
+table{border-collapse:collapse;width:100%;font-size:13px;margin-top:10px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{color:var(--mut);font-weight:600;font-size:12px}
+td.num,th.num{text-align:right}
+.mono{font-variant-numeric:tabular-nums}
+.sym{font-weight:700}
+.up{color:var(--up)}.down{color:var(--dn)}.acc{color:var(--acc)}
+tr:hover td{background:#141a21}
+.tag{display:inline-block;padding:1px 7px;border-radius:5px;font-size:11px;margin:1px 2px 1px 0;border:1px solid var(--line)}
+.tier{font-weight:700;padding:2px 9px;border-radius:5px;font-size:12px}
+.tier.Elite{color:#000;background:var(--elite)}
+.tier.Strong{color:#000;background:var(--up)}
+.tier.Medium{color:#000;background:var(--acc)}
+.tier.Weak{color:var(--mut);border:1px solid var(--line)}
+.tier.Conflict{color:#fff;background:#5a2d2d}
+.tier.None{color:var(--mut)}
+.flag{display:inline-block;padding:0 5px;border-radius:4px;font-size:10px;margin-right:3px;border:1px solid var(--line);color:var(--mut)}
+.flag.ok{color:var(--up);border-color:var(--up)}
+.flag.warn{color:var(--dn);border-color:var(--dn)}
+.expandBtn{background:none;border:none;color:var(--acc);cursor:pointer;font:inherit;text-decoration:underline;padding:0}
+.detailRow td{background:#0b0e13;padding:10px 14px}
+.bd{border-collapse:collapse;font-size:12px}
+.bd th,.bd td{padding:5px 9px;border:1px solid var(--line);white-space:nowrap}
+.bd th{color:var(--mut);font-weight:600;text-align:left}
+#empty{padding:30px 14px;color:var(--mut);text-align:center}
+#dash{padding:14px}
+#dash h2{font-size:14px;margin:0 0 10px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;text-align:center}
+.card .big{font-size:26px;font-weight:700}
+.card[data-f]{cursor:pointer}.card[data-f]:hover,.card.sel{border-color:var(--acc)}
+#ov span[data-f]{cursor:pointer;text-decoration:underline dotted}
+#resList{margin-top:14px}
+.card .lbl{font-size:12px;color:var(--mut);margin-top:2px}
+#journal{padding:14px}
+#journal h2{font-size:14px;margin:0 0 8px}
+.jbar{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+input[contenteditable]{outline:none}
+td[contenteditable]{background:#0b0e13;cursor:text}
+td[contenteditable]:focus{outline:1px solid var(--acc)}
+footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
+.hidden{display:none!important}
+</style></head><body>
+
+<header>
+  <h1>Strategy #3 — Revised <span class="sub">(closed-candle signals · candle-based TP/SL · R and fees)</span></h1>
+  <span id="pill" class="pill">idle</span>
+</header>
+<div id="banner" class="hidden"></div>
+
+<div id="toolbar">
+  <div class="group"><span class="gl">Universe</span>
+    <select id="mode"><option value="list" selected>Custom watchlist</option><option value="top">Top by volume</option></select>
+  </div>
+  <div class="group" id="listGrp"><span class="gl">Symbols</span><input type="text" id="watchlist" value="ARIAUSDT" placeholder="ARIAUSDT,BTCUSDT,..."></div>
+  <div class="group hidden" id="topGrp"><span class="gl">Top</span>
+    <select id="topN"><option value="20" selected>20</option><option value="40">40</option><option value="80">80</option></select>
+    <span class="gl">USDT perps</span>
+  </div>
+
+  <div class="colgrp">
+    <span class="gl">Higher timeframe (direction)</span>
+    <div class="group" id="htfChk">
+      <label class="chk on"><input type="checkbox" value="45" checked>45m</label>
+      <label class="chk"><input type="checkbox" value="60">1H</label>
+      <label class="chk"><input type="checkbox" value="120">2H</label>
+      <label class="chk"><input type="checkbox" value="240">4H</label>
+      <label class="chk"><input type="checkbox" value="1440">Daily</label>
+    </div>
+  </div>
+
+  <div class="colgrp">
+    <span class="gl">Entry timeframe (trigger)</span>
+    <div class="group" id="ltfChk">
+      <label class="chk"><input type="checkbox" value="5">5m</label>
+      <label class="chk on"><input type="checkbox" value="8" checked>8m</label>
+      <label class="chk"><input type="checkbox" value="15">15m</label>
+    </div>
+  </div>
+
+  <div class="group"><span class="gl">RSI length</span><input type="number" id="rsiLen" value="14" min="2" max="50"></div>
+  <div class="group"><span class="gl">Min tier to log</span>
+    <select id="minLogTier"><option value="Strong" selected>Strong</option><option value="Medium">Medium</option><option value="Elite">Elite</option></select>
+  </div>
+  <div class="group"><span class="gl">RR target</span><input type="number" id="rrMult" value="2" min="0.5" max="10" step="0.5"></div>
+  <div class="group"><span class="gl">Fee % / side</span><input type="number" id="feePct" value="0.055" min="0" max="1" step="0.005"></div>
+  <div class="group"><span class="gl">SL % min</span><input type="number" id="minSl" value="0.2" min="0" max="20" step="0.1"></div>
+  <div class="group"><span class="gl">SL % max</span><input type="number" id="maxSl" value="3" min="0.1" max="50" step="0.5"></div>
+  <div class="group"><span class="gl">Cooldown (min)</span><input type="number" id="cool" value="30" min="0" max="1440" step="5"></div>
+  <div class="group"><span class="gl">Tick every</span>
+    <select id="pollSec"><option value="20" selected>20s</option><option value="30">30s</option><option value="60">60s</option><option value="120">2m</option></select>
+  </div>
+  <button id="startBtn">Start</button>
+  <label class="chk"><input type="checkbox" id="sound" checked> Sound + notification on new Strong/Elite</label>
+</div>
+
+<div id="ov">
+  <span><b class="acc" id="ovElite">0</b>elite</span>
+  <span><b id="ovStrong">0</b>strong</span>
+  <span><b id="ovMedium">0</b>medium</span>
+  <span><b id="ovTracked">0</b>tracked</span>
+  <span data-f="WIN"><b class="up" id="ovWins">0</b>wins</span>
+  <span data-f="LOSS"><b class="down" id="ovLosses">0</b>losses</span>
+  <span><b id="ovTimeouts">0</b>timeout</span>
+  <span><b class="acc" id="ovWinRate">—</b>win rate</span>
+  <span><b class="acc" id="ovNetR">—</b>net R</span>
+  <span><b id="ovReq">0</b>requests</span>
+  <span><b id="ovFail">0</b>failed</span>
+  <span id="ovLast">last tick: —</span>
+</div>
+
+<div class="wrap">
+<table>
+<thead><tr>
+  <th>Symbol</th><th class="num">Price</th><th>Best combo</th><th>Type</th>
+  <th>HTF RSI</th><th>HTF dir</th><th>LTF RSI</th><th>LTF setup</th>
+  <th>Confluence</th><th>Tier</th><th>Direction</th><th>SL / Target</th><th></th>
+</tr></thead>
+<tbody id="rows"></tbody>
+</table>
+<div id="empty">Not scanning yet. Press Start.</div>
+</div>
+
+<div id="dash">
+  <h2>Performance</h2>
+  <div class="cards">
+    <div class="card" data-f="ALL" title="Click to list all signals"><div class="big" id="dashTotal">0</div><div class="lbl">Total signals</div></div>
+    <div class="card" data-f="WIN" title="Click to list coins that hit target"><div class="big up" id="dashWins">0</div><div class="lbl">Target hit</div></div>
+    <div class="card" data-f="LOSS" title="Click to list coins that hit SL"><div class="big down" id="dashLosses">0</div><div class="lbl">SL hit</div></div>
+    <div class="card" data-f="TIMEOUT" title="Click to list timed-out coins"><div class="big" id="dashTimeouts">0</div><div class="lbl">Timeout</div></div>
+    <div class="card"><div class="big acc" id="dashWinRate">—</div><div class="lbl">Win rate</div></div>
+    <div class="card"><div class="big" id="dashNetR">—</div><div class="lbl">Net R (after fees)</div></div>
+    <div class="card"><div class="big" id="dashAvgR">—</div><div class="lbl">Avg R per trade</div></div>
+  </div>
+  <div class="dim" style="margin-top:8px;font-size:12px">Click Total, Target hit, SL hit or Timeout to see the coins.</div>
+  <div id="resList" class="hidden"></div>
+</div>
+
+<div id="journal">
+  <h2>Signal journal</h2>
+  <div class="jbar">
+    <button id="exportCsv">Export CSV</button>
+    <button id="clearJournal">Clear journal</button>
+    <span class="dim" id="jcount">0 entries</span>
+  </div>
+  <div class="wrap" style="padding:0">
+  <table>
+  <thead><tr>
+    <th>Time</th><th>Coin</th><th>Combo</th><th>Dir</th><th class="num">Entry</th><th class="num">SL</th><th class="num">Target</th>
+    <th class="num">Now</th><th class="num">Move %</th><th>Elapsed</th><th>Tier</th><th>Result</th><th class="num">Net R</th><th>Notes</th>
+  </tr></thead>
+  <tbody id="jrows"></tbody>
+  </table>
+  </div>
+</div>
+
+<footer>
+Revised version. Signals use only CLOSED candles (nothing repaints). TP/SL are checked against every 1-minute candle high/low since entry; if one candle touches both, it counts as a loss. 45m is built from native 15m candles, 8m from 1m candles. Results are shown in R (target = +RR, stop = −1R) after fees on both sides. Signals with a stop that is too tight or too wide are skipped, and the same setup cannot re-fire during the cooldown. Methodology: higher timeframe RSI sets direction (bullish = RSI&gt;50 and rising), lower timeframe RSI sets entry timing (pullback, turn up, momentum candle, resistance reclaim). On conflict the higher timeframe wins — a lower-timeframe trigger against the higher-timeframe bias is tagged "Conflict" and logged nowhere. Confluence badges: Vol = current volume above its rolling average, Struct = higher-timeframe swing structure (HH/HL or LH/LL), Sweep = a wick through the recent swing extreme that closed back inside it. Elite requires all three plus a clearly-rising HTF RSI; Strong requires the HTF/LTF alignment alone; Medium requires HTF above 50 but not clearly rising; Weak/Conflict are not logged. Timeframes not native to Bybit (8m, 45m) are built by resampling 1-minute candles — these need a short warm-up window after Start before RSI stabilizes. Data: Bybit public v5 market API, no key required. This is a pattern-matching research tool against public price data only — it has no way to detect, and makes no claim about, a move that is being organized rather than discovered.
+</footer>
+
+<script>
+const $=id=>document.getElementById(id);
+const API="https://api.bybit.com/v5/market";
+const STABLE=new Set(["USDC","FDUSD","TUSD","USDP","BUSD","DAI","USDE","PYUSD","RLUSD"]);
+const NATIVE={1:"1",3:"3",5:"5",15:"15",30:"30",60:"60",120:"120",240:"240",360:"360",720:"720",1440:"D"};
+const TFLABEL={5:"5m",8:"8m",15:"15m",45:"45m",60:"1H",120:"2H",240:"4H",1440:"Daily"};
+function tfLabel(m){return TFLABEL[m]||(m+"m")}
+// Preset distance types from the Strategy #3 manual (ltf,htf minutes)
+const PRESETS=[
+  {l:8,h:15,type:"1"},{l:15,h:45,type:"1"},{l:45,h:60,type:"1"},
+  {l:8,h:45,type:"2"},{l:5,h:60,type:"2"},{l:15,h:120,type:"2"},
+  {l:8,h:240,type:"3"},{l:15,h:240,type:"3"},{l:15,h:1440,type:"3"}
+];
+function distanceType(l,h){const p=PRESETS.find(p=>p.l===l&&p.h===h);return p?p.type:"custom"}
+
+let api={req:0,fail:0};
+let running=false,timer=null,ticking=false;
+let SYMS=[];
+const JKEY="s3v2_journal",MAXH=24;
+let JOURNAL=[];try{JOURNAL=JSON.parse(localStorage.getItem(JKEY)||"[]")}catch(e){}
+let RFILTER=null;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let lastBest={}; // symbol -> last tier, to detect new triggers
+
+function saveJournal(){try{localStorage.setItem(JKEY,JSON.stringify(JOURNAL))}catch(e){}}
+
+async function fetchJson(url){
+  api.req++;
+  let r;
+  try{r=await fetch(url)}catch(e){api.fail++;throw e}
+  if(!r.ok){api.fail++;throw new Error("HTTP "+r.status)}
+  const j=await r.json();
+  if(j.retCode!==0){api.fail++;throw new Error(j.retMsg||("retCode "+j.retCode))}
+  return j.result;
+}
+
+async function loadSyms(){
+  const mode=$("mode").value;
+  if(mode==="list"){
+    const list=$("watchlist").value.split(",").map(s=>s.trim().toUpperCase()).filter(Boolean);
+    SYMS=list.map(s=>({s,px:null}));
+    return;
+  }
+  const topN=parseInt($("topN").value);
+  const res=await fetchJson(API+"/tickers?category=linear");
+  const list=(res.list||[])
+    .filter(x=>x.symbol.endsWith("USDT")&&!STABLE.has(x.symbol.slice(0,-4)))
+    .map(x=>({s:x.symbol,px:+x.lastPrice,vol:+x.turnover24h}))
+    .sort((a,b)=>b.vol-a.vol)
+    .slice(0,topN);
+  if(list.length)SYMS=list;
+}
+
+async function klNative(symbol,intervalId,limit){
+  const res=await fetchJson(API+"/kline?category=linear&symbol="+encodeURIComponent(symbol)+"&interval="+intervalId+"&limit="+limit);
+  const list=res.list;
+  if(!list||!list.length)throw new Error("no data");
+  return list.map(x=>[+x[0],+x[1],+x[2],+x[3],+x[4],+x[5]]).reverse(); // ascending
+}
+
+async function kl1mPaged(symbol,targetBars,maxPages){
+  const batches=[]; // each newest-first
+  let endParam=null,fetched=0,pages=0;
+  while(fetched<targetBars&&pages<maxPages){
+    const lim=Math.min(1000,Math.max(5,targetBars-fetched));
+    let url=API+"/kline?category=linear&symbol="+encodeURIComponent(symbol)+"&interval=1&limit="+lim;
+    if(endParam)url+="&end="+endParam;
+    const res=await fetchJson(url);
+    const list=res.list;
+    if(!list||!list.length)break;
+    const batch=list.map(x=>[+x[0],+x[1],+x[2],+x[3],+x[4],+x[5]]); // newest-first
+    batches.push(batch);
+    fetched+=batch.length;
+    pages++;
+    if(batch.length<lim)break;
+    endParam=batch[batch.length-1][0]-60000;
+  }
+  const asc=[];
+  for(let i=batches.length-1;i>=0;i--)asc.push(...batches[i].slice().reverse());
+  return asc;
+}
+
+function resample(candles1m,minutes,targetBars){
+  if(!candles1m.length)return [];
+  const ms=minutes*60000;
+  const buckets=new Map();
+  for(const c of candles1m){
+    const key=Math.floor(c[0]/ms);
+    let b=buckets.get(key);
+    if(!b){b={t:key*ms,o:c[1],h:c[2],l:c[3],c:c[4],v:c[5]};buckets.set(key,b)}
+    else{b.h=Math.max(b.h,c[2]);b.l=Math.min(b.l,c[3]);b.c=c[4];b.v+=c[5]}
+  }
+  const keys=[...buckets.keys()].sort((a,b)=>a-b);
+  const out=keys.map(k=>buckets.get(k));
+  const now=Date.now();
+  if(out.length)out[out.length-1].live=(now < out[out.length-1].t+ms);
+  return out.slice(-targetBars);
+}
+
+function rsiCalc(c,p){
+  const o=new Array(c.length).fill(null);
+  if(c.length<=p)return o;
+  let g=0,l=0;
+  for(let i=1;i<=p;i++){const d=c[i]-c[i-1];if(d>0)g+=d;else l-=d}
+  g/=p;l/=p;
+  o[p]=l===0?100:100-100/(1+g/l);
+  for(let i=p+1;i<c.length;i++){
+    const d=c[i]-c[i-1];
+    g=(g*(p-1)+(d>0?d:0))/p;
+    l=(l*(p-1)+(d<0?-d:0))/p;
+    o[i]=l===0?100:100-100/(1+g/l)
+  }
+  return o;
+}
+
+async function pool(items,n,fn){
+  let i=0;
+  await Promise.all(Array.from({length:Math.min(n,items.length)},async()=>{
+    while(i<items.length){const k=i++;await fn(items[k])}
+  }));
+}
+
+const seriesCache={}; // per-tick cache, keyed symbol|minutes
+const c1Cache={};     // per-tick cache of 1m candles per symbol
+const SRC_TFS=[240,120,60,30,15,5,3,1];
+function srcFor(m){return SRC_TFS.find(c=>c<=m&&m%c===0)||1}
+async function get1m(sym,need){
+  const have=c1Cache[sym];
+  if(have&&have.length>=need)return have;
+  const c=await kl1mPaged(sym,need,Math.min(5,Math.ceil(need/1000)));
+  c1Cache[sym]=c;return c;
+}
+// returns CLOSED candles + RSI of closed candles, and px = live price (forming candle close)
+async function getSeries(symbol,minutes,rsiLen){
+  const key=symbol+"|"+minutes;
+  if(seriesCache[key])return seriesCache[key];
+  const TB=300;
+  let candles,forming=true;
+  if(NATIVE[minutes]){
+    candles=await klNative(symbol,NATIVE[minutes],Math.min(1000,Math.max(TB,rsiLen*10)));
+  } else {
+    const c=srcFor(minutes),ratio=minutes/c;
+    let src;
+    if(c===1)src=await get1m(symbol,Math.min(4000,(TB+2)*minutes));
+    else src=await klNative(symbol,NATIVE[c],Math.min(1000,(TB+2)*ratio));
+    const rc=resample(src,minutes,TB);
+    candles=rc.map(b=>[b.t,b.o,b.h,b.l,b.c,b.v]);
+    forming=rc.length?rc[rc.length-1].live:false;
+  }
+  if(!candles.length)throw new Error("no data");
+  const px=candles[candles.length-1][4];
+  const rsiAll=rsiCalc(candles.map(c=>c[4]),rsiLen);
+  const cut=forming?1:0;
+  const result={candles:candles.slice(0,candles.length-cut),rsi:rsiAll.slice(0,rsiAll.length-cut),px,forming};
+  seriesCache[key]=result;
+  return result;
+}
+
+function last(arr,i){return arr[arr.length-1-(i||0)]}
+
+function statsFor(series,bull){
+  const {candles,rsi}=series;
+  const n=candles.length;
+  if(n<40||rsi[n-1]==null)return null;
+  const rsiNow=rsi[n-1];
+  const rsiRef=rsi[Math.max(0,n-1-5)];
+  const rising=rsiRef!=null?(rsiNow-rsiRef):0;
+
+  const lb=10;
+  const win=rsi.slice(Math.max(0,n-1-lb),n-1).filter(v=>v!=null);
+  const pivotRSI=win.length?(bull?Math.min(...win):Math.max(...win)):null;
+  const hadPullback=pivotRSI!=null?(bull?pivotRSI<=rsiNow-2:pivotRSI>=rsiNow+2):false;
+  const turningUp=bull?(rsiNow>last(rsi,1)):(rsiNow<last(rsi,1));
+
+  const cur=candles[n-1];
+  const rangeWin=candles.slice(Math.max(0,n-1-lb),n-1).map(c=>c[2]-c[3]);
+  const avgRange=rangeWin.length?rangeWin.reduce((a,b)=>a+b,0)/rangeWin.length:0;
+  const curRange=cur[2]-cur[3];
+  const momentumCandle=bull?(cur[4]>cur[1]&&curRange>avgRange*1.2):(cur[4]<cur[1]&&curRange>avgRange*1.2);
+
+  const priorBars=candles.slice(Math.max(0,n-1-20),n-1);
+  const recentHigh=Math.max(...priorBars.map(c=>c[2]));
+  const recentLow=Math.min(...priorBars.map(c=>c[3]));
+  const reclaim=bull?(cur[4]>recentHigh):(cur[4]<recentLow);
+
+  const volWin=candles.slice(Math.max(0,n-1-lb),n-1).map(c=>c[5]);
+  const avgVol=volWin.length?volWin.reduce((a,b)=>a+b,0)/volWin.length:0;
+  const volOk=avgVol>0&&cur[5]>avgVol*1.3;
+
+  // pivot-based structure over the last 30 closed bars
+  const sBars=candles.slice(Math.max(0,n-30),n);
+  const pivHigh=[],pivLow=[];
+  for(let i=2;i<sBars.length-2;i++){
+    const h=sBars[i][2],l=sBars[i][3];
+    if(h>sBars[i-1][2]&&h>sBars[i-2][2]&&h>sBars[i+1][2]&&h>sBars[i+2][2])pivHigh.push(h);
+    if(l<sBars[i-1][3]&&l<sBars[i-2][3]&&l<sBars[i+1][3]&&l<sBars[i+2][3])pivLow.push(l);
+  }
+  let structure="Mixed";
+  if(pivHigh.length>=2&&pivLow.length>=2){
+    const hh=pivHigh[pivHigh.length-1]>pivHigh[pivHigh.length-2];
+    const hl=pivLow[pivLow.length-1]>pivLow[pivLow.length-2];
+    const lh=pivHigh[pivHigh.length-1]<pivHigh[pivHigh.length-2];
+    const ll=pivLow[pivLow.length-1]<pivLow[pivLow.length-2];
+    if(hh&&hl)structure="Bullish";
+    else if(lh&&ll)structure="Bearish";
+  }
+
+  // sweep: any of the last 3 closed candles wicked through the prior 10-bar extreme and closed back inside
+  let sweep=false;
+  for(let k=n-1;k>=Math.max(11,n-3);k--){
+    const base=candles.slice(Math.max(0,k-10),k),c=candles[k];
+    if(!base.length)continue;
+    if(bull){const lo=Math.min(...base.map(x=>x[3]));if(c[3]<lo&&c[4]>lo){sweep=true;break}}
+    else{const hi=Math.max(...base.map(x=>x[2]));if(c[2]>hi&&c[4]<hi){sweep=true;break}}
+  }
+
+  return {rsiNow,rising,hadPullback,turningUp,momentumCandle,reclaim,volOk,structure,sweep,
+    close:cur[4],curLow:cur[3],curHigh:cur[2],recentHigh,recentLow,candleT:cur[0]};
+}
+
+function evalPair(htfS,ltfS,bull){
+  if(!htfS||!ltfS)return null;
+  const ltfSetup=ltfS.hadPullback&&ltfS.turningUp&&ltfS.momentumCandle&&ltfS.reclaim;
+  if(!ltfSetup)return {tier:"None"};
+  const htfDirOk=bull?htfS.rsiNow>50:htfS.rsiNow<50;
+  const htfOpp=bull?htfS.rsiNow<50:htfS.rsiNow>50;
+  if(htfOpp)return {tier:"Conflict"};
+  if(!htfDirOk)return {tier:"None"};
+  const htfRising=bull?htfS.rising>1:htfS.rising<-1;
+  let tier;
+  if(!htfRising)tier="Medium";
+  else if(ltfS.volOk&&htfS.structure===(bull?"Bullish":"Bearish")&&ltfS.sweep)tier="Elite";
+  else tier="Strong";
+  return {tier,htfRising};
+}
+
+const TIER_RANK={None:0,Weak:1,Conflict:1,Medium:2,Strong:3,Elite:4};
+
+function beep(tier){
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const freqs=tier==="Elite"?[880,1100,1320]:[880,1175];
+    freqs.forEach((f,i)=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.frequency.value=f;o.connect(g);g.connect(ctx.destination);
+      const t=ctx.currentTime+i*.18;
+      g.gain.setValueAtTime(.0001,t);
+      g.gain.exponentialRampToValueAtTime(.3,t+.02);
+      g.gain.exponentialRampToValueAtTime(.0001,t+.16);
+      o.start(t);o.stop(t+.17);
+    });
+    setTimeout(()=>ctx.close(),900);
+  }catch(e){}
+}
+function notify(title,body){
+  try{
+    if(!("Notification" in window))return;
+    if(Notification.permission==="granted")new Notification(title,{body});
+    else if(Notification.permission==="default")Notification.requestPermission();
+  }catch(e){}
+}
+let originalTitle=document.title;
+let unseen=0,titleFlashTimer=null;
+function bumpUnseen(){
+  unseen++;
+  if(document.hidden&&!titleFlashTimer){
+    let on=false;
+    titleFlashTimer=setInterval(()=>{
+      document.title=on?originalTitle:("\u{1F534} "+unseen+" new signal"+(unseen>1?"s":""));
+      on=!on;
+    },1000);
+  }
+}
+document.addEventListener("visibilitychange",()=>{
+  if(!document.hidden){
+    unseen=0;
+    clearInterval(titleFlashTimer);titleFlashTimer=null;
+    document.title=originalTitle;
+  }
+});
+
+let RESULTS=[]; // per-symbol best result this tick, for render
+
+async function evalSymbol(sym,htfList,ltfList,rsiLen){
+  const pairs=[];
+  for(const h of htfList){
+    for(const l of ltfList){
+      let htfSeries,ltfSeries;
+      try{
+        htfSeries=await getSeries(sym,h,rsiLen);
+        ltfSeries=await getSeries(sym,l,rsiLen);
+      }catch(e){continue}
+      const htfBull=statsFor(htfSeries,true), htfBear=statsFor(htfSeries,false);
+      const ltfBull=statsFor(ltfSeries,true), ltfBear=statsFor(ltfSeries,false);
+      const evB=evalPair(htfBull,ltfBull,true);
+      const evS=evalPair(htfBear,ltfBear,false);
+      const pick=(evB&&TIER_RANK[evB.tier]>=TIER_RANK[evS?evS.tier:"None"])?{...evB,dir:"LONG",htfS:htfBull,ltfS:ltfBull}:{...evS,dir:"SHORT",htfS:htfBear,ltfS:ltfBear};
+      pairs.push({h,l,type:distanceType(l,h),px:ltfSeries.px,...pick});
+    }
+  }
+  pairs.sort((a,b)=>TIER_RANK[b.tier]-TIER_RANK[a.tier]);
+  return pairs;
+}
+
+function computeSlTarget(best,price){
+  const L=best.ltfS;if(!L||price==null)return{ok:false,why:"no data"};
+  const long=best.dir==="LONG";
+  const sl=long?Math.min(L.recentLow,L.curLow):Math.max(L.recentHigh,L.curHigh);
+  const risk=Math.abs(price-sl);
+  const slPct=risk/price*100;
+  const rr=parseFloat($("rrMult").value)||2;
+  const target=long?price+risk*rr:price-risk*rr;
+  const minP=parseFloat($("minSl").value)||0,maxP=parseFloat($("maxSl").value)||100;
+  const side=long?sl<price:sl>price;
+  const why=!side?"SL wrong side":slPct<minP?"SL too tight":slPct>maxP?"SL too wide":"";
+  return{sl,target,risk,slPct,rr,ok:!why,why};
+}
+
+function logSignal(sym,best,price){
+  const combo=tfLabel(best.l)+"+"+tfLabel(best.h);
+  if(JOURNAL.some(j=>j.result==="OPEN"&&j.sym===sym&&j.combo===combo&&j.dir===best.dir))return;
+  const cool=(parseFloat($("cool").value)||0)*60000;
+  const prevSame=JOURNAL.find(j=>j.sym===sym&&j.combo===combo&&j.dir===best.dir);
+  if(prevSame&&Date.now()-prevSame.t<cool)return;
+  const st=computeSlTarget(best,price);
+  if(!st.ok)return;
+  const notes=[];
+  if(best.tier==="Elite"){notes.push("vol confirmed","structure "+best.htfS.structure.toLowerCase(),"liquidity sweep")}
+  notes.push("SL "+st.slPct.toFixed(2)+"%");
+  JOURNAL.unshift({t:Date.now(),sym,combo,type:best.type,dir:best.dir,entry:price,sl:st.sl,target:st.target,risk:st.risk,rr:st.rr,fee:parseFloat($("feePct").value)||0,now:price,tier:best.tier,result:"OPEN",notes:notes.join(", ")});
+  saveJournal();
+  bumpUnseen();
+  if($("sound").checked){beep(best.tier);notify(sym+" "+best.dir+" — "+best.tier,combo+" · entry "+price.toFixed(4))}
+}
+
+function finishTrade(j,res,price,closedT){
+  j.result=res;j.now=price;j.closedT=closedT;
+  const sign=j.dir==="LONG"?1:-1;
+  const gross=(price-j.entry)*sign/j.risk;
+  const feeR=2*((j.fee||0)/100)*j.entry/j.risk;
+  j.rNet=+(gross-feeR).toFixed(3);
+}
+
+// c1 = ascending 1m candles [t,o,h,l,c,v]. Checks every candle after the entry minute. SL and TP in one candle = LOSS.
+function resolveWithCandles(j,c1,nowMs){
+  if(j.result!=="OPEN")return;
+  const from=Math.max(Math.floor(j.t/60000)*60000+60000,j.chk||0);
+  const long=j.dir==="LONG";
+  if(c1.length&&c1[0][0]>from+60000&&!/history gap/.test(j.notes||""))j.notes=(j.notes?j.notes+"; ":"")+"history gap (older 1m candles not loaded)";
+  for(const c of c1){
+    if(c[0]<from)continue;
+    const hitSL=long?c[3]<=j.sl:c[2]>=j.sl;
+    const hitTP=long?c[2]>=j.target:c[3]<=j.target;
+    if(hitSL){
+      finishTrade(j,"LOSS",j.sl,Math.min(nowMs,c[0]+60000));
+      if(hitTP)j.notes=(j.notes?j.notes+"; ":"")+"SL and target in the same candle, counted as loss";
+      return;
+    }
+    if(hitTP){finishTrade(j,"WIN",j.target,Math.min(nowMs,c[0]+60000));return}
+    if(c[0]+60000<=nowMs)j.chk=c[0]+60000;
+  }
+  const L=c1[c1.length-1];if(L)j.now=L[4];
+  if(nowMs-j.t>MAXH*36e5)finishTrade(j,"TIMEOUT",j.now,nowMs);
+}
+
+async function resolveOpen(){
+  const open=JOURNAL.filter(j=>j.result==="OPEN");
+  const syms=[...new Set(open.map(j=>j.sym))];
+  await pool(syms,4,async sym=>{
+    const js=open.filter(j=>j.sym===sym);
+    const oldest=Math.min(...js.map(j=>Math.max(j.chk||0,Math.floor(j.t/60000)*60000)));
+    const need=Math.min(4000,Math.ceil((Date.now()-oldest)/60000)+5);
+    let c1;try{c1=await get1m(sym,Math.max(need,10))}catch(e){return}
+    js.forEach(j=>resolveWithCandles(j,c1,Date.now()));
+  });
+  saveJournal();
+}
+
+function fmtMove(entry,now,dir){
+  if(entry==null||now==null)return "—";
+  const pct=((now-entry)/entry)*100*(dir==="SHORT"?-1:1);
+  return (pct>=0?"+":"")+pct.toFixed(2)+"%";
+}
+function fmtElapsed(t){
+  const m=Math.round((Date.now()-t)/60000);
+  if(m<60)return m+"m";
+  return Math.floor(m/60)+"h "+(m%60)+"m";
+}
+
+function render(){
+  const rows=RESULTS;
+  $("empty").classList.toggle("hidden",rows.length>0);
+  let elite=0,strong=0,medium=0;
+  $("rows").innerHTML=rows.map((r,idx)=>{
+    const best=r.pairs[0];
+    if(!best||best.tier==="None")return "";
+    if(best.tier==="Elite")elite++;else if(best.tier==="Strong")strong++;else if(best.tier==="Medium")medium++;
+    const combo=tfLabel(best.l)+"+"+tfLabel(best.h);
+    const wantStruct=best.dir==='LONG'?'Bullish':'Bearish';
+    const flags=best.ltfS?`<span class="flag ${best.ltfS.volOk?'ok':''}">Vol</span><span class="flag ${best.htfS.structure===wantStruct?'ok':(best.htfS.structure==='Mixed'?'':'warn')}">${best.htfS.structure}</span><span class="flag ${best.ltfS.sweep?'ok':''}">Sweep</span>`:"";
+    const stt=best.ltfS?computeSlTarget(best,r.px):{ok:false};const sl=stt.sl!=null?stt.sl:null,target=stt.target!=null?stt.target:null;
+    return `<tr>
+      <td class="sym">${r.sym}</td>
+      <td class="num mono">${r.px!=null?r.px:"—"}</td>
+      <td>${combo}</td>
+      <td class="tag">Type ${best.type}</td>
+      <td class="num mono">${best.htfS?best.htfS.rsiNow.toFixed(1):"—"}</td>
+      <td>${best.htfS?(best.htfS.rising>0?"rising":"falling"):"—"}</td>
+      <td class="num mono">${best.ltfS?best.ltfS.rsiNow.toFixed(1):"—"}</td>
+      <td>${best.ltfS?`<span class="flag ${best.ltfS.hadPullback?'ok':''}">Pullback</span><span class="flag ${best.ltfS.turningUp?'ok':''}">Turn</span><span class="flag ${best.ltfS.momentumCandle?'ok':''}">Momentum</span><span class="flag ${best.ltfS.reclaim?'ok':''}">Reclaim</span>`:"—"}</td>
+      <td>${flags}</td>
+      <td><span class="tier ${best.tier}">${best.tier}</span></td>
+      <td class="${best.dir==='LONG'?'up':'down'}">${best.dir}</td>
+      <td class="mono">${sl!=null?sl.toFixed(4):"—"} / ${target!=null?target.toFixed(4):"—"}${stt.slPct!=null?` <span class="dim">(${stt.slPct.toFixed(2)}%)</span>`:""}${(!stt.ok&&stt.why&&TIER_RANK[best.tier]>=TIER_RANK.Medium)?` <span class="flag warn">${stt.why}, not logged</span>`:""}</td>
+      <td><button class="expandBtn" data-i="${idx}">${r.pairs.length}combos</button></td>
+    </tr>`;
+  }).filter(Boolean).join("");
+  $("ovElite").textContent=elite;$("ovStrong").textContent=strong;$("ovMedium").textContent=medium;
+  $("ovTracked").textContent=rows.length;
+  const wins=JOURNAL.filter(j=>j.result==="WIN").length;
+  const losses=JOURNAL.filter(j=>j.result==="LOSS").length;
+  const timeouts=JOURNAL.filter(j=>j.result==="TIMEOUT").length;
+  const decided=wins+losses;
+  $("ovWins").textContent=wins;$("ovLosses").textContent=losses;$("ovTimeouts").textContent=timeouts;
+  const winRateStr=decided>0?Math.round(wins/decided*100)+"%":"—";
+  $("ovWinRate").textContent=winRateStr;
+  $("dashTotal").textContent=JOURNAL.length;
+  $("dashWins").textContent=wins;$("dashLosses").textContent=losses;$("dashTimeouts").textContent=timeouts;
+  $("dashWinRate").textContent=winRateStr;
+  const closedJ=JOURNAL.filter(j=>j.result!=="OPEN"&&j.rNet!=null);
+  const netR=closedJ.reduce((a,j)=>a+j.rNet,0);
+  const netStr=closedJ.length?(netR>=0?"+":"")+netR.toFixed(2)+"R":"—";
+  $("dashNetR").textContent=netStr;$("ovNetR").textContent=netStr;
+  $("dashNetR").className="big "+(netR>=0?"up":"down");
+  $("dashAvgR").textContent=closedJ.length?(netR/closedJ.length>=0?"+":"")+(netR/closedJ.length).toFixed(2)+"R":"—";
+  $("ovReq").textContent=api.req;$("ovFail").textContent=api.fail;
+  $("ovLast").textContent="last tick: "+new Date().toLocaleTimeString();
+
+  $("jcount").textContent=JOURNAL.length+" entries";
+  $("jrows").innerHTML=JOURNAL.map(j=>`<tr>
+    <td class="mono">${new Date(j.t).toLocaleString()}</td>
+    <td class="sym">${esc(j.sym)}</td><td>${esc(j.combo)}</td>
+    <td class="${j.dir==='LONG'?'up':'down'}">${j.dir}</td>
+    <td class="num mono">${j.entry.toFixed(4)}</td>
+    <td class="num mono">${j.sl!=null?j.sl.toFixed(4):"—"}</td>
+    <td class="num mono">${j.target!=null?j.target.toFixed(4):"—"}</td>
+    <td class="num mono">${j.now!=null?j.now.toFixed(4):"—"}</td>
+    <td class="num mono">${fmtMove(j.entry,j.now,j.dir)}</td>
+    <td>${j.result==="OPEN"?fmtElapsed(j.t):"—"}</td>
+    <td><span class="tier ${j.tier}">${j.tier}</span></td>
+    <td>${j.result}</td>
+    <td class="num mono ${j.rNet>0?"up":j.rNet<0?"down":""}">${j.rNet!=null?(j.rNet>=0?"+":"")+j.rNet.toFixed(2):"—"}</td>
+    <td contenteditable data-t="${j.t}">${esc(j.notes||"")}</td>
+  </tr>`).join("");
+  renderResList();
+}
+
+function renderResList(){
+  const box=$("resList");
+  document.querySelectorAll("[data-f]").forEach(el=>el.classList.toggle("sel",el.dataset.f===RFILTER));
+  if(!RFILTER){box.classList.add("hidden");return}
+  const L=JOURNAL.filter(j=>RFILTER==="ALL"||j.result===RFILTER);
+  const title={WIN:"Coins that hit target",LOSS:"Coins that hit SL",TIMEOUT:"Coins that timed out",ALL:"All signals"}[RFILTER];
+  box.classList.remove("hidden");
+  const took=j=>j.closedT?fmtElapsed2(j.closedT-j.t):(j.result==="OPEN"?fmtElapsed(j.t)+" (open)":"—");
+  box.innerHTML=`<div class="jbar"><b>${title}: ${L.length}</b><button id="resClose">Close</button></div>`+(L.length?`<div class="wrap" style="padding:0"><table><thead><tr><th>Coin</th><th>Dir</th><th>Combo</th><th>Tier</th><th class="num">Entry</th><th class="num">SL</th><th class="num">Target</th><th class="num">Price now / at close</th><th class="num">Move %</th><th>Opened</th><th>Took</th><th>Result</th><th class="num">Net R</th><th></th></tr></thead><tbody>${L.map(j=>`<tr><td class="sym">${esc(j.sym)}</td><td class="${j.dir==='LONG'?'up':'down'}">${j.dir}</td><td>${esc(j.combo)}</td><td><span class="tier ${j.tier}">${j.tier}</span></td><td class="num mono">${j.entry.toFixed(4)}</td><td class="num mono">${j.sl!=null?j.sl.toFixed(4):"—"}</td><td class="num mono">${j.target!=null?j.target.toFixed(4):"—"}</td><td class="num mono">${j.now!=null?j.now.toFixed(4):"—"}</td><td class="num mono ${j.result==='WIN'?'up':j.result==='LOSS'?'down':''}">${fmtMove(j.entry,j.now,j.dir)}</td><td class="mono">${new Date(j.t).toLocaleString()}</td><td>${took(j)}</td><td>${j.result}</td><td class="num mono ${j.rNet>0?"up":j.rNet<0?"down":""}">${j.rNet!=null?(j.rNet>=0?"+":"")+j.rNet.toFixed(2):"—"}</td><td><a class="acc" target="_blank" rel="noopener" href="https://www.bybit.com/trade/usdt/${encodeURIComponent(j.sym)}">Bybit ↗</a></td></tr>`).join("")}</tbody></table></div>`:`<div class="dim">None yet.</div>`);
+}
+function fmtElapsed2(ms){const m=Math.max(0,Math.round(ms/60000));return m<60?m+"m":Math.floor(m/60)+"h "+(m%60)+"m"}
+
+document.addEventListener("click",e=>{
+  if(e.target.id==="resClose"){RFILTER=null;renderResList();return}
+  const fc=e.target.closest("[data-f]");
+  if(fc){RFILTER=(RFILTER===fc.dataset.f)?null:fc.dataset.f;renderResList();if(RFILTER)$("resList").scrollIntoView({behavior:"smooth",block:"nearest"});return}
+  if(e.target.classList.contains("expandBtn")){
+    const idx=+e.target.dataset.i;
+    const r=RESULTS[idx];
+    const existing=document.getElementById("detail-"+idx);
+    if(existing){existing.remove();return}
+    const tr=document.createElement("tr");
+    tr.className="detailRow";tr.id="detail-"+idx;
+    const body=r.pairs.map(p=>`<tr><td>${tfLabel(p.l)}+${tfLabel(p.h)}</td><td>Type ${p.type}</td><td>${p.dir}</td><td><span class="tier ${p.tier}">${p.tier}</span></td></tr>`).join("");
+    tr.innerHTML=`<td colspan="12"><table class="bd"><thead><tr><th>Combo</th><th>Distance</th><th>Dir</th><th>Tier</th></tr></thead><tbody>${body}</tbody></table></td>`;
+    e.target.closest("tr").after(tr);
+  }
+});
+document.getElementById("jrows").addEventListener("blur",e=>{
+  if(e.target.matches("td[contenteditable]")){
+    const t=+e.target.dataset.t;
+    const j=JOURNAL.find(x=>x.t===t);
+    if(j){j.notes=e.target.textContent;saveJournal()}
+  }
+},true);
+
+$("exportCsv").onclick=()=>{
+  const cols=["time","sym","combo","type","dir","entry","sl","target","now","move%","tier","result","net_R","closed_at","notes"];
+  const rows=JOURNAL.map(j=>[new Date(j.t).toISOString(),j.sym,j.combo,j.type,j.dir,j.entry,j.sl,j.target,j.now,fmtMove(j.entry,j.now,j.dir),j.tier,j.result,j.rNet!=null?j.rNet:"",j.closedT?new Date(j.closedT).toISOString():"",'"'+(j.notes||"").replace(/"/g,'""')+'"']);
+  const csv=[cols.join(",")].concat(rows.map(r=>r.join(","))).join("\n");
+  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="strategy3-revised-journal.csv";document.body.appendChild(a);a.click();a.remove();
+};
+$("clearJournal").onclick=()=>{
+  if(!confirm("Clear the entire journal? This cannot be undone."))return;
+  JOURNAL=[];saveJournal();render();
+};
+$("mode").addEventListener("change",()=>{
+  const isList=$("mode").value==="list";
+  $("listGrp").classList.toggle("hidden",!isList);
+  $("topGrp").classList.toggle("hidden",isList);
+});
+document.querySelectorAll("#htfChk input,#ltfChk input").forEach(cb=>{
+  cb.addEventListener("change",()=>cb.closest("label").classList.toggle("on",cb.checked));
+});
+
+function selected(containerId){
+  return [...document.querySelectorAll("#"+containerId+" input:checked")].map(i=>+i.value);
+}
+
+async function tick(){
+  if(ticking)return;ticking=true;
+  $("pill").className="pill scan";$("pill").textContent="scanning…";
+  Object.keys(seriesCache).forEach(k=>delete seriesCache[k]);Object.keys(c1Cache).forEach(k=>delete c1Cache[k]);
+  try{
+    await loadSyms();
+    const htfList=selected("htfChk"), ltfList=selected("ltfChk");
+    const rsiLen=parseInt($("rsiLen").value)||14;
+    if(!htfList.length||!ltfList.length){$("banner").classList.remove("hidden");$("banner").textContent="Pick at least one higher timeframe and one entry timeframe.";ticking=false;$("pill").className="pill err";$("pill").textContent="error";return}
+    $("banner").classList.add("hidden");
+    const results=[];
+    const priceMap={};
+    await pool(SYMS,4,async sym=>{
+      try{
+        const pairs=await evalSymbol(sym.s,htfList,ltfList,rsiLen);
+        const best=pairs[0];
+        const px=best&&best.px!=null?best.px:(sym.px||null);
+        priceMap[sym.s]=px;
+        results.push({sym:sym.s,px,pairs});
+        const minTier=$("minLogTier").value;
+        if(best&&TIER_RANK[best.tier]>=TIER_RANK[minTier]&&best.tier!=="Conflict"&&best.tier!=="None"){
+          logSignal(sym.s,best,px);
+        }
+      }catch(e){/* skip symbol on error */}
+    });
+    results.sort((a,b)=>{
+      const ta=a.pairs[0]?TIER_RANK[a.pairs[0].tier]:-1, tb=b.pairs[0]?TIER_RANK[b.pairs[0].tier]:-1;
+      return tb-ta;
+    });
+    RESULTS=results;
+    await resolveOpen();
+    render();
+    $("pill").className="pill live";$("pill").textContent="live";
+  }catch(e){
+    $("pill").className="pill err";$("pill").textContent="error";
+    $("banner").classList.remove("hidden");$("banner").textContent=String(e.message||e);
+  }
+  ticking=false;
+}
+
+function start(){
+  running=true;$("startBtn").textContent="Stop";
+  if($("sound").checked&&"Notification" in window&&Notification.permission==="default")Notification.requestPermission();
+  tick();
+  timer=setInterval(tick,parseInt($("pollSec").value)*1000);
+}
+function stop(){
+  running=false;$("startBtn").textContent="Start";
+  clearInterval(timer);
+}
+$("startBtn").onclick=()=>running?stop():start();
+
+render();
+</script>
+</body></html>
