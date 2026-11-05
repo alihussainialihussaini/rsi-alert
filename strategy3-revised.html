@@ -61,15 +61,6 @@ tr:hover td{background:#141a21}
 .card[data-f]{cursor:pointer}.card[data-f]:hover,.card.sel{border-color:var(--acc)}
 #ov span[data-f]{cursor:pointer;text-decoration:underline dotted}
 #resList{margin-top:14px}
-#domStrip{display:flex;gap:6px 18px;align-items:center;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--line);font-size:12px;color:var(--mut)}
-#domStrip b{color:var(--fg);font-size:13px}
-#domStrip .dm{white-space:nowrap}
-#domCmp{padding:14px;border-top:1px solid var(--line)}
-#domCmp h2{font-size:14px;margin:0 0 6px}
-#domCmp .note{color:var(--mut);font-size:12px;line-height:1.5;margin:6px 0;max-width:900px}
-#cmp{padding:14px;border-top:1px solid var(--line)}
-#cmp h2{font-size:14px;margin:0 0 6px}
-#cmp .note{color:var(--mut);font-size:12px;line-height:1.5;margin:6px 0;max-width:900px}
 #openRep{padding:14px;border-top:1px solid var(--line)}
 #openRep h2{font-size:14px;margin:0 0 10px}
 .prog{position:relative;display:inline-block;width:120px;height:8px;background:var(--line);border-radius:4px;vertical-align:middle}
@@ -92,18 +83,7 @@ td[contenteditable]{background:#0b0e13;cursor:text}
 td[contenteditable]:focus{outline:1px solid var(--acc)}
 footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
 .hidden{display:none!important}
-#tabs{display:flex;gap:6px;align-items:center;padding:8px 14px 0;background:var(--bg);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
-#tabs button{border:1px solid var(--line);border-bottom:none;border-radius:8px 8px 0 0;background:var(--panel);color:var(--mut);padding:7px 16px;font-weight:600}
-#tabs button.on{color:var(--fg);border-color:var(--acc);box-shadow:0 2px 0 var(--bg)}
-#tabs a{margin-left:auto;color:var(--acc);font-size:12px;padding-bottom:6px}
-#origFrame{display:block;width:100%;height:calc(100vh - 46px);border:0;background:var(--bg)}
 </style></head><body>
-<nav id="tabs">
-  <button id="tabRev" class="on">Revised scanner</button>
-  <button id="tabOrig">Original Strategy #3</button>
-  <a id="origOpen" href="strategy3.html" target="_blank" rel="noopener" class="hidden">Open original in its own tab ↗</a>
-</nav>
-<div id="paneRev">
 
 <header>
   <h1>Strategy #3 — Revised <span class="sub">(closed-candle signals · candle-based TP/SL · R and fees)</span></h1>
@@ -155,10 +135,7 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
   </div>
   <button id="startBtn">Start</button>
   <label class="chk"><input type="checkbox" id="sound" checked> Sound + notification on new Strong/Elite</label>
-  <label class="chk" title="Logs setups where the entry timeframe goes against the higher-timeframe trend, so you can compare their results with normal signals"><input type="checkbox" id="logConf"> Also log Conflict trades (for comparison)</label>
 </div>
-
-<div id="domStrip"><span class="gl">Market dominance</span><span id="domBody" class="dim">loading…</span></div>
 
 <div id="ov">
   <span><b class="acc" id="ovElite">0</b>elite</span>
@@ -202,16 +179,6 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
   <div id="resList" class="hidden"></div>
 </div>
 
-<div id="cmp">
-  <h2>Normal signals vs Conflict signals</h2>
-  <div id="cmpBody"></div>
-</div>
-
-<div id="domCmp">
-  <h2>Dominance rule check</h2>
-  <div id="domCmpBody"></div>
-</div>
-
 <div id="openRep">
   <h2>Open trades: still running</h2>
   <div id="openCards" class="cards"></div>
@@ -245,13 +212,8 @@ footer{padding:10px 14px 30px;color:var(--mut);font-size:12px;line-height:1.6}
 </div>
 
 <footer>
-Revised version with a profit-after-entry report. Signals use only CLOSED candles (nothing repaints). TP/SL are checked against every 1-minute candle high/low since entry; if one candle touches both, it counts as a loss. 45m is built from native 15m candles, 8m from 1m candles. Results are shown in R (target = +RR, stop = −1R) after fees on both sides. Signals with a stop that is too tight or too wide are skipped, and the same setup cannot re-fire during the cooldown. Methodology: higher timeframe RSI sets direction (bullish = RSI&gt;50 and rising), lower timeframe RSI sets entry timing (pullback, turn up, momentum candle, resistance reclaim). On conflict the higher timeframe wins — a lower-timeframe trigger against the higher-timeframe bias is tagged "Conflict" and, unless you tick the Conflict option in the toolbar, logged nowhere. Confluence badges: Vol = current volume above its rolling average, Struct = higher-timeframe swing structure (HH/HL or LH/LL), Sweep = a wick through the recent swing extreme that closed back inside it. Elite requires all three plus a clearly-rising HTF RSI; Strong requires the HTF/LTF alignment alone; Medium requires HTF above 50 but not clearly rising; Weak/Conflict are not logged. Timeframes not native to Bybit (8m, 45m) are built by resampling 1-minute candles — these need a short warm-up window after Start before RSI stabilizes. Data: Bybit public v5 market API, no key required; market dominance comes from CoinGecko's public global endpoint and is shown and recorded only, never used to filter signals. This is a pattern-matching research tool against public price data only — it has no way to detect, and makes no claim about, a move that is being organized rather than discovered.
+Revised version with a profit-after-entry report. Signals use only CLOSED candles (nothing repaints). TP/SL are checked against every 1-minute candle high/low since entry; if one candle touches both, it counts as a loss. 45m is built from native 15m candles, 8m from 1m candles. Results are shown in R (target = +RR, stop = −1R) after fees on both sides. Signals with a stop that is too tight or too wide are skipped, and the same setup cannot re-fire during the cooldown. Methodology: higher timeframe RSI sets direction (bullish = RSI&gt;50 and rising), lower timeframe RSI sets entry timing (pullback, turn up, momentum candle, resistance reclaim). On conflict the higher timeframe wins — a lower-timeframe trigger against the higher-timeframe bias is tagged "Conflict" and logged nowhere. Confluence badges: Vol = current volume above its rolling average, Struct = higher-timeframe swing structure (HH/HL or LH/LL), Sweep = a wick through the recent swing extreme that closed back inside it. Elite requires all three plus a clearly-rising HTF RSI; Strong requires the HTF/LTF alignment alone; Medium requires HTF above 50 but not clearly rising; Weak/Conflict are not logged. Timeframes not native to Bybit (8m, 45m) are built by resampling 1-minute candles — these need a short warm-up window after Start before RSI stabilizes. Data: Bybit public v5 market API, no key required. This is a pattern-matching research tool against public price data only — it has no way to detect, and makes no claim about, a move that is being organized rather than discovered.
 </footer>
-</div>
-
-<div id="paneOrig" class="hidden">
-  <iframe id="origFrame" title="Original Strategy #3 page"></iframe>
-</div>
 
 <script>
 const $=id=>document.getElementById(id);
@@ -579,16 +541,11 @@ function logSignal(sym,best,price){
   if(prevSame&&Date.now()-prevSame.t<cool)return;
   const st=computeSlTarget(best,price);
   if(!st.ok)return;
-  const conf=best.tier==="Conflict";
   const notes=[];
-  if(conf)notes.push("against higher-timeframe trend");
   if(best.tier==="Elite"){notes.push("vol confirmed","structure "+best.htfS.structure.toLowerCase(),"liquidity sweep")}
   notes.push("SL "+st.slPct.toFixed(2)+"%");
-  const dom=domSnap();
-  if(dom&&dom.usdt!=="n/a")notes.push("USDT.D "+dom.usdt);
-  JOURNAL.unshift({t:Date.now(),sym,combo,type:best.type,dir:best.dir,entry:price,sl:st.sl,target:st.target,risk:st.risk,rr:st.rr,fee:parseFloat($("feePct").value)||0,now:price,tier:best.tier,result:"OPEN",conf,dom,mfe:0,mae:0,mfeT:null,mfeOk:true,notes:notes.join(", ")});
+  JOURNAL.unshift({t:Date.now(),sym,combo,type:best.type,dir:best.dir,entry:price,sl:st.sl,target:st.target,risk:st.risk,rr:st.rr,fee:parseFloat($("feePct").value)||0,now:price,tier:best.tier,result:"OPEN",mfe:0,mae:0,mfeT:null,mfeOk:true,notes:notes.join(", ")});
   saveJournal();
-  if(conf)return;
   bumpUnseen();
   if($("sound").checked){beep(best.tier);notify(sym+" "+best.dir+" — "+best.tier,combo+" · entry "+price.toFixed(4))}
 }
@@ -653,7 +610,7 @@ const f2=v=>v==null?"—":v.toFixed(2);
 const sgn=v=>v==null?"—":(v>=0?"+":"")+v.toFixed(2);
 const peakP=j=>j.mfe/j.entry*100, peakR=j=>j.mfe/j.risk, maeP=j=>j.mae/j.entry*100;
 const feeR=j=>2*((j.fee||0)/100)*j.entry/j.risk;
-const repSet=()=>JOURNAL.filter(j=>!j.conf&&j.mfeOk&&j.result!=="OPEN"&&j.risk>0&&j.entry>0);
+const repSet=()=>JOURNAL.filter(j=>j.mfeOk&&j.result!=="OPEN"&&j.risk>0&&j.entry>0);
 function simNet(L,x,unit){let net=0,reached=0;
   for(const j of L){const d=unit==="R"?x*j.risk:x/100*j.entry;
     if(j.mfe>=d){reached++;net+=d/j.risk-feeR(j)}else net+=(j.rNet!=null?j.rNet:0)}
@@ -690,7 +647,7 @@ function histBlock(lg,sh){
 function renderReport(){
   const body=$("repBody"),sim=$("simBody");
   const all=repSet(),lg=all.filter(j=>j.dir==="LONG"),sh=all.filter(j=>j.dir==="SHORT");
-  const openN=JOURNAL.filter(j=>!j.conf&&j.mfeOk&&j.result==="OPEN").length;
+  const openN=JOURNAL.filter(j=>j.mfeOk&&j.result==="OPEN").length;
   if(!all.length){body.innerHTML=`<div class="dim" style="padding:10px 0">No closed signals with profit tracking yet${openN?` (${openN} open trade${openN>1?"s":""} being tracked now)`:""}. The report fills in as trades close.</div>`;sim.innerHTML="";return}
   const warn=all.length<30?`<div class="warnbox">Only ${all.length} closed trade${all.length>1?"s":""}. Fewer than 30 is too few to trust these averages, so treat the numbers as a first look, not a rule.</div>`:"";
   body.innerHTML=warn+`
@@ -718,138 +675,6 @@ function renderReport(){
   <p class="note">Assumes you can exit at exactly that price, so real fills will be slightly worse. Peaks are measured on 1-minute candles. Levels in % are price moves from the entry price.</p>`;
 }
 
-// ===== Market dominance (display + record only, never filters signals) =====
-const DKEY="s3v2_dom_hist";
-let DOMH=[];try{DOMH=JSON.parse(localStorage.getItem(DKEY)||"[]")}catch(e){}
-let DOMERR="",domTimer=null;
-const STABKEYS=["usdt","usdc","dai","usde","fdusd","usds","tusd","pyusd","usdd","usdp"];
-async function fetchDom(){
-  try{
-    const r=await fetch("https://api.coingecko.com/api/v3/global");
-    if(!r.ok)throw new Error("HTTP "+r.status);
-    const j=await r.json();
-    const m=j&&j.data&&j.data.market_cap_percentage;
-    if(!m)throw new Error("no data");
-    const stab=STABKEYS.reduce((a,k)=>a+(m[k]||0),0);
-    DOMH.push({t:Date.now(),btc:m.btc||0,eth:m.eth||0,usdt:m.usdt||0,stab});
-    const cut=Date.now()-24*36e5;DOMH=DOMH.filter(x=>x.t>=cut).slice(-1500);
-    try{localStorage.setItem(DKEY,JSON.stringify(DOMH))}catch(e){}
-    DOMERR="";
-  }catch(e){DOMERR=String(e.message||e)}
-  updateDom();
-}
-// trend over the last 15 to 60 minutes of readings; "n/a" if not enough fresh data
-function domTrend(key){
-  const cur=DOMH[DOMH.length-1];
-  if(!cur||Date.now()-cur.t>10*60000)return {dir:"n/a"};
-  const from=Date.now()-60*60000;
-  const ref=DOMH.find(x=>x.t>=from&&x!==cur);
-  if(!ref||cur.t-ref.t<15*60000)return {dir:"n/a"};
-  const get=x=>key==="big"?x.btc+x.eth+x.stab:x[key];
-  const d=get(cur)-get(ref);
-  return {dir:d>0.03?"rising":d<-0.03?"falling":"flat",delta:d,mins:Math.round((cur.t-ref.t)/60000)};
-}
-function domSnap(){
-  const cur=DOMH[DOMH.length-1];
-  if(!cur)return null;
-  const u=domTrend("usdt"),b=domTrend("big");
-  return {usdt:u.dir,big:b.dir,usdtV:+cur.usdt.toFixed(3),bigV:+(cur.btc+cur.eth+cur.stab).toFixed(3),t:cur.t};
-}
-function updateDom(){
-  const cur=DOMH[DOMH.length-1],box=$("domBody");
-  if(!cur){box.className="dim";box.textContent=DOMERR?("unavailable ("+DOMERR+")"):"loading…";return}
-  box.className="";
-  const items=[["USDT.D","usdt",true],["BTC.D","btc",false],["ETH.D","eth",false],["Stables","stab",false],["BTC+ETH+Stables","big",true]];
-  const val=(k)=>k==="big"?cur.btc+cur.eth+cur.stab:cur[k];
-  const html=items.map(([n,k,colour])=>{
-    const t=domTrend(k);
-    let arrow;
-    if(t.dir==="n/a")arrow=`<span class="dim">trend: collecting data</span>`;
-    else{
-      const sym=t.dir==="rising"?"▲":t.dir==="falling"?"▼":"■";
-      const cl=!colour||t.dir==="flat"?"dim":(t.dir==="rising"?"down":"up");
-      arrow=`<span class="${cl}">${sym} ${t.dir} (${t.delta>=0?"+":""}${t.delta.toFixed(2)} pt / ${t.mins}m)</span>`;
-    }
-    return `<span class="dm">${n} <b>${val(k).toFixed(2)}%</b> ${arrow}</span>`;
-  }).join("");
-  const age=Math.round((Date.now()-cur.t)/60000);
-  box.innerHTML=html+`<span class="dim">updated ${age}m ago${DOMERR?" · last refresh failed ("+esc(DOMERR)+")":""} · source: CoinGecko, shown only, not used to filter signals</span>`;
-}
-
-function domAgree(j,key){
-  const d=j.dom&&j.dom[key];
-  if(d!=="rising"&&d!=="falling")return null;
-  return (j.dir==="LONG")===(d==="falling");
-}
-function domRow(name,L,indent){
-  const x=cmpStats(L);
-  const nm=indent?`<span class="dim" style="padding-left:14px">${name}</span>`:`<b>${name}</b>`;
-  if(!x.closed)return `<tr><td>${nm}</td><td class="num">0</td><td colspan="5" class="dim">none yet</td></tr>`;
-  return `<tr><td>${nm}</td><td class="num">${x.closed}</td><td class="num up">${x.w}</td><td class="num down">${x.l}</td>
-    <td class="num acc">${x.wr==null?"—":Math.round(x.wr)+"%"}</td>
-    <td class="num ${x.net>=0?"up":"down"}">${sgn(x.net)}R</td><td class="num ${x.avg>=0?"up":"down"}">${sgn(x.avg)}R</td></tr>`;
-}
-function renderDomCmp(){
-  const N=JOURNAL.filter(j=>!j.conf&&j.dom&&j.result!=="OPEN");
-  const out=$("domCmpBody");
-  if(!N.length){
-    out.innerHTML=`<div class="insight">No closed trades with a dominance reading yet. The reading is saved on new signals only, and needs about 15 minutes of dominance data first (keep the page open and press Start).</div>`;
-    return;
-  }
-  const block=(label,key)=>{
-    const ag=N.filter(j=>domAgree(j,key)===true),ag2=N.filter(j=>domAgree(j,key)===false),un=N.filter(j=>domAgree(j,key)===null);
-    const L=(dir,d)=>N.filter(j=>j.dir===dir&&j.dom[key]===d);
-    return {ag,ag2,html:`<tr><td colspan="7" style="color:var(--fg);padding-top:14px"><b>${label}</b></td></tr>
-      ${domRow("Trade agrees with the rule",ag)}
-      ${domRow("Long while falling",L("LONG","falling"),1)}${domRow("Short while rising",L("SHORT","rising"),1)}
-      ${domRow("Trade goes against the rule",ag2)}
-      ${domRow("Long while rising",L("LONG","rising"),1)}${domRow("Short while falling",L("SHORT","falling"),1)}
-      ${domRow("Flat or no trend data",un)}`};
-  };
-  const u=block("USDT.D (rising = money moving into stablecoins)","usdt"),b=block("BTC + ETH + Stables share (rising = altcoins losing share)","big");
-  let verdict;
-  if(u.ag.length>=30&&u.ag2.length>=30){
-    const a=cmpStats(u.ag),c=cmpStats(u.ag2),d=a.avg-c.avg;
-    verdict=`USDT.D rule, 30+ closed trades each: trades that agreed average ${sgn(a.avg)}R (${Math.round(a.wr)}% win rate); trades against it average ${sgn(c.avg)}R (${Math.round(c.wr)}%). Agreeing trades did ${d>=0?"better":"worse"} by ${Math.abs(d).toFixed(2)}R per trade in this sample.`;
-  } else verdict=`USDT.D rule: closed trades so far ${u.ag.length} agreeing and ${u.ag2.length} against. You need at least 30 of each before the comparison means much.`;
-  out.innerHTML=`<div class="insight">${verdict}</div>
-  <div class="wrap" style="padding:0"><table><thead><tr><th>Group (normal signals only)</th><th class="num">Closed</th><th class="num">Wins</th><th class="num">Losses</th><th class="num">Win rate</th><th class="num">Net R</th><th class="num">Avg R / trade</th></tr></thead><tbody>${u.html}${b.html}</tbody></table></div>
-  <p class="note">"Agrees" means the trade went long while the reading was falling, or short while it was rising. The reading is the trend over the last 15 to 60 minutes (a move smaller than 0.03 percentage points counts as flat) taken at the moment the signal was logged. Only signals logged with this version carry a reading, and Conflict trades are left out. This shows whether the two lined up in your results; it does not prove one causes the other, and nothing here filters or blocks any trade.</p>`;
-}
-
-// ===== Normal vs Conflict comparison =====
-function cmpStats(L){
-  const c=L.filter(j=>j.result!=="OPEN");
-  const w=c.filter(j=>j.result==="WIN").length,l=c.filter(j=>j.result==="LOSS").length,t=c.length-w-l;
-  const net=c.reduce((a,j)=>a+(j.rNet||0),0);
-  const pk=c.filter(j=>j.mfeOk&&j.risk>0);
-  return {all:L.length,open:L.length-c.length,closed:c.length,w,l,t,wr:(w+l)?w/(w+l)*100:null,net,avg:c.length?net/c.length:null,pk:pk.length?avg(pk.map(peakP)):null};
-}
-function cmpRow(name,L){
-  const x=cmpStats(L);
-  if(!x.all)return `<tr><td><b>${name}</b></td><td class="num">0</td><td colspan="8" class="dim">none logged yet</td></tr>`;
-  return `<tr><td><b>${name}</b></td><td class="num">${x.all}</td><td class="num">${x.open}</td><td class="num">${x.closed}</td>
-    <td class="num up">${x.w}</td><td class="num down">${x.l}</td><td class="num">${x.t}</td>
-    <td class="num acc">${x.wr==null?"—":Math.round(x.wr)+"%"}</td>
-    <td class="num ${x.net>=0?"up":"down"}">${x.closed?sgn(x.net)+"R":"—"}</td>
-    <td class="num ${x.avg>=0?"up":"down"}">${x.avg==null?"—":sgn(x.avg)+"R"}</td>
-    <td class="num">${x.pk==null?"—":x.pk.toFixed(2)+"%"}</td></tr>`;
-}
-function renderCmp(){
-  const N=JOURNAL.filter(j=>!j.conf),C=JOURNAL.filter(j=>j.conf);
-  const nx=cmpStats(N),cx=cmpStats(C);
-  let verdict;
-  if(!C.length)verdict=`No Conflict trades logged yet. Tick "Also log Conflict trades (for comparison)" in the toolbar and keep the page running.`;
-  else if(nx.closed<30||cx.closed<30)verdict=`Closed trades so far: normal ${nx.closed}, conflict ${cx.closed}. You need at least 30 of each before the comparison means much.`;
-  else{
-    const d=cx.avg-nx.avg;
-    verdict=`With 30+ closed trades each: normal signals average ${sgn(nx.avg)}R per trade (${nx.wr==null?"—":Math.round(nx.wr)+"%"} win rate); Conflict signals average ${sgn(cx.avg)}R (${cx.wr==null?"—":Math.round(cx.wr)+"%"}). Conflict is ${d>=0?"better":"worse"} by ${Math.abs(d).toFixed(2)}R per trade in this sample.`;
-  }
-  $("cmpBody").innerHTML=`<div class="insight">${verdict}</div>
-  <div class="wrap" style="padding:0"><table><thead><tr><th>Group</th><th class="num">Logged</th><th class="num">Open</th><th class="num">Closed</th><th class="num">Wins</th><th class="num">Losses</th><th class="num">Timeouts</th><th class="num">Win rate</th><th class="num">Net R</th><th class="num">Avg R / trade</th><th class="num">Avg peak profit</th></tr></thead><tbody>
-  ${cmpRow("Normal (Elite / Strong / Medium)",N)}${cmpRow("Conflict (all)",C)}${cmpRow("Conflict, long only",C.filter(j=>j.dir==="LONG"))}${cmpRow("Conflict, short only",C.filter(j=>j.dir==="SHORT"))}</tbody></table></div>
-  <p class="note">Conflict trades are setups where the entry timeframe goes against the higher-timeframe trend. They use the same stop, target, fees and cooldown rules as normal signals and make no sound. They are left out of the Performance cards and the profit-after-entry report above, so they never mix with your normal results. They do appear in the journal with tier "Conflict".</p>`;
-}
 
 // ===== Open trades report =====
 function renderOpen(){
@@ -885,7 +710,7 @@ function renderOpen(){
       <td>${fmtElapsed(j.t)}</td><td>${Math.floor(left/60)}h ${left%60}m</td>
       <td><a class="acc" target="_blank" rel="noopener" href="https://www.bybit.com/trade/usdt/${encodeURIComponent(j.sym)}">Bybit ↗</a></td></tr>`}).join("");
   body.innerHTML=`<div class="wrap" style="padding:0"><table><thead><tr><th>Coin</th><th>Dir</th><th>Combo</th><th>Tier</th><th class="num">Entry</th><th class="num">Price now</th><th class="num">Move now</th><th class="num">Now (R)</th><th class="num">Peak so far</th><th class="num">Given back</th><th class="num">Max drawdown</th><th class="num">To target</th><th class="num">To stop</th><th>Stop &larr; entry &rarr; target</th><th>Open for</th><th>Time left</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-  <p class="note" style="color:var(--mut);font-size:12px;max-width:900px;line-height:1.5">Sorted best to worst. "Move now" uses the last 1-minute close and refreshes every tick. "Given back" = how much of the peak profit has already been lost (100% means back at entry or worse). "Time left" is before the 24h timeout. Trades logged before this version show a dash for peak and drawdown. Conflict trades are included here and show tier "Conflict".</p>`;
+  <p class="note" style="color:var(--mut);font-size:12px;max-width:900px;line-height:1.5">Sorted best to worst. "Move now" uses the last 1-minute close and refreshes every tick. "Given back" = how much of the peak profit has already been lost (100% means back at entry or worse). "Time left" is before the 24h timeout. Trades logged before this version show a dash for peak and drawdown.</p>`;
 }
 
 function fmtMove(entry,now,dir){
@@ -929,18 +754,17 @@ function render(){
   }).filter(Boolean).join("");
   $("ovElite").textContent=elite;$("ovStrong").textContent=strong;$("ovMedium").textContent=medium;
   $("ovTracked").textContent=rows.length;
-  const NJ=JOURNAL.filter(j=>!j.conf);
-  const wins=NJ.filter(j=>j.result==="WIN").length;
-  const losses=NJ.filter(j=>j.result==="LOSS").length;
-  const timeouts=NJ.filter(j=>j.result==="TIMEOUT").length;
+  const wins=JOURNAL.filter(j=>j.result==="WIN").length;
+  const losses=JOURNAL.filter(j=>j.result==="LOSS").length;
+  const timeouts=JOURNAL.filter(j=>j.result==="TIMEOUT").length;
   const decided=wins+losses;
   $("ovWins").textContent=wins;$("ovLosses").textContent=losses;$("ovTimeouts").textContent=timeouts;
   const winRateStr=decided>0?Math.round(wins/decided*100)+"%":"—";
   $("ovWinRate").textContent=winRateStr;
-  $("dashTotal").textContent=NJ.length;
+  $("dashTotal").textContent=JOURNAL.length;
   $("dashWins").textContent=wins;$("dashLosses").textContent=losses;$("dashTimeouts").textContent=timeouts;
   $("dashWinRate").textContent=winRateStr;
-  const closedJ=NJ.filter(j=>j.result!=="OPEN"&&j.rNet!=null);
+  const closedJ=JOURNAL.filter(j=>j.result!=="OPEN"&&j.rNet!=null);
   const netR=closedJ.reduce((a,j)=>a+j.rNet,0);
   const netStr=closedJ.length?(netR>=0?"+":"")+netR.toFixed(2)+"R":"—";
   $("dashNetR").textContent=netStr;$("ovNetR").textContent=netStr;
@@ -968,8 +792,6 @@ function render(){
     <td contenteditable data-t="${j.t}">${esc(j.notes||"")}</td>
   </tr>`).join("");
   renderResList();
-  renderCmp();
-  renderDomCmp();
   renderOpen();
   renderReport();
 }
@@ -978,7 +800,7 @@ function renderResList(){
   const box=$("resList");
   document.querySelectorAll("[data-f]").forEach(el=>el.classList.toggle("sel",el.dataset.f===RFILTER));
   if(!RFILTER){box.classList.add("hidden");return}
-  const L=JOURNAL.filter(j=>!j.conf&&(RFILTER==="ALL"||j.result===RFILTER));
+  const L=JOURNAL.filter(j=>RFILTER==="ALL"||j.result===RFILTER);
   const title={WIN:"Coins that hit target",LOSS:"Coins that hit SL",TIMEOUT:"Coins that timed out",ALL:"All signals"}[RFILTER];
   box.classList.remove("hidden");
   const took=j=>j.closedT?fmtElapsed2(j.closedT-j.t):(j.result==="OPEN"?fmtElapsed(j.t)+" (open)":"—");
@@ -1057,8 +879,6 @@ async function tick(){
         const minTier=$("minLogTier").value;
         if(best&&TIER_RANK[best.tier]>=TIER_RANK[minTier]&&best.tier!=="Conflict"&&best.tier!=="None"){
           logSignal(sym.s,best,px);
-        } else if(best&&best.tier==="Conflict"&&$("logConf").checked){
-          logSignal(sym.s,best,px);
         }
       }catch(e){/* skip symbol on error */}
     });
@@ -1082,32 +902,13 @@ function start(){
   if($("sound").checked&&"Notification" in window&&Notification.permission==="default")Notification.requestPermission();
   tick();
   timer=setInterval(tick,parseInt($("pollSec").value)*1000);
-  fetchDom();clearInterval(domTimer);domTimer=setInterval(fetchDom,60000);
 }
 function stop(){
   running=false;$("startBtn").textContent="Start";
-  clearInterval(timer);clearInterval(domTimer);
+  clearInterval(timer);
 }
-try{$("logConf").checked=localStorage.getItem("s3v2_logconf")==="1"}catch(e){}
-$("logConf").addEventListener("change",()=>{try{localStorage.setItem("s3v2_logconf",$("logConf").checked?"1":"0")}catch(e){}});
 $("startBtn").onclick=()=>running?stop():start();
 
-// ===== Tabs: revised scanner / original page (original loads on first click, both keep running) =====
-(function(){
-  const tR=$("tabRev"),tO=$("tabOrig"),pR=$("paneRev"),pO=$("paneOrig"),fr=$("origFrame");
-  function show(which){
-    const o=which==="orig";
-    pR.classList.toggle("hidden",o);pO.classList.toggle("hidden",!o);
-    tR.classList.toggle("on",!o);tO.classList.toggle("on",o);
-    $("origOpen").classList.toggle("hidden",!o);
-    if(o&&!fr.getAttribute("src"))fr.setAttribute("src","strategy3.html");
-    try{localStorage.setItem("s3v2_tab",which)}catch(e){}
-  }
-  tR.onclick=()=>show("rev");tO.onclick=()=>show("orig");
-})();
-
-updateDom();fetchDom();
-setInterval(updateDom,30000);
 render();
 </script>
 </body></html>
