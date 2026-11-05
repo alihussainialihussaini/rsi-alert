@@ -1,0 +1,1062 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Market Scanner</title>
+<style>
+:root {
+  --bg: #0b0d11; --panel: #12151b; --panel2: #171b22; --line: #222731; --line2: #2c3240;
+  --text: #e8ebf0; --muted: #8a93a3; --dim: #5d6575;
+  --green: #3ddc84; --green-bg: rgba(61,220,132,.10); --green-line: rgba(61,220,132,.38);
+  --amber: #f2b544; --amber-bg: rgba(242,181,68,.12); --amber-line: rgba(242,181,68,.40);
+  --red: #f0565b; --red-bg: rgba(240,86,91,.12); --red-line: rgba(240,86,91,.40);
+  --blue: #5b9cff; --blue-bg: rgba(91,156,255,.12); --blue-line: rgba(91,156,255,.40);
+  --soft-red: #f5a3a6; --soft-green: #9fe8bf;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --side-w: 240px;
+  --strong: #fff; --text2: #c5cad4; --text2b: #d6dae2; --topbg: rgba(11,13,17,.92);
+  --red-text: #fecaca; --amber-text: #fde4b0; --blue-text: #cfe3ff;
+  --st-red-text: #ffd5d5; --st-amber-text: #ffd38a; --red-text2: #ff8a8a;
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: #f4f6f9; --panel: #ffffff; --panel2: #eef1f5; --line: #e2e6ec; --line2: #cfd5de;
+  --text: #141821; --muted: #5b6474; --dim: #8a93a3;
+  --green: #12a150; --amber: #b7791f; --red: #d93a40; --blue: #2f6fe0;
+  --soft-red: #c0484c; --soft-green: #2d8a57;
+  --strong: #0b0d11; --text2: #3d4453; --text2b: #232834; --topbg: rgba(244,246,249,.92);
+  --red-text: #b42318; --amber-text: #8a5a00; --blue-text: #1e4fb5;
+  --st-red-text: #b42318; --st-amber-text: #8a5a00; --red-text2: #c0392b;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 13.5px/1.45 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+.hidden { display: none !important; }
+button, select, input { font: inherit; color: inherit; }
+a { color: inherit; }
+h1 { font-size: 22px; font-weight: 650; letter-spacing: -.01em; margin: 0; }
+.sub { color: var(--muted); margin-top: 4px; }
+.up { color: var(--green); } .down { color: var(--red); } .blue { color: var(--blue); }
+.muted { color: var(--muted); } .dim { color: var(--dim); } .amber { color: var(--amber); }
+.mono { font-family: var(--mono); font-size: 12.5px; }
+
+.app { display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr); min-height: 100vh; }
+.side { position: sticky; top: 0; height: 100vh; background: var(--panel); border-right: 1px solid var(--line); display: flex; flex-direction: column; z-index: 30; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 18px; border-bottom: 1px solid var(--line); text-decoration: none; }
+.logo { width: 32px; height: 32px; border-radius: 8px; background: var(--green-bg); border: 1px solid var(--green-line); color: var(--green); display: grid; place-items: center; font-weight: 800; }
+.brand-name { font-weight: 700; letter-spacing: .1em; font-size: 13px; }
+.brand-sub { color: var(--muted); font-size: 11px; }
+.nav { padding: 10px 10px 14px; overflow-y: auto; flex: 1; }
+.it { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 7px; color: var(--text2); font-size: 13px; margin-bottom: 1px; text-decoration: none; cursor: pointer; }
+.it:hover { background: var(--panel2); color: var(--strong); }
+.it .l { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.it .ic { flex: none; width: 20px; height: 20px; border-radius: 5px; display: grid; place-items: center; font-size: 10px; font-weight: 700; background: var(--panel2); border: 1px solid var(--line2); color: var(--muted); }
+.it .v { font-size: 11px; color: var(--muted); }
+.it.on { background: var(--green-bg); color: var(--strong); }
+.it.on .ic { background: rgba(61,220,132,.18); border-color: var(--green-line); color: var(--green); }
+.scrim { display: none; }
+
+.main-col { min-width: 0; }
+.top { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; gap: 16px; padding: 12px 28px; border-bottom: 1px solid var(--line); background: var(--topbg); backdrop-filter: blur(8px); }
+.menu-btn { display: none; background: none; border: 1px solid var(--line2); border-radius: 7px; width: 36px; height: 34px; cursor: pointer; flex-direction: column; justify-content: center; gap: 4px; align-items: center; }
+.menu-btn span { display: block; width: 16px; height: 2px; background: var(--text); border-radius: 2px; }
+.crumb { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
+.crumb b { color: var(--text); font-weight: 600; }
+.gsearch { flex: 1; display: flex; justify-content: center; min-width: 120px; }
+.gsearch input { width: 100%; max-width: 360px; background: var(--panel); border: 1px solid var(--line2); border-radius: 8px; padding: 8px 12px; outline: none; }
+.gsearch input:focus { border-color: var(--green-line); }
+.top-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+.inline { color: var(--muted); font-size: 12.5px; display: flex; align-items: center; gap: 6px; }
+.content { padding: 24px 28px 40px; }
+.page-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line2); padding: 7px 13px; border-radius: 7px; cursor: pointer; font-size: 12.5px; color: var(--text2b); text-decoration: none; white-space: nowrap; }
+.btn:hover { border-color: #3d4552; color: var(--strong); }
+.btn-primary { background: var(--green); border-color: var(--green); color: #05210f; font-weight: 600; }
+.btn-primary:hover { background: #5be59a; }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.star.on { color: var(--amber); border-color: var(--amber-line); background: var(--amber-bg); }
+select, input[type=number], input[type=search], input[type=text] { background: var(--panel2); border: 1px solid var(--line2); border-radius: 7px; padding: 6px 9px; outline: none; }
+select:focus, input:focus { border-color: var(--green-line); }
+
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill-live { color: var(--green); background: var(--green-bg); border-color: var(--green-line); }
+.pill-scan { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-line); }
+.pill-error { color: var(--red); background: var(--red-bg); border-color: var(--red-line); }
+.pill-muted { color: var(--muted); background: var(--panel2); }
+
+.banner { margin: 0 0 16px; padding: 11px 14px; border-radius: 8px; border: 1px solid var(--red-line); background: var(--red-bg); color: var(--red-text); font-size: 13px; }
+.banner.warn { border-color: var(--amber-line); background: var(--amber-bg); color: var(--amber-text); }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 16px; min-width: 0; }
+.panel.empty { padding: 50px 20px; text-align: center; color: var(--muted); }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.panel-head b { font-size: 13px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.card-label { color: var(--dim); font-size: 10px; text-transform: uppercase; letter-spacing: .13em; font-weight: 600; }
+.card-value { font-size: 26px; font-weight: 650; margin-top: 6px; }
+.card-value.small { font-size: 16px; padding: 8px 0 3px; }
+.card-value.amber { color: var(--amber); } .card-value.red { color: var(--red); }
+.card-foot { color: var(--muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.bar { height: 4px; background: var(--line2); border-radius: 3px; overflow: hidden; margin: 4px 0 6px; }
+.bar-fill { height: 100%; width: 0; background: var(--blue); transition: width .4s; }
+.foot { color: var(--dim); font-size: 11.5px; padding: 10px 2px 0; line-height: 1.6; }
+
+.overview { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.tabs { display: flex; gap: 4px; padding: 6px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tab { background: none; border: none; padding: 8px 13px; border-radius: 7px; color: var(--muted); cursor: pointer; font-weight: 500; white-space: nowrap; display: flex; gap: 8px; align-items: center; }
+.tab:hover { color: var(--text); }
+.tab.active { background: var(--panel2); color: var(--strong); box-shadow: inset 0 0 0 1px var(--line2); }
+.count { background: var(--bg); border: 1px solid var(--line2); color: var(--muted); border-radius: 10px; padding: 0 7px; font-size: 11px; }
+.count-alert { background: var(--amber-bg); border-color: var(--amber-line); color: var(--amber); }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.toolbar input[type=search] { width: 190px; background: var(--bg); }
+.group { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.group-label { color: var(--dim); font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; margin-right: 2px; }
+.chip { border: 1px solid var(--line2); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--muted); user-select: none; background: transparent; }
+.chip:hover { color: var(--text); }
+.chip.on { color: var(--green); border-color: var(--green-line); background: var(--green-bg); }
+.toolbar .spacer { flex: 1; }
+
+.table-wrap { overflow: auto; max-height: calc(100vh - 170px); min-height: 200px; }
+.table-wrap.flat { max-height: none; min-height: 0; }
+table { width: 100%; border-collapse: collapse; }
+thead th { position: sticky; top: 0; background: var(--panel); z-index: 2; text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--dim); font-weight: 600; padding: 11px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+thead th.sortable { cursor: pointer; }
+thead th.sortable:hover { color: var(--text); }
+tbody td { padding: 11px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: middle; color: var(--text2b); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: rgba(255,255,255,.02); }
+td.num, th.num { text-align: right; }
+.empty-row { text-align: center; color: var(--muted); padding: 24px 14px !important; }
+.sym { font-weight: 650; color: var(--strong); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+a.sym:hover { color: var(--green); }
+.sym .quote { color: var(--dim); font-weight: 400; }
+.tf { font-size: 11px; border: 1px solid var(--line2); border-radius: 5px; padding: 1px 7px; color: var(--muted); font-family: var(--mono); }
+.rsi { font-family: var(--mono); font-weight: 700; }
+a.open { color: var(--muted); text-decoration: none; font-size: 12px; }
+a.open:hover { color: var(--green); }
+
+.st { display: inline-block; padding: 3px 9px; border-radius: 5px; font-size: 11px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
+.st-RETEST, .st-OS3, .st-IN { color: var(--st-red-text); background: rgba(240,86,91,.22); }
+.st-NEAR, .st-OS2, .st-WAIT { color: var(--red); background: var(--red-bg); }
+.st-EARLY, .st-OS1 { color: var(--amber); background: var(--amber-bg); }
+.st-ALERT { color: var(--st-amber-text); background: rgba(242,181,68,.2); }
+.st-MONITOR, .st-TESTED { color: var(--green); background: var(--green-bg); }
+.st-ENDED { color: var(--muted); background: var(--panel2); font-weight: 500; }
+.badge-new { font-size: 10px; font-weight: 800; letter-spacing: .06em; color: #0b0d10; background: var(--amber); border-radius: 4px; padding: 0 5px; margin-left: 6px; }
+.badge-live { font-size: 10px; font-weight: 800; letter-spacing: .06em; color: var(--blue); border: 1px solid var(--blue-line); background: var(--blue-bg); border-radius: 4px; padding: 0 5px; margin-left: 6px; }
+.sig { display: inline-block; padding: 3px 9px; border-radius: 5px; font-size: 11px; font-weight: 700; }
+.sig-L { color: var(--green); background: var(--green-bg); }
+.sig-S { color: var(--red); background: var(--red-bg); }
+.empty { text-align: center; color: var(--muted); padding: 50px 20px; }
+.r-ob { color: var(--red) !important; } .r-hi { color: var(--soft-red) !important; }
+.r-os { color: var(--green) !important; } .r-lo { color: var(--soft-green) !important; }
+
+.coin-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 18px; flex-wrap: wrap; }
+.ttl { display: flex; gap: 14px; align-items: center; min-width: 0; }
+.bigic { width: 46px; height: 46px; border-radius: 50%; background: var(--panel2); border: 1px solid var(--line2); display: grid; place-items: center; font-weight: 800; font-size: 14px; flex: none; }
+.ttl-sub { color: var(--muted); font-size: 11.5px; letter-spacing: .04em; }
+.ttl-main { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.price { font-size: 28px; font-weight: 650; }
+.chg { font-size: 14px; }
+.meta { display: flex; gap: 22px; align-items: center; color: var(--muted); font-size: 11.5px; flex-wrap: wrap; }
+.meta > div b { display: block; color: var(--strong); font-size: 14px; font-weight: 600; margin-top: 3px; }
+.coin-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.chart-panel { overflow: hidden; }
+.chart-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.chart-box { height: 62vh; min-height: 420px; }
+.chart-box iframe { width: 100%; height: 100%; border: 0; display: block; }
+.side-panel .pn { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.side-panel .pn:last-child { border-bottom: 0; }
+.pn h4 { margin: 0 0 10px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); font-weight: 600; }
+.rsig { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.rc { background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 7px 4px; text-align: center; }
+.rc span { display: block; color: var(--dim); font-size: 10px; }
+.rc b { font-size: 15px; font-weight: 600; }
+.bias { border: 1px solid var(--line); border-left-width: 3px; border-radius: 10px; padding: 14px 16px; background: var(--panel); margin-bottom: 14px; }
+.bias p { margin: 6px 0 0; color: var(--text2); line-height: 1.6; }
+.bias .b-label { font-weight: 700; font-size: 14px; }
+.b-bullish { border-left-color: var(--green); } .b-bullish .b-label { color: var(--green); }
+.b-bearish { border-left-color: var(--red); } .b-bearish .b-label { color: var(--red-text2); }
+.b-neutral { border-left-color: var(--amber); } .b-neutral .b-label { color: var(--amber); }
+.lvrow { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 12.5px; }
+.lvrow:last-of-type { border-bottom: 0; }
+.lv .t { font-weight: 700; }
+
+.subtabs { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 5px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); margin-bottom: 18px; }
+.subtabs a { padding: 7px 12px; border-radius: 7px; color: var(--muted); text-decoration: none; font-size: 13px; cursor: pointer; }
+.subtabs a.on { background: var(--panel2); color: var(--strong); box-shadow: inset 0 0 0 1px var(--line2); }
+.rule-note { margin: -4px 0 16px; padding: 10px 14px; border-radius: 8px; font-size: 12.5px; color: var(--text2); border: 1px solid var(--line); background: var(--panel); border-left: 3px solid var(--green); }
+.rule-note.bear { border-left-color: var(--red); }
+
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 50; }
+.modal-box { background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; padding: 20px 22px; width: min(560px, calc(100vw - 32px)); max-height: 86vh; overflow: auto; }
+.modal-box h3 { margin: 0 0 14px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.grid2 label { display: flex; flex-direction: column; gap: 5px; color: var(--muted); font-size: 12.5px; }
+.hint { color: var(--dim); font-size: 12px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; align-items: center; margin-top: 14px; }
+.modal-actions .hint { flex: 1; }
+
+@media (max-width: 1280px) { .overview { grid-template-columns: repeat(3, minmax(0, 1fr)); } .coin-grid { grid-template-columns: minmax(0, 1fr) 300px; } }
+@media (max-width: 1000px) { .coin-grid { grid-template-columns: minmax(0, 1fr); } .chart-box { height: 50vh; min-height: 340px; } }
+@media (max-width: 860px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .side { position: fixed; left: 0; top: 0; bottom: 0; width: 270px; transform: translateX(-100%); transition: transform .2s ease; box-shadow: 0 0 40px rgba(0,0,0,.5); }
+  body.nav-open .side { transform: none; }
+  body.nav-open .scrim { display: block; position: fixed; inset: 0; background: rgba(0,0,0,.5); z-index: 25; }
+  .menu-btn { display: flex; }
+  .top { padding: 10px 16px; gap: 10px; flex-wrap: wrap; }
+  .gsearch { order: 3; flex-basis: 100%; }
+  .gsearch input { max-width: none; }
+  .content { padding: 18px 16px 30px; }
+}
+@media (max-width: 600px) {
+  .overview { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .overview .progress-card { grid-column: span 2; }
+  .card-value { font-size: 20px; }
+  .grid2 { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<aside class="side" id="side">
+  <a class="brand" href="#scanner">
+    <div class="logo">R</div>
+    <div><div class="brand-name">RSI SCANNER</div><div class="brand-sub">Bybit · live</div></div>
+  </a>
+  <nav class="nav" id="nav"></nav>
+</aside>
+<div class="scrim" id="scrim"></div>
+
+<div class="main-col">
+<header class="top">
+  <button class="menu-btn" id="menuBtn" aria-label="Menu"><span></span><span></span><span></span></button>
+  <div class="crumb" id="crumb"></div>
+  <div class="gsearch"><input type="search" id="gsearch" placeholder="Jump to a coin (e.g. BTC)…" autocomplete="off"></div>
+  <div class="top-actions">
+    <span id="freshness" class="pill pill-muted">Starting…</span>
+    <label class="inline scan-only">Auto-refresh
+      <select id="refreshSel"><option value="1">1 min</option><option value="5">5 min</option><option value="10">10 min</option><option value="15">15 min</option></select>
+    </label>
+    <button id="refreshBtn" class="btn btn-primary scan-only">Refresh now</button>
+    <button id="themeBtn" class="btn theme-btn" title="Switch theme">☀︎</button>
+    <button id="settingsBtn" class="btn" title="Settings">Settings</button>
+  </div>
+</header>
+
+<main class="content">
+
+<div id="viewScanner">
+  <div class="page-head"><div><h1>RSI Scanner</h1><div class="sub">Live RSI conditions across Bybit USDT perpetuals, computed in your browser</div></div></div>
+  <div id="banner" class="banner hidden"></div>
+  <section class="overview">
+    <div class="card"><div class="card-label">Coins scanned</div><div class="card-value" id="ovCoins">—</div><div class="card-foot" id="ovCoinsFoot">&nbsp;</div></div>
+    <div class="card"><div class="card-label amber">Approaching alert</div><div class="card-value amber" id="ovApproach">—</div><div class="card-foot">RSI falling toward the alert level</div></div>
+    <div class="card"><div class="card-label">Oversold coins</div><div class="card-value red" id="ovOversold">—</div><div class="card-foot">RSI below your oversold level, any timeframe</div></div>
+    <div class="card"><div class="card-label">Last scan</div><div class="card-value small" id="ovLast">—</div><div class="card-foot" id="ovNext">&nbsp;</div></div>
+    <div class="card progress-card"><div class="card-label">Scan progress</div><div class="card-value small" id="ovProgress">—</div><div class="bar"><div class="bar-fill" id="ovBar"></div></div><div class="card-foot" id="ovApi">&nbsp;</div></div>
+  </section>
+  <div class="panel">
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="magic">Magical shorts <span class="count count-alert" id="cMagic">0</span></button>
+      <button class="tab" data-tab="magicrec">Retested <span class="count" id="cMagicRec">0</span></button>
+      <button class="tab" data-tab="alerts"><span id="tabAlertsLabel">RSI alerts</span> <span class="count count-alert" id="cAlerts">0</span></button>
+      <button class="tab" data-tab="cross">RSI × MA cross <span class="count" id="cCross">0</span></button>
+      <button class="tab" data-tab="retest"><span id="tabRetestLabel">RSI 70 → retest</span> <span class="count" id="cRetest">0</span></button>
+      <button class="tab" data-tab="oversold">Oversold <span class="count" id="cOversold">0</span></button>
+      <button class="tab" data-tab="confluence">MTF confluence <span class="count" id="cConf">0</span></button>
+    </nav>
+    <section class="toolbar" id="toolbar"></section>
+    <section class="table-wrap"><table id="grid"><thead></thead><tbody></tbody></table><div id="empty" class="empty hidden"></div></section>
+  </div>
+  <footer class="foot">
+    Magical shorts: RSI(14) closes below 30 for 3+ candles on 15m/1H or 2+ on 4H/6H/12H/1D → the swing high right before the drop is the short zone. Retest stages track the fall from the most recent RSI&nbsp;≥&nbsp;70 peak back toward the retest zone. RSI 14, Wilder smoothing, recomputed from Bybit's public klines on every refresh — nothing is stored on a server.
+    <span id="footNote"></span>
+  </footer>
+</div>
+
+<section id="viewChart" class="hidden">
+  <div class="coin-head" id="chHead"></div>
+  <div class="coin-grid" id="chGrid">
+    <div class="panel chart-panel">
+      <div class="chart-bar"><div class="group" id="chTfs"></div><div class="dim small-note" id="chSub"></div></div>
+      <div class="chart-box" id="chBox"></div>
+    </div>
+    <aside class="panel side-panel" id="chSide"></aside>
+  </div>
+</section>
+
+<section id="viewAlts" class="hidden"></section>
+<section id="viewWatch" class="hidden"></section>
+
+</main>
+</div>
+</div>
+
+<div id="settings" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <h3>Settings</h3>
+    <div class="grid2">
+      <label>Universe (top N by 24h volume)<input type="number" id="setUniverse" min="20" max="300" step="10"></label>
+      <label>Min 24h volume (USD)<input type="number" id="setMinVol" min="0" step="100000"></label>
+      <label>Oversold below<input type="number" id="setOs" step="0.5"></label>
+      <label>Strongly oversold below<input type="number" id="setStrong" step="0.5"></label>
+      <label>Extremely oversold below<input type="number" id="setExtreme" step="0.5"></label>
+      <label>Alert when RSI falls to<input type="number" id="setAlert" min="50" max="60" step="0.5"></label>
+      <label>Retest zone (RSI ≤)<input type="number" id="setZone" min="40" max="58" step="0.5"></label>
+      <label>Resets below<input type="number" id="setReset" min="20" max="50" step="0.5"></label>
+      <label>RSI-based MA type (cross tab)<select id="setMaType"><option>SMA</option><option>EMA</option><option>RMA</option><option>WMA</option></select></label>
+      <label>RSI-based MA length<input type="number" id="setMaLen" min="2" max="50"></label>
+      <label>Concurrent requests<input type="number" id="setConc" min="1" max="20"></label>
+      <label>Max requests / second<input type="number" id="setRps" min="1" max="40" step="1"></label>
+    </div>
+    <p class="hint">Everything here runs in your browser against Bybit's public API and is saved only in this browser. A bigger universe or more timeframes means more requests per scan.</p>
+    <div class="modal-actions"><span id="setMsg" class="hint"></span><button class="btn" id="setCancel">Close</button><button class="btn btn-primary" id="setSave">Save &amp; rescan</button></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+(() => {
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('sc2.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('sc2.' + k, JSON.stringify(v)); } catch { /* storage off */ } },
+};
+
+/* ============================================================ config */
+const API = 'https://api.bybit.com/v5/market';
+const TF = [
+  { id: '3', label: '3m', ms: 3 * 60000 }, { id: '5', label: '5m', ms: 5 * 60000 },
+  { id: '15', label: '15m', ms: 15 * 60000 }, { id: '30', label: '30m', ms: 30 * 60000 },
+  { id: '60', label: '1H', ms: 3600000 }, { id: '240', label: '4H', ms: 4 * 3600000 },
+  { id: '360', label: '6H', ms: 6 * 3600000 }, { id: '720', label: '12H', ms: 12 * 3600000 },
+  { id: 'D', label: '1D', ms: 86400000 }, { id: 'W', label: '1W', ms: 7 * 86400000 },
+];
+const tfMeta = Object.fromEntries(TF.map((t) => [t.id, t]));
+const MAGIC_TFS = ['15', '60', '240', '360', '720', 'D'];
+const MAGIC_RUN = { 15: 3, 60: 3, 240: 2, 360: 2, 720: 2, D: 2 };
+const MAGIC_CONFIRM = { 15: '60', 60: '240', 240: '720', 360: 'D', 720: 'D', D: 'W' };
+const RETEST_TFS = ['5', '15', '30', '60', '240'];
+const CROSS_TFS = ['15', '30', '240'];
+const OS_TFS = ['5', '15', '30', '60', '120', '240', 'D', 'W'].filter((t) => tfMeta[t]); // '120' not in TF list -> drop
+const ALT_MAX = 20, ALT_MIN_VOL = 2e6, ALT_H1 = 50;
+
+const cfg = Object.assign({
+  universe: 80, minVol: 1e6,
+  os: 30, strong: 25, extreme: 20,
+  alertLevel: 54, retestZone: 52, resetLevel: 45,
+  maType: 'SMA', maLen: 9,
+  conc: 5, rps: 8,
+  refreshMin: 5, theme: null,
+}, store.get('cfg', {}));
+const saveCfg = () => store.set('cfg', cfg);
+let watch = store.get('watch', []);
+const saveWatch = () => store.set('watch', watch);
+
+/* ============================================================ fetch layer (concurrency + rate limited) */
+let inFlight = 0, rpsWindow = [];
+const queue = [];
+function pump() {
+  if (!queue.length || inFlight >= cfg.conc) return;
+  const now = Date.now();
+  rpsWindow = rpsWindow.filter((t) => now - t < 1000);
+  if (rpsWindow.length >= cfg.rps) { setTimeout(pump, 60); return; }
+  const job = queue.shift(); inFlight++; rpsWindow.push(now);
+  job().finally(() => { inFlight--; pump(); });
+  pump();
+}
+function limited(fn) {
+  return new Promise((resolve, reject) => {
+    queue.push(() => fn().then(resolve, reject));
+    pump();
+  });
+}
+async function getJson(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  if (j.retCode !== 0) throw new Error(j.retMsg || 'Bybit error');
+  return j.result;
+}
+function fetchTickers() { return limited(() => getJson(`${API}/tickers?category=linear`)); }
+function fetchKlines(symbol, interval, limit = 200) {
+  return limited(() => getJson(`${API}/kline?category=linear&symbol=${symbol}&interval=${interval}&limit=${limit}`)
+    .then((r) => r.list.slice().reverse().map((k) => ({ t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], v: +k[5] }))));
+}
+
+/* a small cache keyed by symbol|tf, refetched once a scan decides it's stale */
+const klineCache = new Map();
+function cacheKey(s, tf) { return s + '|' + tf; }
+function isStale(entry, tf) {
+  if (!entry) return true;
+  const age = Date.now() - entry.at;
+  return age > Math.max(25000, tfMeta[tf].ms / 6); // refetch at most every tf/6, min 25s
+}
+async function getKlines(symbol, tf) {
+  const k = cacheKey(symbol, tf);
+  const existing = klineCache.get(k);
+  if (!isStale(existing, tf)) return existing.data;
+  const data = await fetchKlines(symbol, tf);
+  klineCache.set(k, { data, at: Date.now() });
+  return data;
+}
+
+/* ============================================================ RSI / MA math */
+function rsiSeries(candles, period = 14) {
+  const n = candles.length, out = new Array(n).fill(null);
+  if (n < period + 1) return out;
+  let gain = 0, loss = 0;
+  for (let i = 1; i <= period; i++) { const d = candles[i].c - candles[i - 1].c; if (d >= 0) gain += d; else loss -= d; }
+  let avgG = gain / period, avgL = loss / period;
+  out[period] = avgL === 0 ? 100 : 100 - 100 / (1 + avgG / avgL);
+  for (let i = period + 1; i < n; i++) {
+    const d = candles[i].c - candles[i - 1].c, g = d > 0 ? d : 0, l = d < 0 ? -d : 0;
+    avgG = (avgG * (period - 1) + g) / period; avgL = (avgL * (period - 1) + l) / period;
+    out[i] = avgL === 0 ? 100 : 100 - 100 / (1 + avgG / avgL);
+  }
+  return out;
+}
+function maSeries(series, len, type) {
+  const n = series.length, out = new Array(n).fill(null);
+  const firstValid = series.findIndex((v) => v != null);
+  if (firstValid < 0) return out;
+  if (type === 'EMA' || type === 'RMA') {
+    const k = type === 'EMA' ? 2 / (len + 1) : 1 / len;
+    let prev = null;
+    for (let i = firstValid; i < n; i++) {
+      if (series[i] == null) continue;
+      if (prev == null) { // seed with SMA of first `len` valid points
+        if (i - firstValid < len - 1) continue;
+        let sum = 0; for (let j = i - len + 1; j <= i; j++) sum += series[j];
+        prev = sum / len;
+      } else prev = series[i] * k + prev * (1 - k);
+      out[i] = prev;
+    }
+  } else if (type === 'WMA') {
+    const denom = (len * (len + 1)) / 2;
+    for (let i = firstValid + len - 1; i < n; i++) {
+      let sum = 0, ok = true;
+      for (let j = 0; j < len; j++) { const v = series[i - j]; if (v == null) { ok = false; break; } sum += v * (len - j); }
+      out[i] = ok ? sum / denom : null;
+    }
+  } else { // SMA
+    for (let i = firstValid + len - 1; i < n; i++) {
+      let sum = 0, ok = true;
+      for (let j = 0; j < len; j++) { const v = series[i - j]; if (v == null) { ok = false; break; } sum += v; }
+      out[i] = ok ? sum / len : null;
+    }
+  }
+  return out;
+}
+const lastValid = (arr, upto) => { for (let i = (upto ?? arr.length - 1); i >= 0; i--) if (arr[i] != null) return { v: arr[i], i }; return null; };
+
+/* ============================================================ per symbol+tf analysis */
+function analyzeTf(candles, tf) {
+  if (!candles || candles.length < 20) return null;
+  const closedCandles = candles.slice(0, -1); // drop the still-forming candle
+  const live = candles[candles.length - 1];
+  const rClosedArr = rsiSeries(closedCandles);
+  const rAllArr = rsiSeries(candles); // includes forming candle, for the "live" reading
+  const mArr = maSeries(rClosedArr, cfg.maLen, cfg.maType);
+  const rLastClosed = lastValid(rClosedArr);
+  const r = rLastClosed ? rLastClosed.v : null;
+  const rl = lastValid(rAllArr) ? lastValid(rAllArr).v : null;
+  const m = lastValid(mArr) ? lastValid(mArr).v : null;
+
+  // cross: most recent sign change of (rsi - ma) on closed candles, within the last 2 candles
+  let x = null;
+  for (let back = 0; back < 2 && !x; back++) {
+    const i = rClosedArr.length - 1 - back;
+    if (i < 1 || rClosedArr[i] == null || mArr[i] == null || rClosedArr[i - 1] == null || mArr[i - 1] == null) continue;
+    const prevRel = Math.sign(rClosedArr[i - 1] - mArr[i - 1]);
+    const curRel = Math.sign(rClosedArr[i] - mArr[i]);
+    if (prevRel !== 0 && curRel !== 0 && prevRel !== curRel) {
+      x = { d: curRel, t: closedCandles[i].t, rsi: rClosedArr[i], ma: mArr[i], px: closedCandles[i].c, ago: back };
+    }
+  }
+  const liveRel = (rl != null && m != null) ? Math.sign(rl - m) : 0;
+  const xl = liveRel !== 0 ? { d: liveRel, rsi: rl, ma: m } : null;
+
+  // 70 -> retest staging
+  let s1 = null;
+  {
+    const arr = rClosedArr;
+    let i = arr.length - 1; while (i >= 0 && arr[i] == null) i--;
+    if (i >= 0 && arr[i] < 70) {
+      let j = i; while (j >= 0 && (arr[j] == null || arr[j] < 70)) j--;
+      if (j >= 0 && arr[i] > cfg.resetLevel) {
+        const v = arr[i];
+        const st = v <= cfg.retestZone ? 'RETEST' : v <= cfg.alertLevel ? 'ALERT' : v <= cfg.alertLevel + 5 ? 'NEAR' : v <= cfg.alertLevel + 10 ? 'EARLY' : 'MONITOR';
+        s1 = { st, peak: arr[j], pk: arr[j], since: closedCandles[i].t };
+      }
+    }
+  }
+  let s1p = null; // same, but using the live/forming candle
+  if (rl != null) {
+    const v = rl;
+    if (v < 70) {
+      const arr = rAllArr; let i = arr.length - 1; while (i >= 0 && arr[i] == null) i--;
+      let j = i - 1; while (j >= 0 && (arr[j] == null || arr[j] < 70)) j--;
+      if (j >= 0 && v > cfg.resetLevel) {
+        const st = v <= cfg.retestZone ? 'RETEST' : v <= cfg.alertLevel ? 'ALERT' : v <= cfg.alertLevel + 5 ? 'NEAR' : v <= cfg.alertLevel + 10 ? 'EARLY' : 'MONITOR';
+        s1p = { st, peak: arr[j], pk: arr[j] };
+      }
+    }
+  }
+
+  // magical shorts zones (only for MAGIC_TFS, computed below for those tfs)
+  let mz = null;
+  if (MAGIC_TFS.includes(tf)) {
+    mz = [];
+    const need = MAGIC_RUN[tf];
+    const arr = rClosedArr;
+    let i = arr.length - 2; // leave the last couple candles for retest-window
+    // find runs of RSI<30 scanning backward, take the most recent 2 runs
+    let found = 0;
+    while (i >= need && found < 2) {
+      if (arr[i] != null && arr[i] < 30) {
+        let end = i, start = i;
+        while (start - 1 >= 0 && arr[start - 1] != null && arr[start - 1] < 30) start--;
+        if (end - start + 1 >= need) {
+          // zone high: scan back from `start` until RSI >= 50 (the swing that led into the drop)
+          let k = start - 1, zoneHigh = closedCandles[start - 1] ? closedCandles[start - 1].h : closedCandles[start].h;
+          let steps = 0;
+          while (k >= 0 && steps < 40 && (arr[k] == null || arr[k] < 50)) { zoneHigh = Math.max(zoneHigh, closedCandles[k].h); k--; steps++; }
+          if (k >= 0) zoneHigh = Math.max(zoneHigh, closedCandles[k].h);
+          const runEndTime = closedCandles[end].t;
+          // has it retested since?
+          let tt = null, tpPct = null;
+          for (let p = end + 1; p < closedCandles.length; p++) {
+            if (tt == null && closedCandles[p].h >= zoneHigh * 0.997) tt = closedCandles[p].t;
+            if (tt != null && closedCandles[p].l <= zoneHigh * 0.99) { tpPct = ((zoneHigh - closedCandles[p].l) / zoneHigh) * 100; break; }
+          }
+          const confirmTf = MAGIC_CONFIRM[tf];
+          mz.push({ tf, zoneHigh, cf: runEndTime, tt, g: null, confirmTf, r: tpPct != null ? { tp: tpPct } : null });
+          found++;
+        }
+        i = start - 1;
+      } else i--;
+    }
+  }
+
+  return { r, rl, m, x, xl, s1, s1p, mz, ct: closedCandles.length ? closedCandles[closedCandles.length - 1].t : null, live };
+}
+
+/* grade A/B for magic zones: needs the higher timeframe's analysis, filled in after both are computed */
+function gradeMagicZones(symbolData) {
+  for (const tf of MAGIC_TFS) {
+    const d = symbolData.tf[tf];
+    if (!d || !d.mz) continue;
+    for (const z of d.mz) {
+      const hd = symbolData.tf[z.confirmTf];
+      z.g = (hd && hd.r != null && hd.r < 35) ? 'A' : 'B';
+    }
+  }
+}
+
+/* ============================================================ universe + scan state */
+let universe = []; // [{s, px, chg, vol}]
+let snap = { symbols: [] };
+let lastScanAt = null, scanning = false, scanError = null;
+let progress = { done: 0, total: 0 };
+
+async function loadUniverse() {
+  const result = await fetchTickers();
+  const rows = (result.list || [])
+    .filter((t) => t.symbol.endsWith('USDT'))
+    .map((t) => ({ s: t.symbol, px: +t.lastPrice, chg: +t.price24hPcnt * 100, vol: +t.turnover24h }))
+    .filter((t) => Number.isFinite(t.px) && t.vol >= cfg.minVol)
+    .sort((a, b) => b.vol - a.vol)
+    .slice(0, cfg.universe);
+  universe = rows;
+  return rows;
+}
+
+function tfsForTab(tab) {
+  switch (tab) {
+    case 'magic': case 'magicrec': return MAGIC_TFS;
+    case 'alerts': case 'retest': case 'confluence': return RETEST_TFS;
+    case 'cross': return CROSS_TFS;
+    case 'oversold': return OS_TFS;
+    default: return ['15', '60', '240', 'D'];
+  }
+}
+
+async function runScan(tab) {
+  if (scanning) return;
+  scanning = true; scanError = null; renderFreshness();
+  try {
+    if (!universe.length || isStale({ at: lastScanAt || 0 }, 'D') || Date.now() - (lastScanAt || 0) > cfg.refreshMin * 60000) {
+      await loadUniverse();
+    }
+    const tfs = tfsForTab(tab);
+    progress = { done: 0, total: universe.length * tfs.length };
+    renderProgress();
+    const symbolRows = [];
+    for (const u of universe) {
+      const tfData = {};
+      await Promise.all(tfs.map(async (tf) => {
+        try {
+          const candles = await getKlines(u.s, tf);
+          tfData[tf] = analyzeTf(candles, tf);
+        } catch { tfData[tf] = null; }
+        progress.done++;
+        if (progress.done % 10 === 0) renderProgress();
+      }));
+      const row = Object.assign({}, u, { tf: tfData });
+      gradeMagicZones(row);
+      symbolRows.push(row);
+    }
+    snap = { symbols: symbolRows };
+    lastScanAt = Date.now();
+  } catch (e) {
+    scanError = e.message || String(e);
+  } finally {
+    scanning = false;
+    renderFreshness(); renderProgress();
+  }
+}
+
+/* ============================================================ UI state */
+let ui = Object.assign({ tab: 'magic', search: '', showEnded: true, live: true }, store.get('ui', {}));
+const saveUi = () => store.set('ui', ui);
+let route = { view: 'scanner' };
+
+function parseRoute() {
+  const h = (location.hash || '#scanner').slice(1);
+  if (h.startsWith('coin/')) return { view: 'coin', symbol: decodeURIComponent(h.slice(5)) };
+  if (h === 'watchlist') return { view: 'watchlist' };
+  if (h.startsWith('altcoins')) return { view: 'alts', side: h.includes('bear') ? 'bear' : 'bull' };
+  return { view: 'scanner' };
+}
+window.addEventListener('hashchange', () => { route = parseRoute(); show(); });
+
+/* ============================================================ nav / shell */
+function buildNav() {
+  const items = [
+    { id: 'scanner', label: 'RSI Scanner', ic: 'R', href: '#scanner' },
+    { id: 'alts-bull', label: 'Bullish altcoins', ic: '▲', href: '#altcoins/bull' },
+    { id: 'alts-bear', label: 'Bearish altcoins', ic: '▼', href: '#altcoins/bear' },
+    { id: 'watchlist', label: 'Watchlist', ic: '☆', href: '#watchlist', v: watch.length || '' },
+  ];
+  $('nav').innerHTML = items.map((it) => `<a class="it ${isOn(it) ? 'on' : ''}" href="${it.href}">
+    <span class="l"><span class="ic">${esc(it.ic)}</span><span>${esc(it.label)}</span></span>${it.v ? `<span class="v">${it.v}</span>` : ''}</a>`).join('');
+}
+function isOn(it) {
+  if (it.id === 'scanner') return route.view === 'scanner' || route.view === 'coin';
+  if (it.id === 'watchlist') return route.view === 'watchlist';
+  if (it.id === 'alts-bull') return route.view === 'alts' && route.side === 'bull';
+  if (it.id === 'alts-bear') return route.view === 'alts' && route.side === 'bear';
+  return false;
+}
+function setCrumb(parts) { $('crumb').innerHTML = parts.map((p, i) => i === parts.length - 1 ? `<b>${esc(p)}</b>` : esc(p)).join(' / '); }
+
+function renderFreshness() {
+  const el = $('freshness');
+  if (scanning) { el.className = 'pill pill-scan'; el.textContent = 'Scanning…'; return; }
+  if (scanError) { el.className = 'pill pill-error'; el.textContent = 'Error — ' + scanError; return; }
+  el.className = 'pill pill-live'; el.textContent = lastScanAt ? 'Live' : 'Idle';
+}
+function renderProgress() {
+  const pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+  if ($('ovProgress')) { $('ovProgress').textContent = progress.total ? `${progress.done} / ${progress.total} requests` : '—'; $('ovBar').style.width = pct + '%'; }
+}
+
+/* ============================================================ scanner tab row builders (operate on `snap`) */
+function fmtRsi(v) { return v == null ? '<span class="dim">—</span>' : v.toFixed(2); }
+function rsiCls(v) { return v == null ? '' : v >= 70 ? 'r-ob' : v >= 60 ? 'r-hi' : v <= 30 ? 'r-os' : v <= 40 ? 'r-lo' : ''; }
+function fmtVol(v) { if (v == null) return '—'; if (v >= 1e9) return '$' + (v / 1e9).toFixed(2) + 'B'; if (v >= 1e6) return '$' + (v / 1e6).toFixed(2) + 'M'; return '$' + (v / 1e3).toFixed(1) + 'K'; }
+function fmtChg(v) { return v == null ? '<span class="dim">—</span>' : `<span class="${v >= 0 ? 'up' : 'down'}">${v >= 0 ? '+' : ''}${v.toFixed(2)}%</span>`; }
+function fmtAgo(ms) { if (!ms) return '—'; const s = Math.max(0, Math.round((Date.now() - ms) / 1000)); if (s < 60) return s + 's ago'; if (s < 3600) return Math.floor(s / 60) + 'm ago'; return Math.floor(s / 3600) + 'h ago'; }
+function symLink(s) { return `<a class="sym" href="#coin/${encodeURIComponent(s)}">${esc(s.replace(/USDT$/, ''))}<span class="quote">/USDT</span></a>`; }
+function stLabel(st) { return st === 'ALERT' ? `Alert ≤ ${cfg.alertLevel}` : st === 'RETEST' ? `Retest ≤ ${cfg.retestZone}` : { NEAR: 'Near retest', EARLY: 'Early warning', MONITOR: 'Monitoring' }[st] || st; }
+
+function magicRows() {
+  const out = []; const q = ui.search.trim().toUpperCase();
+  for (const c of snap.symbols) {
+    if (q && !c.s.includes(q)) continue;
+    for (const tf of MAGIC_TFS) {
+      const d = c.tf[tf]; if (!d || !d.mz) continue;
+      for (const z of d.mz) {
+        if (z.r && z.r.tp > 0) continue; // shown in Retested tab
+        const st = z.tt != null ? 'TESTED' : 'WAIT';
+        out.push({ c, d, z, tf, st, rsi: d.rl ?? d.r, isNew: Date.now() - z.cf < Math.max(1800000, 2 * tfMeta[tf].ms) });
+      }
+    }
+  }
+  return out.sort((a, b) => b.z.cf - a.z.cf);
+}
+function magicRecRows() {
+  const out = []; const q = ui.search.trim().toUpperCase();
+  for (const c of snap.symbols) {
+    if (q && !c.s.includes(q)) continue;
+    for (const tf of MAGIC_TFS) {
+      const d = c.tf[tf]; if (!d || !d.mz) continue;
+      for (const z of d.mz) { if (z.r && z.r.tp > 0) out.push({ c, d, z, tf, isNew: Date.now() - z.tt < Math.max(7200000, 2 * tfMeta[tf].ms) }); }
+    }
+  }
+  return out.sort((a, b) => b.z.tt - a.z.tt);
+}
+function alertRows() {
+  const out = []; const q = ui.search.trim().toUpperCase();
+  for (const c of snap.symbols) {
+    if (q && !c.s.includes(q)) continue;
+    for (const tf of RETEST_TFS) {
+      const d = c.tf[tf]; if (!d) continue;
+      const s = ui.live && d.s1p ? d.s1p : d.s1;
+      if (!s || s.st !== 'ALERT') continue;
+      out.push({ c, tf, d, rsi: ui.live ? (d.rl ?? d.r) : d.r, s });
+    }
+  }
+  return out.sort((a, b) => a.rsi - b.rsi);
+}
+function crossRows() {
+  const out = []; const q = ui.search.trim().toUpperCase(); const t = Date.now();
+  for (const c of snap.symbols) {
+    if (q && !c.s.includes(q)) continue;
+    for (const tf of CROSS_TFS) {
+      const d = c.tf[tf]; if (!d) continue;
+      if (d.x && d.x.ago === 0) out.push({ c, tf, d, dir: d.x.d, pending: false, t: d.x.t, rsi: d.x.rsi, ma: d.x.ma, px: d.x.px, isNew: true });
+      else if (d.xl) out.push({ c, tf, d, dir: d.xl.d, pending: true, t: null, rsi: d.xl.rsi, ma: d.xl.ma, px: c.px, isNew: false });
+    }
+  }
+  return out.sort((a, b) => (b.isNew - a.isNew) || (b.t || 0) - (a.t || 0));
+}
+function retestRows() {
+  const out = []; const q = ui.search.trim().toUpperCase();
+  for (const c of snap.symbols) {
+    if (q && !c.s.includes(q)) continue;
+    for (const tf of RETEST_TFS) {
+      const d = c.tf[tf]; if (!d) continue;
+      const s = ui.live && d.s1p ? d.s1p : d.s1; if (!s) continue;
+      out.push({ c, tf, d, s, rsi: ui.live ? (d.rl ?? d.r) : d.r, prox: Math.abs((ui.live ? (d.rl ?? d.r) : d.r) - cfg.retestZone) });
+    }
+  }
+  return out.sort((a, b) => a.prox - b.prox);
+}
+function oversoldRows() {
+  const out = []; const q = ui.search.trim().toUpperCase();
+  for (const c of snap.symbols) {
+    if (q && !c.s.includes(q)) continue;
+    const hits = [];
+    for (const tf of OS_TFS) { const d = c.tf[tf]; const v = d ? (ui.live ? (d.rl ?? d.r) : d.r) : null; if (v != null && v < cfg.os) hits.push({ tf, v, d }); }
+    for (const h of hits) out.push({ c, tf: h.tf, d: h.d, rsi: h.v, count: hits.length, cls: h.v < cfg.extreme ? 'OS3' : h.v < cfg.strong ? 'OS2' : 'OS1' });
+  }
+  return out.sort((a, b) => a.rsi - b.rsi);
+}
+function confluenceRows() {
+  const out = []; const q = ui.search.trim().toUpperCase();
+  for (const c of snap.symbols) {
+    if (q && !c.s.includes(q)) continue;
+    const conds = [];
+    for (const tf of RETEST_TFS) { const d = c.tf[tf]; const s = d && (ui.live ? d.s1p : d.s1); if (s) conds.push({ type: 'retest', tf, st: s.st, rsi: ui.live ? (d.rl ?? d.r) : d.r }); }
+    for (const tf of OS_TFS) { const d = c.tf[tf]; const v = d ? (ui.live ? (d.rl ?? d.r) : d.r) : null; if (v != null && v < cfg.os) conds.push({ type: 'os', tf, rsi: v }); }
+    if (conds.length >= 2) out.push({ c, conds, matches: conds.length });
+  }
+  return out.sort((a, b) => b.matches - a.matches);
+}
+
+const TAB_DEF = {
+  magic: { label: 'Magical shorts', count: () => magicRows().length },
+  magicrec: { label: 'Retested', count: () => magicRecRows().length },
+  alerts: { label: 'RSI alerts', count: () => alertRows().length },
+  cross: { label: 'RSI × MA cross', count: () => crossRows().length },
+  retest: { label: 'RSI 70 → retest', count: () => retestRows().length },
+  oversold: { label: 'Oversold', count: () => oversoldRows().length },
+  confluence: { label: 'MTF confluence', count: () => confluenceRows().length },
+};
+
+/* ============================================================ table rendering per tab */
+function renderCounts() {
+  if (!snap.symbols.length) return;
+  $('cMagic').textContent = magicRows().filter((r) => r.st === 'WAIT').length;
+  $('cMagicRec').textContent = magicRecRows().length;
+  $('cAlerts').textContent = alertRows().length;
+  $('cCross').textContent = crossRows().length;
+  $('cRetest').textContent = retestRows().length;
+  $('cOversold').textContent = oversoldRows().length;
+  $('cConf').textContent = confluenceRows().length;
+  $('tabAlertsLabel').textContent = `RSI ${cfg.alertLevel} alerts`;
+  $('tabRetestLabel').textContent = `RSI 70 → ${cfg.retestZone} retests`;
+  const approach = alertRows().length, os = new Set(oversoldRows().map((r) => r.c.s)).size;
+  $('ovCoins').textContent = snap.symbols.length;
+  $('ovCoinsFoot').textContent = `top ${cfg.universe} by 24h volume`;
+  $('ovApproach').textContent = approach;
+  $('ovOversold').textContent = os;
+  $('ovLast').textContent = lastScanAt ? fmtAgo(lastScanAt) : '—';
+  $('ovNext').textContent = lastScanAt ? `every ${cfg.refreshMin} min` : '\u00a0';
+  $('ovApi').textContent = `${cfg.conc} concurrent · ${cfg.rps}/s`;
+}
+
+function renderGrid() {
+  const thead = $('thead') || $('grid').querySelector('thead');
+  const tbody = $('grid').querySelector('tbody');
+  let rows = [], cols = [];
+  if (ui.tab === 'magic') {
+    rows = magicRows();
+    cols = ['Coin', 'TF', 'Grade', 'Short zone', 'Status', 'RSI', 'Since', ''];
+    tbody.innerHTML = rows.length ? rows.map((r) => `<tr>
+      <td>${symLink(r.c.s)}${r.isNew ? '<span class="badge-new">NEW</span>' : ''}</td><td><span class="tf">${esc(tfMeta[r.tf].label)}</span></td>
+      <td>${r.z.g || '—'}</td><td class="num mono">${r.z.zoneHigh.toLocaleString(undefined, { maximumFractionDigits: 6 })}</td>
+      <td><span class="st st-${r.st}">${r.st === 'WAIT' ? 'RSI 30 broken' : 'Retested already'}</span></td>
+      <td class="num rsi ${rsiCls(r.rsi)}">${fmtRsi(r.rsi)}</td><td class="mono dim">${fmtAgo(r.z.cf)}</td>
+      <td class="num"><a class="open" href="#coin/${encodeURIComponent(r.c.s)}">Open →</a></td></tr>`).join('')
+      : emptyRow(cols.length, 'No magical-shorts zones match your filters yet.');
+  } else if (ui.tab === 'magicrec') {
+    rows = magicRecRows();
+    cols = ['Coin', 'TF', 'Grade', 'Short zone', 'Retested', 'TP reached', ''];
+    tbody.innerHTML = rows.length ? rows.map((r) => `<tr>
+      <td>${symLink(r.c.s)}${r.isNew ? '<span class="badge-new">NEW</span>' : ''}</td><td><span class="tf">${esc(tfMeta[r.tf].label)}</span></td>
+      <td>${r.z.g || '—'}</td><td class="num mono">${r.z.zoneHigh.toLocaleString(undefined, { maximumFractionDigits: 6 })}</td>
+      <td class="mono dim">${fmtAgo(r.z.tt)}</td><td class="num up">${r.z.r.tp.toFixed(2)}%</td>
+      <td class="num"><a class="open" href="#coin/${encodeURIComponent(r.c.s)}">Open →</a></td></tr>`).join('')
+      : emptyRow(cols.length, 'No retested zones yet.');
+  } else if (ui.tab === 'alerts') {
+    rows = alertRows();
+    cols = ['Coin', 'TF', 'RSI', 'Stage', 'Peak', ''];
+    tbody.innerHTML = rows.length ? rows.map((r) => `<tr>
+      <td>${symLink(r.c.s)}</td><td><span class="tf">${esc(tfMeta[r.tf].label)}</span></td>
+      <td class="num rsi ${rsiCls(r.rsi)}">${fmtRsi(r.rsi)}</td><td><span class="st st-ALERT">${stLabel('ALERT')}</span></td>
+      <td class="num mono dim">${r.s.peak.toFixed(1)}</td><td class="num"><a class="open" href="#coin/${encodeURIComponent(r.c.s)}">Open →</a></td></tr>`).join('')
+      : emptyRow(cols.length, 'Nothing is in the alert band right now.');
+  } else if (ui.tab === 'cross') {
+    rows = crossRows();
+    cols = ['Coin', 'TF', 'Direction', 'RSI', 'MA', ''];
+    tbody.innerHTML = rows.length ? rows.map((r) => `<tr class="${r.isNew ? 'new' : ''}">
+      <td>${symLink(r.c.s)}${r.isNew ? '<span class="badge-new">NEW</span>' : ''}${r.pending ? '<span class="badge-live">LIVE</span>' : ''}</td>
+      <td><span class="tf">${esc(tfMeta[r.tf].label)}</span></td><td><span class="sig sig-${r.dir > 0 ? 'L' : 'S'}">${r.dir > 0 ? 'Bullish' : 'Bearish'}</span></td>
+      <td class="num rsi ${rsiCls(r.rsi)}">${fmtRsi(r.rsi)}</td><td class="num mono dim">${r.ma.toFixed(2)}</td>
+      <td class="num"><a class="open" href="#coin/${encodeURIComponent(r.c.s)}">Open →</a></td></tr>`).join('')
+      : emptyRow(cols.length, 'No RSI × MA crosses right now.');
+  } else if (ui.tab === 'retest') {
+    rows = retestRows();
+    cols = ['Coin', 'TF', 'RSI', 'Peak', 'Dist. to zone', 'Stage', ''];
+    tbody.innerHTML = rows.length ? rows.map((r) => `<tr>
+      <td>${symLink(r.c.s)}</td><td><span class="tf">${esc(tfMeta[r.tf].label)}</span></td>
+      <td class="num rsi ${rsiCls(r.rsi)}">${fmtRsi(r.rsi)}</td><td class="num mono dim">${r.s.peak.toFixed(1)}</td>
+      <td class="num mono">${(r.rsi - cfg.retestZone).toFixed(1)}</td><td><span class="st st-${r.s.st}">${stLabel(r.s.st)}</span></td>
+      <td class="num"><a class="open" href="#coin/${encodeURIComponent(r.c.s)}">Open →</a></td></tr>`).join('')
+      : emptyRow(cols.length, 'Nothing is pulling back from RSI 70 right now.');
+  } else if (ui.tab === 'oversold') {
+    rows = oversoldRows();
+    cols = ['Coin', 'TF', 'RSI', 'Class', 'TFs oversold', ''];
+    tbody.innerHTML = rows.length ? rows.map((r) => `<tr>
+      <td>${symLink(r.c.s)}</td><td><span class="tf">${esc(tfMeta[r.tf].label)}</span></td>
+      <td class="num rsi r-os">${fmtRsi(r.rsi)}</td><td><span class="st st-${r.cls}">${{ OS1: 'Oversold', OS2: 'Strongly oversold', OS3: 'Extremely oversold' }[r.cls]}</span></td>
+      <td class="num">${r.count}</td><td class="num"><a class="open" href="#coin/${encodeURIComponent(r.c.s)}">Open →</a></td></tr>`).join('')
+      : emptyRow(cols.length, 'Nothing is oversold right now.');
+  } else if (ui.tab === 'confluence') {
+    rows = confluenceRows();
+    cols = ['Coin', 'Matches', 'Conditions', ''];
+    tbody.innerHTML = rows.length ? rows.map((r) => `<tr>
+      <td>${symLink(r.c.s)}</td><td class="num">${r.matches}</td>
+      <td class="wrap">${r.conds.map((c) => `<span class="cond ${c.type === 'os' ? 'os' : 'a50'}">${esc(tfMeta[c.tf].label)} ${c.type === 'os' ? 'oversold' : stLabel(c.st)} · ${c.rsi.toFixed(1)}</span>`).join('')}</td>
+      <td class="num"><a class="open" href="#coin/${encodeURIComponent(r.c.s)}">Open →</a></td></tr>`).join('')
+      : emptyRow(cols.length, 'No multi-timeframe confluence right now.');
+  }
+  $('grid').querySelector('thead').innerHTML = `<tr>${cols.map((c, i) => `<th class="${i >= 2 && i < cols.length - 1 ? 'num' : ''}">${esc(c)}</th>`).join('')}</tr>`;
+  renderCounts();
+}
+function emptyRow(span, text) { return `<tr><td colspan="${span}" class="empty-row">${esc(text)}</td></tr>`; }
+
+function renderToolbar() {
+  $('toolbar').innerHTML = `
+    <div class="group"><input type="search" id="tbSearch" placeholder="Search symbol…" value="${esc(ui.search)}"></div>
+    <label class="toggle"><input type="checkbox" id="tbLive" ${ui.live ? 'checked' : ''}> Include live candle</label>
+    <div class="spacer"></div>
+    <span class="dim" style="font-size:11.5px">${TAB_DEF[ui.tab].label}</span>`;
+  $('tbSearch').addEventListener('input', (e) => { ui.search = e.target.value; saveUi(); renderGrid(); });
+  $('tbLive').addEventListener('change', (e) => { ui.live = e.target.checked; saveUi(); renderGrid(); });
+}
+
+/* ============================================================ coin / chart page */
+async function showCoin(symbol) {
+  setCrumb(['Scanner', symbol.replace(/USDT$/, '')]);
+  $('chHead').innerHTML = `<div class="ttl"><div class="bigic">${esc(symbol.slice(0, 1))}</div><div>
+      <div class="ttl-sub">${esc(symbol)}</div><div class="ttl-main"><span class="price" id="chPrice">—</span><span class="chg" id="chChg"></span></div></div></div>
+    <div class="group"><button class="btn star" id="chStar">${watch.includes(symbol) ? '★ Watchlisted' : '☆ Watchlist'}</button></div>`;
+  $('chStar').onclick = () => { toggleWatch(symbol); $('chStar').textContent = watch.includes(symbol) ? '★ Watchlisted' : '☆ Watchlist'; $('chStar').classList.toggle('on', watch.includes(symbol)); };
+  $('chStar').classList.toggle('on', watch.includes(symbol));
+  const tvTfs = [{ id: '15', label: '15m' }, { id: '60', label: '1H' }, { id: '240', label: '4H' }, { id: 'D', label: '1D' }];
+  let activeTf = '240';
+  $('chTfs').innerHTML = tvTfs.map((t) => `<button class="chip ${t.id === activeTf ? 'on' : ''}" data-tf="${t.id}">${t.label}</button>`).join('');
+  $('chTfs').querySelectorAll('.chip').forEach((b) => b.addEventListener('click', () => { activeTf = b.dataset.tf; $('chTfs').querySelectorAll('.chip').forEach((x) => x.classList.toggle('on', x === b)); drawChart(); }));
+  function drawChart() {
+    const interval = { '15': '15', '60': '60', '240': '240', 'D': 'D' }[activeTf];
+    $('chBox').innerHTML = `<iframe src="https://s.tradingview.com/widgetembed/?symbol=BYBIT:${symbol}.P&interval=${interval}&theme=${document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark'}&style=1&hidesidetoolbar=1&withdateranges=1" allowtransparency="true" frameborder="0"></iframe>`;
+  }
+  drawChart();
+  $('chSub').textContent = 'Chart: TradingView · Bybit perpetual';
+  $('chSide').innerHTML = `<div class="pn"><h4>RSI across timeframes</h4><div class="rsig" id="chRsig">${['15', '60', '240', 'D'].map(() => `<div class="rc"><span>—</span><b>—</b></div>`).join('')}</div></div>
+    <div class="pn"><h4>Bias</h4><div id="chBias">Loading…</div></div>
+    <div class="pn"><h4>Nearby magical-shorts zones</h4><div id="chZones">Loading…</div></div>`;
+
+  const tfs = ['15', '60', '240', 'D'];
+  const results = {};
+  await Promise.all(tfs.map(async (tf) => { try { results[tf] = analyzeTf(await getKlines(symbol, tf), tf); } catch { results[tf] = null; } }));
+  $('chRsig').innerHTML = tfs.map((tf) => { const d = results[tf]; const v = d ? (d.rl ?? d.r) : null; return `<div class="rc"><span>${tf === 'D' ? '1D' : tfMeta[tf].label}</span><b class="${rsiCls(v)}">${fmtRsi(v)}</b></div>`; }).join('');
+  const d4 = results['240'], d1 = results['D'];
+  const v4 = d4 ? (d4.rl ?? d4.r) : null, v1 = d1 ? (d1.rl ?? d1.r) : null;
+  let bias = 'neutral', biasText = 'Mixed signal across 4H and 1D — no clear regime.';
+  if (v4 != null && v1 != null) {
+    if (v4 > 55 && v1 > 55) { bias = 'bullish'; biasText = `4H RSI ${v4.toFixed(1)} and 1D RSI ${v1.toFixed(1)} are both above 55 — bullish territory.`; }
+    else if (v4 < 45 && v1 < 45) { bias = 'bearish'; biasText = `4H RSI ${v4.toFixed(1)} and 1D RSI ${v1.toFixed(1)} are both below 45 — bearish territory.`; }
+  }
+  $('chBias').innerHTML = `<div class="bias b-${bias}"><div class="b-label">${bias[0].toUpperCase() + bias.slice(1)}</div><p>${esc(biasText)}</p></div>`;
+  // nearby magical-shorts zones from the 15m/1H/4H/1D analyses just fetched
+  const zoneRows = [];
+  for (const tf of tfs) { const d = results[tf]; if (d && d.mz) for (const z of d.mz) zoneRows.push({ tf, z }); }
+  $('chZones').innerHTML = zoneRows.length ? zoneRows.map((r) => `<div class="lvrow"><span class="t">${esc(tfMeta[r.tf].label)}</span><span class="mono">${r.z.zoneHigh.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span><span class="dim">${r.z.tt ? 'retested' : 'open'}</span></div>`).join('') : '<p class="dim" style="margin:0">No recent zone.</p>';
+
+  try {
+    const tk = await limited(() => getJson(`${API}/tickers?category=linear&symbol=${symbol}`));
+    const row = tk.list && tk.list[0];
+    if (row) { $('chPrice').textContent = (+row.lastPrice).toLocaleString(undefined, { maximumFractionDigits: 6 }); $('chChg').innerHTML = fmtChg(+row.price24hPcnt * 100); }
+  } catch { /* ignore */ }
+}
+function toggleWatch(symbol) { const i = watch.indexOf(symbol); if (i >= 0) watch.splice(i, 1); else watch.push(symbol); saveWatch(); buildNav(); }
+
+/* ============================================================ alts page */
+async function showAlts(side) {
+  setCrumb(['Scanner', side === 'bull' ? 'Bullish altcoins' : 'Bearish altcoins']);
+  const el = $('viewAlts');
+  el.innerHTML = `<div class="subtabs"><a class="${side === 'bull' ? 'on' : ''}" href="#altcoins/bull">▲ Bullish altcoins</a><a class="${side === 'bear' ? 'on' : ''}" href="#altcoins/bear">▼ Bearish altcoins</a></div>
+    <div class="page-head"><div><h1>${side === 'bull' ? 'Bullish' : 'Bearish'} altcoins</h1><div class="sub">Bybit's top 24h ${side === 'bull' ? 'gainers that are still going up' : 'losers that are still falling'} · 24h volume above ${fmtVol(ALT_MIN_VOL)}</div></div></div>
+    <div class="rule-note ${side}"><b>Rule:</b> ${side === 'bull' ? `1H RSI closes at ${ALT_H1} or higher.` : `1H RSI closes at ${ALT_H1} or lower.`}</div>
+    <div class="panel"><div class="table-wrap flat"><table><thead><tr><th>#</th><th>Coin</th><th class="num">Price</th><th class="num">24h</th><th class="num">RSI 1H</th><th class="num">24h volume</th><th></th></tr></thead><tbody id="altsBody"><tr><td colspan="7" class="empty-row">Loading…</td></tr></tbody></table></div></div>`;
+  let list;
+  try { list = await fetchTickers(); } catch (e) { $('altsBody').innerHTML = emptyRow(7, 'Could not reach Bybit: ' + e.message); return; }
+  let rows = (list.list || []).filter((t) => t.symbol.endsWith('USDT') && +t.turnover24h >= ALT_MIN_VOL)
+    .map((t) => ({ s: t.symbol, px: +t.lastPrice, chg: +t.price24hPcnt * 100, vol: +t.turnover24h }))
+    .sort((a, b) => side === 'bull' ? b.chg - a.chg : a.chg - b.chg)
+    .slice(0, 60);
+  const checked = [];
+  for (const r of rows) {
+    if (checked.length >= ALT_MAX) break;
+    try {
+      const k = await getKlines(r.s, '60');
+      const a = analyzeTf(k, '60');
+      const v = a ? a.r : null;
+      if (v != null && (side === 'bull' ? v >= ALT_H1 : v <= ALT_H1)) checked.push(Object.assign({}, r, { rsi1h: v }));
+    } catch { /* skip */ }
+  }
+  $('altsBody').innerHTML = checked.length ? checked.map((r, i) => `<tr><td class="dim num">${i + 1}</td><td>${symLink(r.s)}</td>
+    <td class="num mono">${r.px.toLocaleString(undefined, { maximumFractionDigits: 6 })}</td><td class="num">${fmtChg(r.chg)}</td>
+    <td class="num rsi ${rsiCls(r.rsi1h)}">${fmtRsi(r.rsi1h)}</td><td class="num">${fmtVol(r.vol)}</td>
+    <td class="num"><a class="open" href="#coin/${encodeURIComponent(r.s)}">Open →</a></td></tr>`).join('') : emptyRow(7, `No ${side === 'bull' ? 'gainer is still going up' : 'loser is still falling'} right now.`);
+}
+
+/* ============================================================ watchlist page */
+async function showWatchlist() {
+  setCrumb(['Scanner', 'Watchlist']);
+  const el = $('viewWatch');
+  if (!watch.length) { el.innerHTML = `<div class="page-head"><div><h1>Watchlist</h1><div class="sub">Coins you star, saved in this browser</div></div></div><div class="panel empty">Your watchlist is empty. Open any coin and click ☆ Watchlist.</div>`; return; }
+  el.innerHTML = `<div class="page-head"><div><h1>Watchlist</h1><div class="sub">Coins you star, saved in this browser</div></div></div>
+    <div class="panel"><div class="table-wrap flat"><table><thead><tr><th>Coin</th><th class="num">Price</th><th class="num">24h</th><th class="num">RSI 15m</th><th class="num">RSI 1H</th><th class="num">RSI 4H</th><th class="num">RSI 1D</th><th></th></tr></thead><tbody id="watchBody"><tr><td colspan="8" class="empty-row">Loading…</td></tr></tbody></table></div></div>`;
+  const rows = [];
+  for (const s of watch) {
+    let tk = null, a = {};
+    try { tk = (await limited(() => getJson(`${API}/tickers?category=linear&symbol=${s}`))).list[0]; } catch { /* ignore */ }
+    for (const tf of ['15', '60', '240', 'D']) { try { a[tf] = analyzeTf(await getKlines(s, tf), tf); } catch { a[tf] = null; } }
+    rows.push({ s, tk, a });
+  }
+  $('watchBody').innerHTML = rows.map((r) => `<tr><td>${symLink(r.s)}</td>
+    <td class="num mono">${r.tk ? (+r.tk.lastPrice).toLocaleString(undefined, { maximumFractionDigits: 6 }) : '—'}</td>
+    <td class="num">${r.tk ? fmtChg(+r.tk.price24hPcnt * 100) : '—'}</td>
+    ${['15', '60', '240', 'D'].map((tf) => { const d = r.a[tf]; const v = d ? (d.rl ?? d.r) : null; return `<td class="num rsi ${rsiCls(v)}">${fmtRsi(v)}</td>`; }).join('')}
+    <td class="num"><a class="open" href="#coin/${encodeURIComponent(r.s)}">Open →</a> <button class="link" data-rm="${esc(r.s)}" style="background:none;border:0;color:var(--dim);cursor:pointer;font-size:12px;text-decoration:underline">Remove</button></td></tr>`).join('');
+  $('watchBody').querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', () => { toggleWatch(b.dataset.rm); showWatchlist(); }));
+}
+
+/* ============================================================ tab switching + main scanner refresh */
+async function switchTab(tab) {
+  ui.tab = tab; saveUi();
+  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === tab));
+  renderToolbar();
+  await runScan(tab);
+  renderGrid();
+}
+let refreshTimer = 0;
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(async () => { if (route.view === 'scanner') { await runScan(ui.tab); renderGrid(); } scheduleRefresh(); }, cfg.refreshMin * 60000);
+}
+
+/* ============================================================ show / route */
+function show() {
+  $('viewScanner').classList.toggle('hidden', route.view !== 'scanner');
+  $('viewChart').classList.toggle('hidden', route.view !== 'coin');
+  $('viewAlts').classList.toggle('hidden', route.view !== 'alts');
+  $('viewWatch').classList.toggle('hidden', route.view !== 'watchlist');
+  buildNav();
+  if (route.view === 'scanner') { setCrumb(['Scanner']); if (!snap.symbols.length) switchTab(ui.tab); else renderGrid(); }
+  else if (route.view === 'coin') showCoin(route.symbol);
+  else if (route.view === 'alts') showAlts(route.side);
+  else if (route.view === 'watchlist') showWatchlist();
+  document.body.classList.remove('nav-open');
+}
+
+/* ============================================================ chrome: theme, menu, search, settings, tabs */
+function applyTheme() { if (cfg.theme) document.documentElement.setAttribute('data-theme', cfg.theme); }
+$('themeBtn').addEventListener('click', () => {
+  const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  cfg.theme = cur === 'light' ? 'dark' : 'light'; document.documentElement.setAttribute('data-theme', cfg.theme); saveCfg();
+  $('themeBtn').textContent = cfg.theme === 'light' ? '☾' : '☀︎';
+});
+$('menuBtn').addEventListener('click', () => document.body.classList.toggle('nav-open'));
+$('scrim').addEventListener('click', () => document.body.classList.remove('nav-open'));
+document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+$('refreshBtn').addEventListener('click', () => { klineCache.clear(); switchTab(ui.tab); });
+$('refreshSel').value = String(cfg.refreshMin);
+$('refreshSel').addEventListener('change', (e) => { cfg.refreshMin = +e.target.value; saveCfg(); scheduleRefresh(); });
+$('gsearch').addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const v = e.target.value.trim().toUpperCase(); if (!v) return;
+  location.hash = '#coin/' + encodeURIComponent(v.endsWith('USDT') ? v : v + 'USDT');
+  e.target.value = '';
+});
+
+function openSettings() {
+  $('setUniverse').value = cfg.universe; $('setMinVol').value = cfg.minVol;
+  $('setOs').value = cfg.os; $('setStrong').value = cfg.strong; $('setExtreme').value = cfg.extreme;
+  $('setAlert').value = cfg.alertLevel; $('setZone').value = cfg.retestZone; $('setReset').value = cfg.resetLevel;
+  $('setMaType').value = cfg.maType; $('setMaLen').value = cfg.maLen;
+  $('setConc').value = cfg.conc; $('setRps').value = cfg.rps;
+  $('setMsg').textContent = ''; $('settings').classList.remove('hidden');
+}
+$('settingsBtn').addEventListener('click', openSettings);
+$('setCancel').addEventListener('click', () => $('settings').classList.add('hidden'));
+$('setSave').addEventListener('click', () => {
+  Object.assign(cfg, {
+    universe: +$('setUniverse').value || 80, minVol: +$('setMinVol').value || 0,
+    os: +$('setOs').value, strong: +$('setStrong').value, extreme: +$('setExtreme').value,
+    alertLevel: +$('setAlert').value, retestZone: +$('setZone').value, resetLevel: +$('setReset').value,
+    maType: $('setMaType').value, maLen: +$('setMaLen').value || 9,
+    conc: +$('setConc').value || 5, rps: +$('setRps').value || 8,
+  });
+  saveCfg(); $('settings').classList.add('hidden');
+  klineCache.clear(); universe = [];
+  if (route.view === 'scanner') switchTab(ui.tab);
+});
+
+/* ============================================================ start */
+applyTheme();
+$('themeBtn').textContent = (document.documentElement.getAttribute('data-theme') === 'light') ? '☾' : '☀︎';
+route = parseRoute();
+buildNav();
+show();
+scheduleRefresh();
+})();
+</script>
+</body>
+</html>
