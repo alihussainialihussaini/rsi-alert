@@ -325,19 +325,52 @@ async function topSymbols(){
 async function kl(sym,iv,lim){const r=await fetch(API+"/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+iv+"&limit="+lim);if(!r.ok)throw new Error(sym+" "+r.status);const k=await r.json();return k.slice(0,-1).map(x=>[+x[0],+x[1],+x[2],+x[3],+x[4],+x[5]])}
 async function pool(items,n,fn){let i=0;await Promise.all(Array.from({length:n},async()=>{while(i<items.length){const k=i++;await fn(items[k],k)}}))}
 function setBar(txt){const e=document.getElementById("scanTxt");if(e)e.textContent=txt}
+const DSER=["BTC.D","USDT.D","BTC+ETH+STABLE.D","TOTAL3"];
+const SUP_STABLE=new Set(["USDT","USDC","DAI","FDUSD","TUSD","USDE","USDS","PYUSD","USD1","BUSD","USDP","RLUSD","USDD","FRAX","GUSD","LUSD","USDG","BFUSD","XUSD","USDTB"]);
+const COINS_USED=60;
+let kcache={};
+// BTC.D, USDT.D, BTC+ETH+STABLE.D and TOTAL3 are not on Binance: they are calculated from Binance coin prices x CoinGecko circulating supply
+async function getSupply(){
+  let c=null;try{c=JSON.parse(localStorage.getItem("supplyCache")||"null")}catch(e){}
+  if(c&&Date.now()-c.t<216e5)return c.d;
+  try{
+    const d={};
+    for(const pg of [1,2]){
+      const r=await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page="+pg);
+      if(!r.ok)throw new Error("coingecko "+r.status);
+      for(const x of await r.json()){const s=(x.symbol||"").toUpperCase();if(s&&x.circulating_supply&&x.market_cap&&!(s in d))d[s]=[+x.circulating_supply,+x.market_cap]}}
+    if(!d.BTC||!d.ETH||!d.USDT)throw new Error("incomplete");
+    try{localStorage.setItem("supplyCache",JSON.stringify({t:Date.now(),d}))}catch(e){}
+    return d}
+  catch(e){return c?c.d:null}}
+function moversOf(sup){return Object.keys(sup).sort((a,b)=>sup[b][1]-sup[a][1]).filter(s=>!SUP_STABLE.has(s)).slice(0,COINS_USED)}
+async function synthAll(iv,lim,step,sup,mv,now){
+  const b=Math.floor(now/step);
+  await pool(mv,8,async s=>{const k=s+"|"+iv;if(!kcache[k]||kcache[k].b!==b){try{kcache[k]={b,d:await kl(s+"USDT",iv,lim)}}catch(e){}}});
+  const bt=kcache["BTC|"+iv],et=kcache["ETH|"+iv];if(!bt||!et)return {};
+  const times=bt.d.map(x=>x[0]);
+  const order=Object.keys(sup).sort((a,b)=>sup[b][1]-sup[a][1]);
+  const stableCap=order.filter(s=>SUP_STABLE.has(s)).reduce((a,s)=>a+sup[s][1],0);
+  const cap={};
+  for(const s of mv){const e=kcache[s+"|"+iv];if(!e)continue;const m=new Map(e.d.map(x=>[x[0],x[4]]));let prev=null;const v=[];for(const t of times){if(m.has(t))prev=m.get(t);v.push(prev)}
+    const first=v.find(x=>x!==null);if(first===undefined)continue;cap[s]=v.map(x=>(x===null?first:x)*sup[s][0])}
+  if(!cap.BTC||!cap.ETH)return {};
+  let fixed=stableCap;for(const s of order)if(!SUP_STABLE.has(s)&&!(s in cap))fixed+=sup[s][1];
+  const keys=Object.keys(cap),btc=cap.BTC,eth=cap.ETH,usdt=sup.USDT[1];
+  const tot=times.map((_,i)=>{let t=fixed;for(const s of keys)t+=cap[s][i];return t});
+  const ser={"BTC.D":tot.map((t,i)=>100*btc[i]/t),"USDT.D":tot.map(t=>100*usdt/t),"BTC+ETH+STABLE.D":tot.map((t,i)=>100*(btc[i]+eth[i]+stableCap)/t),"TOTAL3":tot.map((t,i)=>(t-btc[i]-eth[i])/1e9)};
+  const out={};
+  for(const nm of DSER){const v=ser[nm];out[nm]=times.map((t,i)=>{const c=v[i],o=i?v[i-1]:c;return [t,o,Math.max(o,c),Math.min(o,c),c,0]})}
+  return out}
 async function scan(){
   if(scanning||!scanOn)return;scanning=true;setBar("scanning…");
   let alerts=0,coinsN=0;
   try{
-    const now=Date.now(),syms=await topSymbols(),d5={},d4={},d15={},d1h={};
-    await pool(syms,8,async s=>{
-      try{d5[s]=await kl(s,"5m",1000)}catch(e){}
-      const b=Math.floor(now/H4);
-      if(!c4cache[s]||c4cache[s].b!==b){try{c4cache[s]={b,d:await kl(s,"4h",1000)}}catch(e){}}
-      const b15=Math.floor(now/9e5);if(!c15cache[s]||c15cache[s].b!==b15){try{c15cache[s]={b:b15,d:await kl(s,"15m",500)}}catch(e){}}
-      const b1=Math.floor(now/36e5);if(!c1hcache[s]||c1hcache[s].b!==b1){try{c1hcache[s]={b:b1,d:await kl(s,"1h",500)}}catch(e){}}
-      d15[s]=c15cache[s]?c15cache[s].d:null;d1h[s]=c1hcache[s]?c1hcache[s].d:null;
-      d4[s]=c4cache[s]?c4cache[s].d:null});
+    const now=Date.now(),sup=await getSupply(),syms=DSER,d5={},d4={},d15={},d1h={};
+    if(!sup)throw new Error("no supply data");
+    const mv=moversOf(sup);
+    const S5=await synthAll("5m",1000,BMS,sup,mv,now),S4=await synthAll("4h",1000,H4,sup,mv,now),S15=await synthAll("15m",500,9e5,sup,mv,now),S1=await synthAll("1h",500,36e5,sup,mv,now);
+    for(const s of syms){d5[s]=S5[s];d4[s]=S4[s];d15[s]=S15[s];d1h[s]=S1[s]}
     const blocks=[];
     for(const s of syms){if(!d5[s])continue;coinsN++;
       const out=analyzeSym(s,d5[s],d4[s],ST,now,{m15:d15[s],h1:d1h[s]});if(!out)continue;Object.assign(ST,out.upd);
@@ -355,7 +388,7 @@ async function scan(){
     try{localStorage.setItem("scanState",JSON.stringify(ST))}catch(e){}
     scanN++;
     const d=new Date(),t=p2(d.getHours())+":"+p2(d.getMinutes());
-    lastInfo="last scan "+t+" · "+coinsN+" coins · "+alerts+" alerts";
+    lastInfo="last scan "+t+" · "+coinsN+" series · "+alerts+" alerts";
     setBar(lastInfo)
   }catch(e){setBar("scan failed, trying again at the next 5-minute mark")}
   finally{scanning=false;schedule()}}
