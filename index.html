@@ -31,7 +31,7 @@ aside{width:340px;border-left:1px solid var(--line);display:flex;flex-direction:
 <div id="bar"><span id="sym">BTCUSDT</span><span id="px"></span>
 <span style="flex:1"></span>
 <button data-tf="1m">1m</button><button data-tf="3m">3m</button><button data-tf="5m">5m</button><button data-tf="15m">15m</button><button data-tf="30m">30m</button><button data-tf="1h" class="on">1h</button><button data-tf="2h">2h</button><button data-tf="4h">4h</button><button data-tf="6h">6h</button><button data-tf="12h">12h</button><button data-tf="1d">1d</button><button data-tf="1w">1w</button>
-<input id="go" placeholder="coin e.g. SOL" size="9"></div>
+<input id="go" placeholder="SOL or BTC.D" size="9"></div>
 <div id="leg"><button id="bEma" class="on">EMA200 (blue)</button><button id="bSr" class="on">Support / Resistance</button><button id="bRsi" class="on">RSI14 (purple) + RSI200 (orange), lines at 40 · 50 · 70</button><button id="bDv" class="on">Bullish / Bearish divergence + trendlines</button><button id="bZn" class="on">FVG + Order blocks (green / red)</button><span id="trend"></span></div>
 <div id="chart"></div></div>
 <aside><div id="scanbar"></div><div id="list"></div></aside></main>
@@ -173,19 +173,27 @@ function paint(){
 async function load(){
   $("sym").textContent=sym;
   try{
-    const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+tf+"&limit=1000");
-    const k=await r.json();
-    if(!Array.isArray(k))throw 0;
+    let k;
+    if(DSER.includes(sym))k=await loadDomK();
+    else{const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+tf+"&limit=1000");
+      k=await r.json()}
+    if(!Array.isArray(k)||!k.length)throw 0;
     K=k;
     const lp=+k[k.length-1][4],pr=Math.max(2,Math.min(8,4-Math.floor(Math.log10(lp))));candles.applyOptions({priceFormat:{type:"price",precision:pr,minMove:1/Math.pow(10,pr)}});
     candles.setData(k.map(x=>({time:x[0]/1000+OFF,open:+x[1],high:+x[2],low:+x[3],close:+x[4]})));
     paint();
     chart.timeScale().setVisibleLogicalRange({from:k.length-160,to:k.length+6});
-    $("px").textContent=k[k.length-1][4];
-  }catch(e){K=[];zones=[];$("px").textContent="no data for "+sym}
+    $("px").textContent=DSER.includes(sym)?g6(k[k.length-1][4]):k[k.length-1][4];
+  }catch(e){K=[];zones=[];candles.setData([]);emaS.setData([]);rsiS.setData([]);rsiL.setData([]);$("px").textContent="no data for "+sym}
   clearInterval(timer);timer=setInterval(tick,10000);
 }
+let domT=0;
+async function refreshDom(){
+  try{const k=await loadDomK();K=k;
+    candles.setData(k.map(x=>({time:x[0]/1000+OFF,open:+x[1],high:+x[2],low:+x[3],close:+x[4]})));
+    paint();$("px").textContent=g6(k[k.length-1][4])}catch(e){}}
 async function tick(){
+  if(DSER.includes(sym)){if(Date.now()-domT>60000){domT=Date.now();refreshDom()}return}
   try{
     const r=await fetch("https://data-api.binance.vision/api/v3/klines?symbol="+encodeURIComponent(sym)+"&interval="+tf+"&limit=2");
     const k=await r.json();
@@ -195,10 +203,10 @@ async function tick(){
     $("px").textContent=k[k.length-1][4];
   }catch(e){}
 }
-function show(s){s=String(s).trim().toUpperCase().replace(/\s+/g,"");if(!s)return;if(!/USDT$/.test(s))s+="USDT";sym=s;load()}
+function show(s){s=String(s).trim().toUpperCase().replace(/\s+/g,"");if(!s)return;if(!DSER.includes(s)&&!/USDT$/.test(s))s+="USDT";sym=s;load()}
 document.querySelectorAll("[data-tf]").forEach(b=>b.onclick=()=>{tf=b.dataset.tf;document.querySelectorAll("[data-tf]").forEach(x=>x.classList.toggle("on",x===b));load()});
 $("go").onkeydown=e=>{if(e.key==="Enter"){show($("go").value);$("go").value=""}};
-function coins(msg){const out=[];msg.split("\n").forEach(l=>{const m=l.trim().match(/^(\S+USDT)$/);if(m)out.push(m[1])});return out}
+function coins(msg){const out=[];msg.split("\n").forEach(l=>{const t=l.trim();if(/^\S+USDT$/.test(t)||DSER.includes(t))out.push(t)});return out}
 function fmt(t){return new Date(t*1000).toLocaleString("en-US",{timeZone:"Asia/Karachi",hour:"2-digit",minute:"2-digit",day:"numeric",month:"short",hourCycle:"h23"})+" PKT"}
 function beep(){try{const c=new AudioContext(),o=c.createOscillator(),g=c.createGain();o.connect(g);g.connect(c.destination);o.frequency.value=880;g.gain.value=.15;o.start();o.stop(c.currentTime+.25)}catch(e){}}
 function clean(msg){
@@ -213,7 +221,7 @@ function add(m,live){
   const msg=clean(m.message||"");if(!msg.trim())return;const cs=coins(msg);
   const d=document.createElement("div");d.className="a";
   const hd=document.createElement("small");hd.textContent=fmt(m.time)+(m.src?"  ·  "+m.src:"")+(cs.length?"  ·  "+cs.join(", "):"");d.appendChild(hd);
-  msg.split("\n").forEach(l=>{const x=document.createElement("div");const s=l.trim();const isC=/^\S+USDT$/.test(s);x.className=isC?"coin":"ln";x.textContent=l||"\u00a0";if(isC)x.onclick=ev=>{ev.stopPropagation();show(s)};d.appendChild(x)});
+  msg.split("\n").forEach(l=>{const x=document.createElement("div");const s=l.trim();const isC=/^\S+USDT$/.test(s)||DSER.includes(s);x.className=isC?"coin":"ln";x.textContent=l||"\u00a0";if(isC)x.onclick=ev=>{ev.stopPropagation();show(s)};d.appendChild(x)});
   d.onclick=()=>{if(cs.length)show(cs[0])};
   $("list").prepend(d);
   if(live){
@@ -362,6 +370,11 @@ async function synthAll(iv,lim,step,sup,mv,now){
   const out={};
   for(const nm of DSER){const v=ser[nm];out[nm]=times.map((t,i)=>{const c=v[i],o=i?v[i-1]:c;return [t,o,Math.max(o,c),Math.min(o,c),c,0]})}
   return out}
+const TFMS={"1m":6e4,"3m":18e4,"5m":3e5,"15m":9e5,"30m":18e5,"1h":36e5,"2h":72e5,"4h":144e5,"6h":216e5,"12h":432e5,"1d":864e5,"1w":6048e5};
+async function loadDomK(){
+  const sup=await getSupply();if(!sup)throw 0;
+  const o=await synthAll(tf,1000,TFMS[tf],sup,moversOf(sup),Date.now());
+  if(!o[sym])throw 0;return o[sym]}
 async function scan(){
   if(scanning||!scanOn)return;scanning=true;setBar("scanning…");
   let alerts=0,coinsN=0;
