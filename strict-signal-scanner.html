@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Strict Signal Scanner</title>
+<script src="https://s3.tradingview.com/tv.js"></script>
 <style>
   :root{
     --bg: #0B1220;
@@ -66,7 +67,9 @@
   .cond-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:6px 16px;margin-bottom:10px;}
   .cond{font-size:12px;color:var(--text-dim);display:flex;gap:6px;}
   .cond .ok{color:var(--long);}
+  .levels-row{font-size:12.5px;color:var(--text-dim);margin-bottom:10px;}
   .sc-actions{display:flex;gap:7px;}
+  .chart-box{display:none;height:420px;margin-top:10px;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
   .sc-actions button{padding:5px 11px;font-size:12px;}
 
   table{width:100%;border-collapse:collapse;font-size:12.5px;}
@@ -113,6 +116,10 @@
       <div class="field">
         <label for="refreshSec">Refresh (seconds)</label>
         <input id="refreshSec" type="number" min="30" value="90" style="width:80px;">
+      </div>
+      <div class="field">
+        <label for="rrInput">Risk:Reward (TP distance = SL distance x this)</label>
+        <input id="rrInput" type="number" min="0.5" step="0.5" value="2" style="width:70px;">
       </div>
       <button id="loadTopBtn">Load top 15 by volume</button>
       <button class="primary" id="scanBtn">Scan now</button>
@@ -172,6 +179,46 @@
   const seenSignalKeys = new Set(); // symbol+direction+hour, to avoid duplicate fires within same bar
   const seenDiKeys = new Set();
   let sessionDiCount = 0;
+  let chartIdCounter = 0;
+
+  // Wires a "View chart" button to a chart container, lazily loading a
+  // TradingView Advanced Chart widget (free, no key) on first click, with
+  // RSI and DMI (which includes -DI) plotted. Uses whichever trigger
+  // timeframe is selected at the moment the button is clicked.
+  function wireChartToggle(toggleBtn, chartDiv, symbol){
+    toggleBtn.addEventListener("click", () => {
+      const showing = chartDiv.style.display === "block";
+      if (showing){
+        chartDiv.style.display = "none";
+        toggleBtn.textContent = "View chart";
+        return;
+      }
+      chartDiv.style.display = "block";
+      toggleBtn.textContent = "Hide chart";
+      if (!chartDiv.dataset.loaded){
+        chartDiv.dataset.loaded = "1";
+        if (window.TradingView){
+          new TradingView.widget({
+            container_id: chartDiv.id,
+            autosize: true,
+            symbol: `BYBIT:${symbol}.P`,
+            interval: el("triggerTf").value,
+            timezone: "Etc/UTC",
+            theme: "dark",
+            style: "1",
+            locale: "en",
+            toolbar_bg: "#111B2E",
+            enable_publishing: false,
+            hide_legend: false,
+            studies: ["RSI@tv-basicstudies", "ADX@tv-basicstudies"],
+            allow_symbol_change: true,
+          });
+        } else {
+          chartDiv.innerHTML = `<div style="padding:16px;color:var(--text-dim);font-size:12.5px;">Chart widget failed to load — check your connection and reload the page.</div>`;
+        }
+      }
+    });
+  }
 
   // ---------- persistence ----------
   function loadJournal(){
@@ -224,6 +271,43 @@
     let sum = 0;
     for (let i = endIndex - period + 1; i <= endIndex; i++) sum += values[i];
     return sum / period;
+  }
+
+  // Wilder's ATR(period) — average true range, used as the distance unit for SL/TP.
+  function calcATR(highs, lows, closes, period){
+    const n = highs.length;
+    const tr = [];
+    for (let i = 1; i < n; i++){
+      tr.push(Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1])));
+    }
+    const atr = new Array(n).fill(null);
+    if (tr.length < period) return atr;
+    let sum = 0;
+    for (let i = 0; i < period; i++) sum += tr[i];
+    atr[period] = sum / period;
+    for (let i = period; i < tr.length; i++){
+      atr[i+1] = (atr[i]*(period-1) + tr[i]) / period;
+    }
+    return atr;
+  }
+
+  // Formats a price with enough decimals to stay meaningful for both
+  // large-cap (BTC ~60000) and small-cap (sub-$1) symbols.
+  function formatPrice(v){
+    if (v == null) return "n/a";
+    if (v >= 100) return v.toFixed(2);
+    if (v >= 1) return v.toFixed(4);
+    return v.toFixed(6);
+  }
+
+  // Entry/SL/TP from ATR distance and a risk:reward multiple.
+  // SL = 1.5x ATR against the trade; TP = that distance x the chosen R:R.
+  function calcLevels(dir, entry, atrVal, rr){
+    if (entry == null || atrVal == null) return { entry, sl: null, tp: null };
+    const slDist = atrVal * 1.5;
+    const sl = dir === "long" ? entry - slDist : entry + slDist;
+    const tp = dir === "long" ? entry + slDist*rr : entry - slDist*rr;
+    return { entry, sl, tp };
   }
 
   // Simplified Wilder ADX: true range + directional movement, Wilder-smoothed,
@@ -300,7 +384,7 @@
 
   // ---------- condition evaluation ----------
   // Evaluates one symbol for one candidate direction ('long' or 'short').
-  function evaluateDirection(dir, trig, htf, ticker){
+  function evaluateDirection(dir, trig, htf, ticker, rr){
     const closes = trig.close, highs = trig.high, lows = trig.low, vols = trig.volume;
     const lastIdx = closes.length - 2; // last CLOSED candle (exclude the forming one)
     const prevIdx = lastIdx - 1;
@@ -308,6 +392,7 @@
     const rsi = calcRSI(closes, 14);
     const dmi = calcADX(highs, lows, closes, 14);
     const adx = dmi.adx;
+    const atr = calcATR(highs, lows, closes, 14);
     const volSma = calcSMA(vols, 20, lastIdx);
 
     const htfCloses = htf.close;
@@ -363,19 +448,20 @@
       volMult: volSma != null ? vols[lastIdx]/volSma : null,
       htfRsi: htfRsiNow,
     };
-    return { dir, conds, metCount, price, metrics };
+    const levels = calcLevels(dir, price, atr[lastIdx], rr);
+    return { dir, conds, metCount, price, metrics, levels };
   }
 
-  async function evaluateSymbol(symbol, triggerInterval, tickerMap){
+  async function evaluateSymbol(symbol, triggerInterval, tickerMap, rr){
     const [trig, htf] = await Promise.all([
       fetchKlines(symbol, triggerInterval, 120),
       fetchKlines(symbol, "240", 220), // 4h, needs 200+ for EMA200
     ]);
     const ticker = tickerMap[symbol];
-    const longEval = evaluateDirection("long", trig, htf, ticker);
-    const shortEval = evaluateDirection("short", trig, htf, ticker);
+    const longEval = evaluateDirection("long", trig, htf, ticker, rr);
+    const shortEval = evaluateDirection("short", trig, htf, ticker, rr);
     const best = longEval.metCount >= shortEval.metCount ? longEval : shortEval;
-    best.di = evaluateDiCross(trig);
+    best.di = evaluateDiCross(trig, rr);
     return best;
   }
 
@@ -384,15 +470,17 @@
   // -DI(14) crosses above 20 -> short (downward pressure building).
   // This fires on its own, far more often than a strict signal, by design —
   // it is one condition, not six.
-  function evaluateDiCross(trig){
+  function evaluateDiCross(trig, rr){
     const dmi = calcADX(trig.high, trig.low, trig.close, 14);
     const minusDI = dmi.minusDI;
     const lastIdx = trig.close.length - 2; // last CLOSED candle
     const prevIdx = lastIdx - 1;
     const now = minusDI[lastIdx], prev = minusDI[prevIdx];
+    const entry = trig.close[lastIdx];
+    const atr = calcATR(trig.high, trig.low, trig.close, 14)[lastIdx];
     if (now == null || prev == null) return { cross: null, value: now };
-    if (prev >= 20 && now < 20) return { cross: "long", value: now };
-    if (prev <= 20 && now > 20) return { cross: "short", value: now };
+    if (prev >= 20 && now < 20) return { cross: "long", value: now, levels: calcLevels("long", entry, atr, rr) };
+    if (prev <= 20 && now > 20) return { cross: "short", value: now, levels: calcLevels("short", entry, atr, rr) };
     return { cross: null, value: now };
   }
 
@@ -435,6 +523,7 @@
     const div = document.createElement("div");
     div.className = "signal-card" + (result.dir === "short" ? " short" : "");
     const id = `${symbol}_${Date.now()}`;
+    const chartId = `chart_${chartIdCounter++}`;
     div.innerHTML = `
       <div class="sc-top">
         <div class="sc-sym">${symbol} <span class="badge ${result.dir}">${result.dir}</span></div>
@@ -443,17 +532,26 @@
       <div class="cond-grid">
         ${result.conds.map(c => `<div class="cond"><span class="ok">&check;</span>${c.label} — ${c.detail}</div>`).join("")}
       </div>
+      <div class="levels-row mono">
+        Entry ${formatPrice(result.levels.entry)} &nbsp;|&nbsp; SL ${formatPrice(result.levels.sl)} &nbsp;|&nbsp; TP ${formatPrice(result.levels.tp)}
+      </div>
       <div class="sc-actions">
         <button data-outcome="win">Mark win</button>
         <button data-outcome="loss">Mark loss</button>
         <button data-outcome="timeout">Mark timeout</button>
-      </div>`;
+        <button data-action="chart">View chart</button>
+      </div>
+      <div class="chart-box" id="${chartId}"></div>`;
     div.querySelectorAll("[data-outcome]").forEach(btn => {
       btn.addEventListener("click", () => {
-        addJournalEntry(symbol, result.dir, btn.dataset.outcome, result.metrics);
-        div.querySelector(".sc-actions").innerHTML = `<span class="outcome-tag ${btn.dataset.outcome}">${btn.dataset.outcome}</span>`;
+        addJournalEntry(symbol, result.dir, btn.dataset.outcome, result.metrics, "strict", result.levels);
+        const actions = div.querySelector(".sc-actions");
+        const chartBtn = actions.querySelector('[data-action="chart"]');
+        actions.innerHTML = `<span class="outcome-tag ${btn.dataset.outcome}">${btn.dataset.outcome}</span>`;
+        actions.appendChild(chartBtn);
       });
     });
+    wireChartToggle(div.querySelector('[data-action="chart"]'), div.querySelector(".chart-box"), symbol);
     container.prepend(div);
   }
 
@@ -469,9 +567,9 @@
     }).join("");
   }
 
-  function addJournalEntry(symbol, dir, outcome, metrics, source){
+  function addJournalEntry(symbol, dir, outcome, metrics, source, levels){
     const j = loadJournal();
-    j.unshift({ symbol, dir, outcome, time: Date.now(), metrics: metrics || null, source: source || "strict" });
+    j.unshift({ symbol, dir, outcome, time: Date.now(), metrics: metrics || null, source: source || "strict", levels: levels || null });
     saveJournal(j);
     renderJournal();
   }
@@ -481,22 +579,32 @@
     if (container.querySelector(".empty")) container.innerHTML = "";
     const div = document.createElement("div");
     div.className = "signal-card" + (di.cross === "short" ? " short" : "");
+    const chartId = `chart_${chartIdCounter++}`;
     div.innerHTML = `
       <div class="sc-top">
         <div class="sc-sym">${symbol} <span class="badge ${di.cross}">${di.cross}</span></div>
         <div class="sc-time mono">${new Date().toLocaleTimeString()} &middot; -DI ${di.value.toFixed(1)}</div>
       </div>
+      <div class="levels-row mono">
+        Entry ${formatPrice(di.levels.entry)} &nbsp;|&nbsp; SL ${formatPrice(di.levels.sl)} &nbsp;|&nbsp; TP ${formatPrice(di.levels.tp)}
+      </div>
       <div class="sc-actions">
         <button data-outcome="win">Mark win</button>
         <button data-outcome="loss">Mark loss</button>
         <button data-outcome="timeout">Mark timeout</button>
-      </div>`;
+        <button data-action="chart">View chart</button>
+      </div>
+      <div class="chart-box" id="${chartId}"></div>`;
     div.querySelectorAll("[data-outcome]").forEach(btn => {
       btn.addEventListener("click", () => {
-        addJournalEntry(symbol, di.cross, btn.dataset.outcome, null, "di-cross");
-        div.querySelector(".sc-actions").innerHTML = `<span class="outcome-tag ${btn.dataset.outcome}">${btn.dataset.outcome}</span>`;
+        addJournalEntry(symbol, di.cross, btn.dataset.outcome, null, "di-cross", di.levels);
+        const actions = div.querySelector(".sc-actions");
+        const chartBtn = actions.querySelector('[data-action="chart"]');
+        actions.innerHTML = `<span class="outcome-tag ${btn.dataset.outcome}">${btn.dataset.outcome}</span>`;
+        actions.appendChild(chartBtn);
       });
     });
+    wireChartToggle(div.querySelector('[data-action="chart"]'), div.querySelector(".chart-box"), symbol);
     container.prepend(div);
   }
 
@@ -508,7 +616,9 @@
     } else {
       container.innerHTML = j.slice(0, 50).map(entry => `
         <div class="journal-row">
-          <span>${entry.symbol} <span class="badge ${entry.dir}" style="margin-left:4px;">${entry.dir}</span></span>
+          <span>${entry.symbol} <span class="badge ${entry.dir}" style="margin-left:4px;">${entry.dir}</span>
+            ${entry.levels && entry.levels.entry != null ? `<span class="mono" style="color:var(--text-dim);margin-left:6px;">@ ${formatPrice(entry.levels.entry)}</span>` : ""}
+          </span>
           <span class="mono" style="color:var(--text-dim);">${new Date(entry.time).toLocaleString()}</span>
           <span class="outcome-tag ${entry.outcome}">${entry.outcome}</span>
         </div>`).join("");
@@ -532,12 +642,13 @@
       tickers.forEach(t => tickerMap[t.symbol] = t);
 
       const triggerInterval = el("triggerTf").value;
+      const rr = Math.max(0.5, parseFloat(el("rrInput").value) || 2);
       const missRows = [];
       let metSum = 0;
 
       for (const symbol of symbols){
         try {
-          const result = await evaluateSymbol(symbol, triggerInterval, tickerMap);
+          const result = await evaluateSymbol(symbol, triggerInterval, tickerMap, rr);
           scannedCount++;
           metSum += result.metCount;
           if (result.metCount === 6){
