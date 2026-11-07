@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strict Signal Scanner</title>
+<style>
+  :root{
+    --bg: #0B1220;
+    --surface: #111B2E;
+    --surface-2: #182542;
+    --border: #223154;
+    --text: #E8EDF7;
+    --text-dim: #8691AC;
+    --long: #35D08F;
+    --long-bg: rgba(53,208,143,0.10);
+    --short: #FF6161;
+    --short-bg: rgba(255,97,97,0.10);
+    --pending: #F5B942;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums;}
+  .wrap{max-width:1100px;margin:0 auto;padding:28px 20px 80px;}
+
+  header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:22px;}
+  header h1{font-size:19px;margin:0;font-weight:650;letter-spacing:-0.01em;}
+  header p{margin:4px 0 0;color:var(--text-dim);font-size:13px;}
+
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin-bottom:16px;}
+  .panel h2{font-size:12.5px;margin:0 0 12px;color:var(--text-dim);font-weight:600;}
+
+  .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;}
+  .field{display:flex;flex-direction:column;gap:5px;}
+  .field label{font-size:11.5px;color:var(--text-dim);}
+  .field textarea,.field input,.field select{
+    background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    border-radius:7px;padding:7px 9px;font-size:13px;font-family:inherit;}
+  .field textarea{width:280px;height:38px;resize:vertical;font-family:ui-monospace,monospace;font-size:12px;}
+  button{background:var(--surface-2);border:1px solid var(--border);color:var(--text);
+    border-radius:7px;padding:8px 14px;font-size:13px;cursor:pointer;}
+  button:hover{border-color:#34477a;}
+  button.primary{background:#1E3A5F;border-color:#2C5086;}
+  button.primary:hover{background:#234470;}
+  .toggle{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text-dim);cursor:pointer;user-select:none;}
+  .toggle input{accent-color:var(--long);}
+
+  .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .stat{background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;}
+  .stat .num{font-size:21px;font-weight:650;}
+  .stat .lbl{font-size:11.5px;color:var(--text-dim);margin-top:2px;}
+
+  .status{font-size:12px;color:var(--text-dim);margin-top:10px;}
+  .status.err{color:var(--short);}
+
+  .signal-card{border:1px solid var(--border);border-left:3px solid var(--long);border-radius:8px;
+    background:var(--surface-2);padding:13px 15px;margin-bottom:10px;}
+  .signal-card.short{border-left-color:var(--short);}
+  .sc-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;}
+  .sc-sym{font-size:15px;font-weight:650;}
+  .badge{font-size:11px;padding:2px 8px;border-radius:5px;font-weight:600;}
+  .badge.long{background:var(--long-bg);color:var(--long);}
+  .badge.short{background:var(--short-bg);color:var(--short);}
+  .sc-time{color:var(--text-dim);font-size:11.5px;}
+  .cond-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:6px 16px;margin-bottom:10px;}
+  .cond{font-size:12px;color:var(--text-dim);display:flex;gap:6px;}
+  .cond .ok{color:var(--long);}
+  .sc-actions{display:flex;gap:7px;}
+  .sc-actions button{padding:5px 11px;font-size:12px;}
+
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th{text-align:left;color:var(--text-dim);font-weight:600;padding:6px 8px;border-bottom:1px solid var(--border);font-size:11.5px;}
+  td{padding:6px 8px;border-bottom:1px solid var(--border);}
+  tr:last-child td{border-bottom:none;}
+  .miss-list{color:var(--text-dim);}
+
+  .empty{color:var(--text-dim);font-size:13px;padding:10px 2px;}
+  .journal-row{display:flex;justify-content:space-between;align-items:center;padding:7px 2px;border-bottom:1px solid var(--border);font-size:12.5px;}
+  .journal-row:last-child{border-bottom:none;}
+  .outcome-btns button{padding:3px 9px;font-size:11.5px;margin-left:5px;}
+  .outcome-tag{font-size:11.5px;padding:2px 7px;border-radius:5px;}
+  .outcome-tag.win{background:var(--long-bg);color:var(--long);}
+  .outcome-tag.loss{background:var(--short-bg);color:var(--short);}
+  .outcome-tag.timeout{background:rgba(245,185,66,0.12);color:var(--pending);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Strict Signal Scanner</h1>
+      <p>Six independent conditions, all required. Low frequency by design — the goal is fewer, higher-conviction signals, not more of them.</p>
+    </div>
+    <button id="alertsBtn">Enable sound &amp; browser alerts</button>
+  </header>
+
+  <div class="panel">
+    <h2>Watchlist &amp; scan settings</h2>
+    <div class="controls">
+      <div class="field">
+        <label for="watchlist">Symbols (Bybit USDT perps, comma-separated)</label>
+        <textarea id="watchlist">BTCUSDT, ETHUSDT, SOLUSDT, BNBUSDT, XRPUSDT, DOGEUSDT, ADAUSDT, AVAXUSDT, LINKUSDT, ARBUSDT</textarea>
+      </div>
+      <div class="field">
+        <label for="triggerTf">Trigger timeframe</label>
+        <select id="triggerTf">
+          <option value="15">15m</option>
+          <option value="60">1h</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="refreshSec">Refresh (seconds)</label>
+        <input id="refreshSec" type="number" min="30" value="90" style="width:80px;">
+      </div>
+      <button id="loadTopBtn">Load top 15 by volume</button>
+      <button class="primary" id="scanBtn">Scan now</button>
+      <label class="toggle"><input type="checkbox" id="autoToggle" checked> Auto-refresh</label>
+    </div>
+    <div id="status" class="status">Idle. Press Scan now to run the first pass.</div>
+  </div>
+
+  <div class="stat-row">
+    <div class="stat"><div class="num mono" id="statScanned">0</div><div class="lbl">Symbols scanned</div></div>
+    <div class="stat"><div class="num mono" id="statSignals">0</div><div class="lbl">Strict signals (session)</div></div>
+    <div class="stat"><div class="num mono" id="statWinRate">—</div><div class="lbl">Journal win rate</div></div>
+    <div class="stat"><div class="num mono" id="statAvgCond">—</div><div class="lbl">Avg conditions met</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Strict signals — all 6 conditions met</h2>
+    <div id="strictList"><div class="empty">No strict signals yet this session.</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Custom rule — -DI(14) cross 20</h2>
+    <p style="color:var(--text-dim);font-size:12px;margin:0 0 10px;">Single condition, independent of the strict signals above: -DI crosses below 20 → long, crosses above 20 → short. Fires far more often by design.</p>
+    <div id="diList"><div class="empty">No -DI cross alerts yet this session.</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Near misses — 4 or 5 of 6 conditions met</h2>
+    <table id="missTable">
+      <thead><tr><th>Symbol</th><th>Side</th><th>Met</th><th>Missing</th></tr></thead>
+      <tbody><tr><td colspan="4" class="empty">Run a scan to populate.</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>Signal journal</h2>
+    <div id="journalList"><div class="empty">Signals you mark Win / Loss / Timeout will appear here, and persist across visits.</div></div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const API = "https://api.bybit.com/v5/market";
+  const LS_JOURNAL = "sss_journal_v1";
+  const LS_WATCHLIST = "sss_watchlist_v1";
+
+  const el = id => document.getElementById(id);
+  const statusEl = el("status");
+  let sessionSignalCount = 0;
+  let scannedCount = 0;
+  let condMetHistory = [];
+  let timer = null;
+  let audioCtx = null;
+  const seenSignalKeys = new Set(); // symbol+direction+hour, to avoid duplicate fires within same bar
+  const seenDiKeys = new Set();
+  let sessionDiCount = 0;
+
+  // ---------- persistence ----------
+  function loadJournal(){
+    try { return JSON.parse(localStorage.getItem(LS_JOURNAL) || "[]"); }
+    catch(e){ return []; }
+  }
+  function saveJournal(j){ localStorage.setItem(LS_JOURNAL, JSON.stringify(j)); }
+
+  const savedWatchlist = localStorage.getItem(LS_WATCHLIST);
+  if (savedWatchlist) el("watchlist").value = savedWatchlist;
+  el("watchlist").addEventListener("change", () => localStorage.setItem(LS_WATCHLIST, el("watchlist").value));
+
+  // ---------- indicator math ----------
+  function calcRSI(closes, period){
+    const rsi = new Array(closes.length).fill(null);
+    if (closes.length <= period) return rsi;
+    let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++){
+      const d = closes[i] - closes[i-1];
+      if (d > 0) gains += d; else losses -= d;
+    }
+    let avgGain = gains / period, avgLoss = losses / period;
+    rsi[period] = avgLoss === 0 ? 100 : 100 - 100/(1 + avgGain/avgLoss);
+    for (let i = period + 1; i < closes.length; i++){
+      const d = closes[i] - closes[i-1];
+      const g = d > 0 ? d : 0, l = d < 0 ? -d : 0;
+      avgGain = (avgGain*(period-1) + g) / period;
+      avgLoss = (avgLoss*(period-1) + l) / period;
+      rsi[i] = avgLoss === 0 ? 100 : 100 - 100/(1 + avgGain/avgLoss);
+    }
+    return rsi;
+  }
+
+  function calcEMA(values, period){
+    const ema = new Array(values.length).fill(null);
+    if (values.length < period) return ema;
+    let sma = 0;
+    for (let i = 0; i < period; i++) sma += values[i];
+    sma /= period;
+    ema[period-1] = sma;
+    const k = 2/(period+1);
+    for (let i = period; i < values.length; i++){
+      ema[i] = values[i]*k + ema[i-1]*(1-k);
+    }
+    return ema;
+  }
+
+  function calcSMA(values, period, endIndex){
+    if (endIndex - period + 1 < 0) return null;
+    let sum = 0;
+    for (let i = endIndex - period + 1; i <= endIndex; i++) sum += values[i];
+    return sum / period;
+  }
+
+  // Simplified Wilder ADX: true range + directional movement, Wilder-smoothed,
+  // DX smoothed with a rolling average. Precise enough to judge "rising vs falling",
+  // which is all this tool uses it for.
+  function calcADX(highs, lows, closes, period){
+    const n = highs.length;
+    const tr = [], pDM = [], mDM = [];
+    for (let i = 1; i < n; i++){
+      const upMove = highs[i] - highs[i-1];
+      const downMove = lows[i-1] - lows[i];
+      pDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+      mDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+      tr.push(Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1])));
+    }
+    function wilder(arr){
+      const out = new Array(arr.length).fill(null);
+      if (arr.length < period) return out;
+      let sum = 0;
+      for (let i = 0; i < period; i++) sum += arr[i];
+      out[period-1] = sum;
+      for (let i = period; i < arr.length; i++) out[i] = out[i-1] - (out[i-1]/period) + arr[i];
+      return out;
+    }
+    const smTR = wilder(tr), smPDM = wilder(pDM), smMDM = wilder(mDM);
+    const pDI = smTR.map((v,i)=> v ? (smPDM[i]/v)*100 : null);
+    const mDI = smTR.map((v,i)=> v ? (smMDM[i]/v)*100 : null);
+    const dx = pDI.map((p,i)=>{
+      if (p == null || mDI[i] == null) return null;
+      const s = p + mDI[i];
+      return s === 0 ? 0 : Math.abs(p - mDI[i]) / s * 100;
+    });
+    const adx = new Array(n).fill(null);
+    for (let i = period*2-2; i < dx.length; i++){
+      const w = dx.slice(i-period+1, i+1);
+      if (w.every(v=>v!=null)) adx[i+1] = w.reduce((a,b)=>a+b,0)/period;
+    }
+    // pDI/mDI are offset by 1 (they start at candle index 1), so align them
+    // to the same indexing as adx/closes before returning.
+    const plusDIAligned = new Array(n).fill(null);
+    const minusDIAligned = new Array(n).fill(null);
+    for (let i = 0; i < pDI.length; i++){
+      plusDIAligned[i+1] = pDI[i];
+      minusDIAligned[i+1] = mDI[i];
+    }
+    return { adx, plusDI: plusDIAligned, minusDI: minusDIAligned };
+  }
+
+  // ---------- data fetching ----------
+  async function fetchKlines(symbol, interval, limit){
+    const url = `${API}/kline?category=linear&symbol=${symbol}&interval=${interval}&limit=${limit}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`kline fetch failed (${res.status})`);
+    const json = await res.json();
+    if (json.retCode !== 0) throw new Error(json.retMsg || "kline error");
+    const rows = json.result.list.slice().reverse(); // oldest -> newest
+    return {
+      time: rows.map(r => +r[0]),
+      open: rows.map(r => +r[1]),
+      high: rows.map(r => +r[2]),
+      low: rows.map(r => +r[3]),
+      close: rows.map(r => +r[4]),
+      volume: rows.map(r => +r[5]),
+    };
+  }
+
+  async function fetchTickers(){
+    const res = await fetch(`${API}/tickers?category=linear`);
+    if (!res.ok) throw new Error(`tickers fetch failed (${res.status})`);
+    const json = await res.json();
+    if (json.retCode !== 0) throw new Error(json.retMsg || "tickers error");
+    return json.result.list; // includes fundingRate, turnover24h, lastPrice, etc.
+  }
+
+  // ---------- condition evaluation ----------
+  // Evaluates one symbol for one candidate direction ('long' or 'short').
+  function evaluateDirection(dir, trig, htf, ticker){
+    const closes = trig.close, highs = trig.high, lows = trig.low, vols = trig.volume;
+    const lastIdx = closes.length - 2; // last CLOSED candle (exclude the forming one)
+    const prevIdx = lastIdx - 1;
+
+    const rsi = calcRSI(closes, 14);
+    const dmi = calcADX(highs, lows, closes, 14);
+    const adx = dmi.adx;
+    const volSma = calcSMA(vols, 20, lastIdx);
+
+    const htfCloses = htf.close;
+    const htfRsi = calcRSI(htfCloses, 14);
+    const htfEma200 = calcEMA(htfCloses, 200);
+    const htfLastIdx = htfCloses.length - 2;
+
+    const conds = [];
+
+    // 1. RSI extreme confirmed on last two CLOSED candles (not the live one)
+    const rsiNow = rsi[lastIdx], rsiPrev = rsi[prevIdx];
+    const rsiOk = dir === "long" ? (rsiNow < 30 && rsiPrev < 33) : (rsiNow > 70 && rsiPrev > 67);
+    conds.push({ label: "RSI extreme, confirmed 2 closes", pass: !!(rsiNow!=null && rsiPrev!=null && rsiOk),
+      detail: rsiNow!=null ? `RSI ${rsiNow.toFixed(1)}` : "n/a" });
+
+    // 2. ADX falling from a local peak over the last 5 closed candles (trend losing steam)
+    const adxWindow = adx.slice(lastIdx-5, lastIdx+1).filter(v=>v!=null);
+    const adxFalling = adxWindow.length >= 4 && adxWindow[adxWindow.length-1] < Math.max(...adxWindow.slice(0,-1));
+    conds.push({ label: "ADX fading from recent peak", pass: !!adxFalling,
+      detail: adx[lastIdx]!=null ? `ADX ${adx[lastIdx].toFixed(1)}` : "n/a" });
+
+    // 3. HTF bias doesn't fight the trade (4h/1h trend not strongly against this direction)
+    const price = closes[lastIdx];
+    const htfEma = htfEma200[htfLastIdx];
+    const htfBiasOk = htfEma == null ? false :
+      dir === "long" ? (price > htfEma || (htfRsi[htfLastIdx] != null && htfRsi[htfLastIdx] < 60))
+                      : (price < htfEma || (htfRsi[htfLastIdx] != null && htfRsi[htfLastIdx] > 40));
+    conds.push({ label: "Higher-timeframe bias not opposed", pass: !!htfBiasOk,
+      detail: htfEma!=null ? `price vs HTF EMA200: ${price>htfEma?"above":"below"}` : "n/a" });
+
+    // 4. Volume climax on the trigger candle (real participation, not a thin move)
+    const volOk = volSma != null && vols[lastIdx] > 1.5 * volSma;
+    conds.push({ label: "Volume > 1.5x 20-period average", pass: !!volOk,
+      detail: volSma!=null ? `${(vols[lastIdx]/volSma).toFixed(2)}x avg` : "n/a" });
+
+    // 5. Funding rate supports a squeeze in this direction
+    const funding = ticker ? parseFloat(ticker.fundingRate) : null;
+    const fundingOk = funding == null ? false : dir === "long" ? funding < -0.0003 : funding > 0.0005;
+    conds.push({ label: "Funding rate crowded the other way", pass: !!fundingOk,
+      detail: funding!=null ? `${(funding*100).toFixed(3)}%` : "n/a" });
+
+    // 6. MTF confluence: trigger-timeframe and HTF RSI agree on side
+    const htfRsiNow = htfRsi[htfLastIdx];
+    const confluenceOk = htfRsiNow == null ? false : dir === "long" ? htfRsiNow < 45 : htfRsiNow > 55;
+    conds.push({ label: "HTF RSI agrees with direction", pass: !!confluenceOk,
+      detail: htfRsiNow!=null ? `HTF RSI ${htfRsiNow.toFixed(1)}` : "n/a" });
+
+    const metCount = conds.filter(c=>c.pass).length;
+    const metrics = {
+      rsi: rsiNow,
+      adx: adx[lastIdx],
+      fundingPct: funding != null ? funding*100 : null,
+      volMult: volSma != null ? vols[lastIdx]/volSma : null,
+      htfRsi: htfRsiNow,
+    };
+    return { dir, conds, metCount, price, metrics };
+  }
+
+  async function evaluateSymbol(symbol, triggerInterval, tickerMap){
+    const [trig, htf] = await Promise.all([
+      fetchKlines(symbol, triggerInterval, 120),
+      fetchKlines(symbol, "240", 220), // 4h, needs 200+ for EMA200
+    ]);
+    const ticker = tickerMap[symbol];
+    const longEval = evaluateDirection("long", trig, htf, ticker);
+    const shortEval = evaluateDirection("short", trig, htf, ticker);
+    const best = longEval.metCount >= shortEval.metCount ? longEval : shortEval;
+    best.di = evaluateDiCross(trig);
+    return best;
+  }
+
+  // Standalone rule, independent of the 6-condition strict logic above:
+  // -DI(14) crosses below 20 -> long (downward pressure fading),
+  // -DI(14) crosses above 20 -> short (downward pressure building).
+  // This fires on its own, far more often than a strict signal, by design —
+  // it is one condition, not six.
+  function evaluateDiCross(trig){
+    const dmi = calcADX(trig.high, trig.low, trig.close, 14);
+    const minusDI = dmi.minusDI;
+    const lastIdx = trig.close.length - 2; // last CLOSED candle
+    const prevIdx = lastIdx - 1;
+    const now = minusDI[lastIdx], prev = minusDI[prevIdx];
+    if (now == null || prev == null) return { cross: null, value: now };
+    if (prev >= 20 && now < 20) return { cross: "long", value: now };
+    if (prev <= 20 && now > 20) return { cross: "short", value: now };
+    return { cross: null, value: now };
+  }
+
+  // ---------- alerts ----------
+  let alertsEnabled = false;
+  el("alertsBtn").addEventListener("click", async () => {
+    if (Notification && Notification.permission !== "granted") {
+      await Notification.requestPermission();
+    }
+    alertsEnabled = true;
+    beep();
+    el("alertsBtn").textContent = "Alerts enabled";
+    el("alertsBtn").disabled = true;
+  });
+
+  function beep(){
+    try{
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = "sine"; o.frequency.value = 880;
+      g.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(); o.stop(audioCtx.currentTime + 0.4);
+    } catch(e){ /* audio not available, ignore */ }
+  }
+
+  function notify(title, body){
+    if (!alertsEnabled) return;
+    beep();
+    if (Notification && Notification.permission === "granted"){
+      new Notification(title, { body });
+    }
+  }
+
+  // ---------- rendering ----------
+  function renderStrictCard(symbol, result){
+    const container = el("strictList");
+    if (container.querySelector(".empty")) container.innerHTML = "";
+    const div = document.createElement("div");
+    div.className = "signal-card" + (result.dir === "short" ? " short" : "");
+    const id = `${symbol}_${Date.now()}`;
+    div.innerHTML = `
+      <div class="sc-top">
+        <div class="sc-sym">${symbol} <span class="badge ${result.dir}">${result.dir}</span></div>
+        <div class="sc-time mono">${new Date().toLocaleTimeString()} &middot; ${result.price}</div>
+      </div>
+      <div class="cond-grid">
+        ${result.conds.map(c => `<div class="cond"><span class="ok">&check;</span>${c.label} — ${c.detail}</div>`).join("")}
+      </div>
+      <div class="sc-actions">
+        <button data-outcome="win">Mark win</button>
+        <button data-outcome="loss">Mark loss</button>
+        <button data-outcome="timeout">Mark timeout</button>
+      </div>`;
+    div.querySelectorAll("[data-outcome]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        addJournalEntry(symbol, result.dir, btn.dataset.outcome, result.metrics);
+        div.querySelector(".sc-actions").innerHTML = `<span class="outcome-tag ${btn.dataset.outcome}">${btn.dataset.outcome}</span>`;
+      });
+    });
+    container.prepend(div);
+  }
+
+  function renderMissTable(rows){
+    const tbody = el("missTable").querySelector("tbody");
+    if (rows.length === 0){
+      tbody.innerHTML = `<tr><td colspan="4" class="empty">No near misses this scan.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rows.map(r => {
+      const missing = r.conds.filter(c=>!c.pass).map(c=>c.label).join(", ");
+      return `<tr><td>${r.symbol}</td><td>${r.dir}</td><td class="mono">${r.metCount}/6</td><td class="miss-list">${missing}</td></tr>`;
+    }).join("");
+  }
+
+  function addJournalEntry(symbol, dir, outcome, metrics, source){
+    const j = loadJournal();
+    j.unshift({ symbol, dir, outcome, time: Date.now(), metrics: metrics || null, source: source || "strict" });
+    saveJournal(j);
+    renderJournal();
+  }
+
+  function renderDiCard(symbol, di){
+    const container = el("diList");
+    if (container.querySelector(".empty")) container.innerHTML = "";
+    const div = document.createElement("div");
+    div.className = "signal-card" + (di.cross === "short" ? " short" : "");
+    div.innerHTML = `
+      <div class="sc-top">
+        <div class="sc-sym">${symbol} <span class="badge ${di.cross}">${di.cross}</span></div>
+        <div class="sc-time mono">${new Date().toLocaleTimeString()} &middot; -DI ${di.value.toFixed(1)}</div>
+      </div>
+      <div class="sc-actions">
+        <button data-outcome="win">Mark win</button>
+        <button data-outcome="loss">Mark loss</button>
+        <button data-outcome="timeout">Mark timeout</button>
+      </div>`;
+    div.querySelectorAll("[data-outcome]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        addJournalEntry(symbol, di.cross, btn.dataset.outcome, null, "di-cross");
+        div.querySelector(".sc-actions").innerHTML = `<span class="outcome-tag ${btn.dataset.outcome}">${btn.dataset.outcome}</span>`;
+      });
+    });
+    container.prepend(div);
+  }
+
+  function renderJournal(){
+    const j = loadJournal();
+    const container = el("journalList");
+    if (j.length === 0){
+      container.innerHTML = `<div class="empty">Signals you mark Win / Loss / Timeout will appear here, and persist across visits.</div>`;
+    } else {
+      container.innerHTML = j.slice(0, 50).map(entry => `
+        <div class="journal-row">
+          <span>${entry.symbol} <span class="badge ${entry.dir}" style="margin-left:4px;">${entry.dir}</span></span>
+          <span class="mono" style="color:var(--text-dim);">${new Date(entry.time).toLocaleString()}</span>
+          <span class="outcome-tag ${entry.outcome}">${entry.outcome}</span>
+        </div>`).join("");
+    }
+    const wins = j.filter(e=>e.outcome==="win").length;
+    const losses = j.filter(e=>e.outcome==="loss").length;
+    el("statWinRate").textContent = (wins+losses) ? `${Math.round(wins/(wins+losses)*100)}%` : "—";
+  }
+
+  // ---------- scan loop ----------
+  async function runScan(){
+    const symbols = el("watchlist").value.split(",").map(s=>s.trim().toUpperCase()).filter(Boolean);
+    if (symbols.length === 0) return;
+    el("scanBtn").disabled = true;
+    statusEl.textContent = `Scanning ${symbols.length} symbols...`;
+    statusEl.classList.remove("err");
+
+    try {
+      const tickers = await fetchTickers();
+      const tickerMap = {};
+      tickers.forEach(t => tickerMap[t.symbol] = t);
+
+      const triggerInterval = el("triggerTf").value;
+      const missRows = [];
+      let metSum = 0;
+
+      for (const symbol of symbols){
+        try {
+          const result = await evaluateSymbol(symbol, triggerInterval, tickerMap);
+          scannedCount++;
+          metSum += result.metCount;
+          if (result.metCount === 6){
+            const key = `${symbol}_${result.dir}_${Math.floor(Date.now()/3600000)}`;
+            if (!seenSignalKeys.has(key)){
+              seenSignalKeys.add(key);
+              sessionSignalCount++;
+              renderStrictCard(symbol, result);
+              notify(`Strict signal: ${symbol}`, `${result.dir.toUpperCase()} — all 6 conditions met`);
+            }
+          } else if (result.metCount >= 4){
+            missRows.push(Object.assign({ symbol }, result));
+          }
+          if (result.di && result.di.cross){
+            const diKey = `${symbol}_${result.di.cross}_${Math.floor(Date.now()/3600000)}`;
+            if (!seenDiKeys.has(diKey)){
+              seenDiKeys.add(diKey);
+              sessionDiCount++;
+              renderDiCard(symbol, result.di);
+              notify(`-DI cross: ${symbol}`, `${result.di.cross.toUpperCase()} — -DI ${result.di.value.toFixed(1)}`);
+            }
+          }
+        } catch(symErr){
+          console.warn(`Skipped ${symbol}: ${symErr.message}`);
+        }
+      }
+
+      renderMissTable(missRows);
+      el("statScanned").textContent = scannedCount;
+      el("statSignals").textContent = sessionSignalCount;
+      if (symbols.length) el("statAvgCond").textContent = (metSum/symbols.length).toFixed(1);
+      statusEl.textContent = `Last scan: ${new Date().toLocaleTimeString()}. Next in ${el("refreshSec").value}s if auto-refresh is on.`;
+    } catch(err){
+      statusEl.textContent = `Scan failed: ${err.message}`;
+      statusEl.classList.add("err");
+    } finally {
+      el("scanBtn").disabled = false;
+    }
+  }
+
+  function scheduleNext(){
+    if (timer) clearTimeout(timer);
+    if (!el("autoToggle").checked) return;
+    const sec = Math.max(30, parseInt(el("refreshSec").value, 10) || 90);
+    timer = setTimeout(async () => { await runScan(); scheduleNext(); }, sec*1000);
+  }
+
+  el("scanBtn").addEventListener("click", async () => { await runScan(); scheduleNext(); });
+  el("autoToggle").addEventListener("change", scheduleNext);
+
+  el("loadTopBtn").addEventListener("click", async () => {
+    statusEl.textContent = "Loading top symbols by 24h turnover...";
+    try {
+      const tickers = await fetchTickers();
+      const top = tickers
+        .filter(t => t.symbol.endsWith("USDT"))
+        .sort((a,b) => parseFloat(b.turnover24h) - parseFloat(a.turnover24h))
+        .slice(0, 15)
+        .map(t => t.symbol);
+      el("watchlist").value = top.join(", ");
+      localStorage.setItem(LS_WATCHLIST, el("watchlist").value);
+      statusEl.textContent = "Watchlist updated. Press Scan now to run it.";
+    } catch(err){
+      statusEl.textContent = `Could not load tickers: ${err.message}`;
+      statusEl.classList.add("err");
+    }
+  });
+
+  renderJournal();
+})();
+</script>
+</body>
+</html>
