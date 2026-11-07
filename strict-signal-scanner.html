@@ -176,15 +176,11 @@
   let condMetHistory = [];
   let timer = null;
   let audioCtx = null;
-  const seenSignalKeys = new Set(); // symbol+direction+hour, to avoid duplicate fires within same bar
+  const seenSignalKeys = new Set();
   const seenDiKeys = new Set();
   let sessionDiCount = 0;
   let chartIdCounter = 0;
 
-  // Wires a "View chart" button to a chart container, lazily loading a
-  // TradingView Advanced Chart widget (free, no key) on first click, with
-  // RSI and DMI (which includes -DI) plotted. Uses whichever trigger
-  // timeframe is selected at the moment the button is clicked.
   function wireChartToggle(toggleBtn, chartDiv, symbol){
     toggleBtn.addEventListener("click", () => {
       const showing = chartDiv.style.display === "block";
@@ -210,16 +206,23 @@
             toolbar_bg: "#111B2E",
             enable_publishing: false,
             hide_legend: false,
-            studies: ["RSI@tv-basicstudies", "ADX@tv-basicstudies"],
+            studies: ["RSI@tv-basicstudies", "Directional Movement@tv-basicstudies"],
             allow_symbol_change: true,
             studies_overrides: {
-              "directional movement index.+di.visible": true,
-              "directional movement index.-di.visible": true,
-              "directional movement index.adx.visible": true,
-              "directional movement index.-di.color": "#F5B942",
-              "directional movement index.-di.linewidth": 2,
-              "directional movement index.+di.color": "#35D08F",
-              "directional movement index.adx.color": "#8691AC",
+              "directional movement.plot.di plus.visible": true,
+              "directional movement.plot.di minus.visible": true,
+              "directional movement.plot.adx.visible": true,
+              "directional movement.plot.di minus.color": "#F5B942",
+              "directional movement.plot.di minus.linewidth": 2,
+              "directional movement.plot.di plus.color": "#35D08F",
+              "directional movement.plot.adx.color": "#8691AC",
+              "directional movement.+di.visible": true,
+              "directional movement.-di.visible": true,
+              "directional movement.adx.visible": true,
+              "directional movement.-di.color": "#F5B942",
+              "directional movement.-di.linewidth": 2,
+              "directional movement.+di.color": "#35D08F",
+              "directional movement.adx.color": "#8691AC",
               "dmi.+di.visible": true,
               "dmi.-di.visible": true,
               "dmi.adx.visible": true,
@@ -234,7 +237,6 @@
     });
   }
 
-  // ---------- persistence ----------
   function loadJournal(){
     try { return JSON.parse(localStorage.getItem(LS_JOURNAL) || "[]"); }
     catch(e){ return []; }
@@ -245,7 +247,6 @@
   if (savedWatchlist) el("watchlist").value = savedWatchlist;
   el("watchlist").addEventListener("change", () => localStorage.setItem(LS_WATCHLIST, el("watchlist").value));
 
-  // ---------- indicator math ----------
   function calcRSI(closes, period){
     const rsi = new Array(closes.length).fill(null);
     if (closes.length <= period) return rsi;
@@ -287,7 +288,6 @@
     return sum / period;
   }
 
-  // Wilder's ATR(period) — average true range, used as the distance unit for SL/TP.
   function calcATR(highs, lows, closes, period){
     const n = highs.length;
     const tr = [];
@@ -305,8 +305,6 @@
     return atr;
   }
 
-  // Formats a price with enough decimals to stay meaningful for both
-  // large-cap (BTC ~60000) and small-cap (sub-$1) symbols.
   function formatPrice(v){
     if (v == null) return "n/a";
     if (v >= 100) return v.toFixed(2);
@@ -314,8 +312,6 @@
     return v.toFixed(6);
   }
 
-  // Entry/SL/TP from ATR distance and a risk:reward multiple.
-  // SL = 1.5x ATR against the trade; TP = that distance x the chosen R:R.
   function calcLevels(dir, entry, atrVal, rr){
     if (entry == null || atrVal == null) return { entry, sl: null, tp: null };
     const slDist = atrVal * 1.5;
@@ -324,9 +320,6 @@
     return { entry, sl, tp };
   }
 
-  // Simplified Wilder ADX: true range + directional movement, Wilder-smoothed,
-  // DX smoothed with a rolling average. Precise enough to judge "rising vs falling",
-  // which is all this tool uses it for.
   function calcADX(highs, lows, closes, period){
     const n = highs.length;
     const tr = [], pDM = [], mDM = [];
@@ -359,8 +352,6 @@
       const w = dx.slice(i-period+1, i+1);
       if (w.every(v=>v!=null)) adx[i+1] = w.reduce((a,b)=>a+b,0)/period;
     }
-    // pDI/mDI are offset by 1 (they start at candle index 1), so align them
-    // to the same indexing as adx/closes before returning.
     const plusDIAligned = new Array(n).fill(null);
     const minusDIAligned = new Array(n).fill(null);
     for (let i = 0; i < pDI.length; i++){
@@ -370,14 +361,13 @@
     return { adx, plusDI: plusDIAligned, minusDI: minusDIAligned };
   }
 
-  // ---------- data fetching ----------
   async function fetchKlines(symbol, interval, limit){
     const url = `${API}/kline?category=linear&symbol=${symbol}&interval=${interval}&limit=${limit}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error(`kline fetch failed (${res.status})`);
     const json = await res.json();
     if (json.retCode !== 0) throw new Error(json.retMsg || "kline error");
-    const rows = json.result.list.slice().reverse(); // oldest -> newest
+    const rows = json.result.list.slice().reverse();
     return {
       time: rows.map(r => +r[0]),
       open: rows.map(r => +r[1]),
@@ -393,14 +383,12 @@
     if (!res.ok) throw new Error(`tickers fetch failed (${res.status})`);
     const json = await res.json();
     if (json.retCode !== 0) throw new Error(json.retMsg || "tickers error");
-    return json.result.list; // includes fundingRate, turnover24h, lastPrice, etc.
+    return json.result.list;
   }
 
-  // ---------- condition evaluation ----------
-  // Evaluates one symbol for one candidate direction ('long' or 'short').
   function evaluateDirection(dir, trig, htf, ticker, rr){
     const closes = trig.close, highs = trig.high, lows = trig.low, vols = trig.volume;
-    const lastIdx = closes.length - 2; // last CLOSED candle (exclude the forming one)
+    const lastIdx = closes.length - 2;
     const prevIdx = lastIdx - 1;
 
     const rsi = calcRSI(closes, 14);
@@ -416,19 +404,16 @@
 
     const conds = [];
 
-    // 1. RSI extreme confirmed on last two CLOSED candles (not the live one)
     const rsiNow = rsi[lastIdx], rsiPrev = rsi[prevIdx];
     const rsiOk = dir === "long" ? (rsiNow < 30 && rsiPrev < 33) : (rsiNow > 70 && rsiPrev > 67);
     conds.push({ label: "RSI extreme, confirmed 2 closes", pass: !!(rsiNow!=null && rsiPrev!=null && rsiOk),
       detail: rsiNow!=null ? `RSI ${rsiNow.toFixed(1)}` : "n/a" });
 
-    // 2. ADX falling from a local peak over the last 5 closed candles (trend losing steam)
     const adxWindow = adx.slice(lastIdx-5, lastIdx+1).filter(v=>v!=null);
     const adxFalling = adxWindow.length >= 4 && adxWindow[adxWindow.length-1] < Math.max(...adxWindow.slice(0,-1));
     conds.push({ label: "ADX fading from recent peak", pass: !!adxFalling,
       detail: adx[lastIdx]!=null ? `ADX ${adx[lastIdx].toFixed(1)}` : "n/a" });
 
-    // 3. HTF bias doesn't fight the trade (4h/1h trend not strongly against this direction)
     const price = closes[lastIdx];
     const htfEma = htfEma200[htfLastIdx];
     const htfBiasOk = htfEma == null ? false :
@@ -437,18 +422,15 @@
     conds.push({ label: "Higher-timeframe bias not opposed", pass: !!htfBiasOk,
       detail: htfEma!=null ? `price vs HTF EMA200: ${price>htfEma?"above":"below"}` : "n/a" });
 
-    // 4. Volume climax on the trigger candle (real participation, not a thin move)
     const volOk = volSma != null && vols[lastIdx] > 1.5 * volSma;
     conds.push({ label: "Volume > 1.5x 20-period average", pass: !!volOk,
       detail: volSma!=null ? `${(vols[lastIdx]/volSma).toFixed(2)}x avg` : "n/a" });
 
-    // 5. Funding rate supports a squeeze in this direction
     const funding = ticker ? parseFloat(ticker.fundingRate) : null;
     const fundingOk = funding == null ? false : dir === "long" ? funding < -0.0003 : funding > 0.0005;
     conds.push({ label: "Funding rate crowded the other way", pass: !!fundingOk,
       detail: funding!=null ? `${(funding*100).toFixed(3)}%` : "n/a" });
 
-    // 6. MTF confluence: trigger-timeframe and HTF RSI agree on side
     const htfRsiNow = htfRsi[htfLastIdx];
     const confluenceOk = htfRsiNow == null ? false : dir === "long" ? htfRsiNow < 45 : htfRsiNow > 55;
     conds.push({ label: "HTF RSI agrees with direction", pass: !!confluenceOk,
@@ -469,7 +451,7 @@
   async function evaluateSymbol(symbol, triggerInterval, tickerMap, rr){
     const [trig, htf] = await Promise.all([
       fetchKlines(symbol, triggerInterval, 120),
-      fetchKlines(symbol, "240", 220), // 4h, needs 200+ for EMA200
+      fetchKlines(symbol, "240", 220),
     ]);
     const ticker = tickerMap[symbol];
     const longEval = evaluateDirection("long", trig, htf, ticker, rr);
@@ -479,15 +461,10 @@
     return best;
   }
 
-  // Standalone rule, independent of the 6-condition strict logic above:
-  // -DI(14) crosses below 20 -> long (downward pressure fading),
-  // -DI(14) crosses above 20 -> short (downward pressure building).
-  // This fires on its own, far more often than a strict signal, by design —
-  // it is one condition, not six.
   function evaluateDiCross(trig, rr){
     const dmi = calcADX(trig.high, trig.low, trig.close, 14);
     const minusDI = dmi.minusDI;
-    const lastIdx = trig.close.length - 2; // last CLOSED candle
+    const lastIdx = trig.close.length - 2;
     const prevIdx = lastIdx - 1;
     const now = minusDI[lastIdx], prev = minusDI[prevIdx];
     const entry = trig.close[lastIdx];
@@ -498,7 +475,6 @@
     return { cross: null, value: now };
   }
 
-  // ---------- alerts ----------
   let alertsEnabled = false;
   el("alertsBtn").addEventListener("click", async () => {
     if (Notification && Notification.permission !== "granted") {
@@ -519,7 +495,7 @@
       g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.4);
       o.connect(g); g.connect(audioCtx.destination);
       o.start(); o.stop(audioCtx.currentTime + 0.4);
-    } catch(e){ /* audio not available, ignore */ }
+    } catch(e){ }
   }
 
   function notify(title, body){
@@ -530,7 +506,6 @@
     }
   }
 
-  // ---------- rendering ----------
   function renderStrictCard(symbol, result){
     const container = el("strictList");
     if (container.querySelector(".empty")) container.innerHTML = "";
@@ -642,7 +617,6 @@
     el("statWinRate").textContent = (wins+losses) ? `${Math.round(wins/(wins+losses)*100)}%` : "—";
   }
 
-  // ---------- scan loop ----------
   async function runScan(){
     const symbols = el("watchlist").value.split(",").map(s=>s.trim().toUpperCase()).filter(Boolean);
     if (symbols.length === 0) return;
