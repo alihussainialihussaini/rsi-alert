@@ -142,7 +142,7 @@
 
   <div class="panel">
     <h2>Custom rule — -DI(14) cross 20 + RSI confirmation</h2>
-    <p style="color:var(--text-dim);font-size:12px;margin:0 0 10px;">Two conditions, independent of the strict signals above: -DI crosses below 20 AND RSI crosses up through 50 → long. -DI crosses above 20 AND RSI crosses down through 30 → short. Both must fire on the same bar.</p>
+    <p style="color:var(--text-dim);font-size:12px;margin:0 0 10px;">Two conditions, checked independently on 5m, 15m, 30m, 1h, 2h and 4h: -DI crosses below 20 AND RSI crosses up through 50 → long. -DI crosses above 20 AND RSI crosses down through 30 → short. Both must fire on the same bar, on the same timeframe.</p>
     <div id="diList"><div class="empty">No -DI cross alerts yet this session.</div></div>
   </div>
 
@@ -168,6 +168,7 @@
   const API = "https://api.bybit.com/v5/market";
   const LS_JOURNAL = "sss_journal_v1";
   const LS_WATCHLIST = "sss_watchlist_v1";
+  const DI_TIMEFRAMES = ["5","15","30","60","120","240"];
 
   const el = id => document.getElementById(id);
   const statusEl = el("status");
@@ -181,7 +182,7 @@
   let sessionDiCount = 0;
   let chartIdCounter = 0;
 
-  function wireChartToggle(toggleBtn, chartDiv, symbol){
+  function wireChartToggle(toggleBtn, chartDiv, symbol, interval){
     toggleBtn.addEventListener("click", () => {
       const showing = chartDiv.style.display === "block";
       if (showing){
@@ -198,7 +199,7 @@
             container_id: chartDiv.id,
             autosize: true,
             symbol: `BYBIT:${symbol}.P`,
-            interval: el("triggerTf").value,
+            interval: interval || el("triggerTf").value,
             timezone: "Etc/UTC",
             theme: "dark",
             style: "1",
@@ -306,7 +307,7 @@
   }
 
   function tfLabel(v){
-    const map = { "15": "15m", "60": "1h" };
+    const map = { "5": "5m", "15": "15m", "30": "30m", "60": "1h", "120": "2h", "240": "4h" };
     return map[v] || `${v}m`;
   }
 
@@ -454,15 +455,24 @@
   }
 
   async function evaluateSymbol(symbol, triggerInterval, tickerMap, rr){
-    const [trig, htf] = await Promise.all([
+    const otherTfs = DI_TIMEFRAMES.filter(tf => tf !== triggerInterval && tf !== "240");
+    const [trig, htf, ...diKlines] = await Promise.all([
       fetchKlines(symbol, triggerInterval, 120),
       fetchKlines(symbol, "240", 220),
+      ...otherTfs.map(tf => fetchKlines(symbol, tf, 120)),
     ]);
     const ticker = tickerMap[symbol];
     const longEval = evaluateDirection("long", trig, htf, ticker, rr);
     const shortEval = evaluateDirection("short", trig, htf, ticker, rr);
     const best = longEval.metCount >= shortEval.metCount ? longEval : shortEval;
-    best.di = evaluateDiCross(trig, rr, triggerInterval);
+
+    const tfKlineMap = { [triggerInterval]: trig, "240": htf };
+    otherTfs.forEach((tf, i) => tfKlineMap[tf] = diKlines[i]);
+
+    best.diSignals = DI_TIMEFRAMES
+      .map(tf => evaluateDiCross(tfKlineMap[tf], rr, tf))
+      .filter(d => d.cross);
+
     return best;
   }
 
@@ -610,7 +620,7 @@
         actions.appendChild(chartBtn);
       });
     });
-    wireChartToggle(div.querySelector('[data-action="chart"]'), div.querySelector(".chart-box"), symbol);
+    wireChartToggle(div.querySelector('[data-action="chart"]'), div.querySelector(".chart-box"), symbol, di.tf);
     container.prepend(div);
   }
 
@@ -668,14 +678,16 @@
           } else if (result.metCount >= 4){
             missRows.push(Object.assign({ symbol }, result));
           }
-          if (result.di && result.di.cross){
-            const diKey = `${symbol}_${result.di.cross}_${Math.floor(Date.now()/3600000)}`;
-            if (!seenDiKeys.has(diKey)){
-              seenDiKeys.add(diKey);
-              sessionDiCount++;
-              renderDiCard(symbol, result.di);
-              notify(`-DI cross: ${symbol}`, `${result.di.cross.toUpperCase()} — -DI ${result.di.value.toFixed(1)}`);
-            }
+          if (result.diSignals && result.diSignals.length){
+            result.diSignals.forEach(di => {
+              const diKey = `${symbol}_${di.cross}_${di.tf}_${Math.floor(Date.now()/3600000)}`;
+              if (!seenDiKeys.has(diKey)){
+                seenDiKeys.add(diKey);
+                sessionDiCount++;
+                renderDiCard(symbol, di);
+                notify(`-DI cross: ${symbol} (${tfLabel(di.tf)})`, `${di.cross.toUpperCase()} — -DI ${di.value.toFixed(1)}`);
+              }
+            });
           }
         } catch(symErr){
           console.warn(`Skipped ${symbol}: ${symErr.message}`);
