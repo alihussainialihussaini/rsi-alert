@@ -305,6 +305,11 @@
     return atr;
   }
 
+  function tfLabel(v){
+    const map = { "15": "15m", "60": "1h" };
+    return map[v] || `${v}m`;
+  }
+
   function formatPrice(v){
     if (v == null) return "n/a";
     if (v >= 100) return v.toFixed(2);
@@ -457,11 +462,11 @@
     const longEval = evaluateDirection("long", trig, htf, ticker, rr);
     const shortEval = evaluateDirection("short", trig, htf, ticker, rr);
     const best = longEval.metCount >= shortEval.metCount ? longEval : shortEval;
-    best.di = evaluateDiCross(trig, rr);
+    best.di = evaluateDiCross(trig, rr, triggerInterval);
     return best;
   }
 
-  function evaluateDiCross(trig, rr){
+  function evaluateDiCross(trig, rr, tf){
     const dmi = calcADX(trig.high, trig.low, trig.close, 14);
     const minusDI = dmi.minusDI;
     const rsi = calcRSI(trig.close, 14);
@@ -472,19 +477,19 @@
     const entry = trig.close[lastIdx];
     const atr = calcATR(trig.high, trig.low, trig.close, 14)[lastIdx];
     if (now == null || prev == null || rsiNow == null || rsiPrev == null){
-      return { cross: null, value: now, rsi: rsiNow };
+      return { cross: null, value: now, rsi: rsiNow, tf };
     }
     const diCrossLong = prev >= 20 && now < 20;
     const diCrossShort = prev <= 20 && now > 20;
     const rsiCrossUp50 = rsiPrev <= 50 && rsiNow > 50;
     const rsiCrossDown30 = rsiPrev >= 30 && rsiNow < 30;
     if (diCrossLong && rsiCrossUp50){
-      return { cross: "long", value: now, rsi: rsiNow, levels: calcLevels("long", entry, atr, rr) };
+      return { cross: "long", value: now, rsi: rsiNow, tf, levels: calcLevels("long", entry, atr, rr) };
     }
     if (diCrossShort && rsiCrossDown30){
-      return { cross: "short", value: now, rsi: rsiNow, levels: calcLevels("short", entry, atr, rr) };
+      return { cross: "short", value: now, rsi: rsiNow, tf, levels: calcLevels("short", entry, atr, rr) };
     }
-    return { cross: null, value: now, rsi: rsiNow };
+    return { cross: null, value: now, rsi: rsiNow, tf };
   }
 
   let alertsEnabled = false;
@@ -568,9 +573,9 @@
     }).join("");
   }
 
-  function addJournalEntry(symbol, dir, outcome, metrics, source, levels){
+  function addJournalEntry(symbol, dir, outcome, metrics, source, levels, tf){
     const j = loadJournal();
-    j.unshift({ symbol, dir, outcome, time: Date.now(), metrics: metrics || null, source: source || "strict", levels: levels || null });
+    j.unshift({ symbol, dir, outcome, time: Date.now(), metrics: metrics || null, source: source || "strict", levels: levels || null, tf: tf || null });
     saveJournal(j);
     renderJournal();
   }
@@ -584,7 +589,7 @@
     div.innerHTML = `
       <div class="sc-top">
         <div class="sc-sym">${symbol} <span class="badge ${di.cross}">${di.cross}</span></div>
-        <div class="sc-time mono">${new Date().toLocaleTimeString()} &middot; -DI ${di.value.toFixed(1)} &middot; RSI ${di.rsi!=null ? di.rsi.toFixed(1) : "n/a"}</div>
+        <div class="sc-time mono">${tfLabel(di.tf)} &middot; ${new Date().toLocaleTimeString()} &middot; -DI ${di.value.toFixed(1)} &middot; RSI ${di.rsi!=null ? di.rsi.toFixed(1) : "n/a"}</div>
       </div>
       <div class="levels-row mono">
         Entry ${formatPrice(di.levels.entry)} &nbsp;|&nbsp; SL ${formatPrice(di.levels.sl)} &nbsp;|&nbsp; TP ${formatPrice(di.levels.tp)}
@@ -598,7 +603,7 @@
       <div class="chart-box" id="${chartId}"></div>`;
     div.querySelectorAll("[data-outcome]").forEach(btn => {
       btn.addEventListener("click", () => {
-        addJournalEntry(symbol, di.cross, btn.dataset.outcome, null, "di-cross", di.levels);
+        addJournalEntry(symbol, di.cross, btn.dataset.outcome, null, "di-cross", di.levels, di.tf);
         const actions = div.querySelector(".sc-actions");
         const chartBtn = actions.querySelector('[data-action="chart"]');
         actions.innerHTML = `<span class="outcome-tag ${btn.dataset.outcome}">${btn.dataset.outcome}</span>`;
@@ -618,6 +623,7 @@
       container.innerHTML = j.slice(0, 50).map(entry => `
         <div class="journal-row">
           <span>${entry.symbol} <span class="badge ${entry.dir}" style="margin-left:4px;">${entry.dir}</span>
+            ${entry.tf ? `<span class="mono" style="color:var(--text-dim);margin-left:6px;">${tfLabel(entry.tf)}</span>` : ""}
             ${entry.levels && entry.levels.entry != null ? `<span class="mono" style="color:var(--text-dim);margin-left:6px;">@ ${formatPrice(entry.levels.entry)}</span>` : ""}
           </span>
           <span class="mono" style="color:var(--text-dim);">${new Date(entry.time).toLocaleString()}</span>
