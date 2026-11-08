@@ -141,8 +141,8 @@
   </div>
 
   <div class="panel">
-    <h2>Custom rule — -DI(14) cross 20</h2>
-    <p style="color:var(--text-dim);font-size:12px;margin:0 0 10px;">Single condition, independent of the strict signals above: -DI crosses below 20 → long, crosses above 20 → short. Fires far more often by design.</p>
+    <h2>Custom rule — -DI(14) cross 20 + RSI confirmation</h2>
+    <p style="color:var(--text-dim);font-size:12px;margin:0 0 10px;">Two conditions, independent of the strict signals above: -DI crosses below 20 AND RSI crosses up through 50 → long. -DI crosses above 20 AND RSI crosses down through 30 → short. Both must fire on the same bar.</p>
     <div id="diList"><div class="empty">No -DI cross alerts yet this session.</div></div>
   </div>
 
@@ -464,15 +464,27 @@
   function evaluateDiCross(trig, rr){
     const dmi = calcADX(trig.high, trig.low, trig.close, 14);
     const minusDI = dmi.minusDI;
+    const rsi = calcRSI(trig.close, 14);
     const lastIdx = trig.close.length - 2;
     const prevIdx = lastIdx - 1;
     const now = minusDI[lastIdx], prev = minusDI[prevIdx];
+    const rsiNow = rsi[lastIdx], rsiPrev = rsi[prevIdx];
     const entry = trig.close[lastIdx];
     const atr = calcATR(trig.high, trig.low, trig.close, 14)[lastIdx];
-    if (now == null || prev == null) return { cross: null, value: now };
-    if (prev >= 20 && now < 20) return { cross: "long", value: now, levels: calcLevels("long", entry, atr, rr) };
-    if (prev <= 20 && now > 20) return { cross: "short", value: now, levels: calcLevels("short", entry, atr, rr) };
-    return { cross: null, value: now };
+    if (now == null || prev == null || rsiNow == null || rsiPrev == null){
+      return { cross: null, value: now, rsi: rsiNow };
+    }
+    const diCrossLong = prev >= 20 && now < 20;
+    const diCrossShort = prev <= 20 && now > 20;
+    const rsiCrossUp50 = rsiPrev <= 50 && rsiNow > 50;
+    const rsiCrossDown30 = rsiPrev >= 30 && rsiNow < 30;
+    if (diCrossLong && rsiCrossUp50){
+      return { cross: "long", value: now, rsi: rsiNow, levels: calcLevels("long", entry, atr, rr) };
+    }
+    if (diCrossShort && rsiCrossDown30){
+      return { cross: "short", value: now, rsi: rsiNow, levels: calcLevels("short", entry, atr, rr) };
+    }
+    return { cross: null, value: now, rsi: rsiNow };
   }
 
   let alertsEnabled = false;
@@ -572,7 +584,7 @@
     div.innerHTML = `
       <div class="sc-top">
         <div class="sc-sym">${symbol} <span class="badge ${di.cross}">${di.cross}</span></div>
-        <div class="sc-time mono">${new Date().toLocaleTimeString()} &middot; -DI ${di.value.toFixed(1)}</div>
+        <div class="sc-time mono">${new Date().toLocaleTimeString()} &middot; -DI ${di.value.toFixed(1)} &middot; RSI ${di.rsi!=null ? di.rsi.toFixed(1) : "n/a"}</div>
       </div>
       <div class="levels-row mono">
         Entry ${formatPrice(di.levels.entry)} &nbsp;|&nbsp; SL ${formatPrice(di.levels.sl)} &nbsp;|&nbsp; TP ${formatPrice(di.levels.tp)}
