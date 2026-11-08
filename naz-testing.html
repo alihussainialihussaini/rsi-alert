@@ -48,11 +48,20 @@ tr.r{cursor:pointer}tr.r:hover td{background:var(--panel2)}
 .b{display:inline-block;padding:1px 7px;border-radius:6px;font-size:11px;margin-left:3px}
 .b.up{background:var(--upbg)}.b.dn{background:var(--dnbg)}
 .star{cursor:pointer;color:var(--mut);font-size:18px;user-select:none}.star.on{color:var(--acc)}
-.coin{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:14px}
+.coin{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px}
 .chead{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;margin-bottom:12px}
 .chead .p{font-size:28px;font-weight:700}
 .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
-#cwrap{height:520px;position:relative}
+#cwrap{height:calc(100vh - 170px);min-height:560px;position:relative}
+.coin .side{max-height:calc(100vh - 170px);min-height:560px;overflow:auto;padding:4px 14px}
+.sec{padding:14px 0;border-bottom:1px solid var(--line)}
+.st{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.1em;color:var(--mut);text-transform:uppercase;margin-bottom:10px}
+.rv{display:grid;grid-template-columns:44px 1fr auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+.tfc{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-size:11px;text-align:center}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.g4 div,.g3 div{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:8px 4px;text-align:center}
+.g4 small,.g3 small{display:block;color:var(--mut);font-size:11px}.g4 b{font-size:20px}
+.sg{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px}
 .tfbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
 .tfbar button{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
 .tfbar button.on{border-color:var(--up);color:var(--up)}
@@ -69,13 +78,13 @@ tr.r{cursor:pointer}tr.r:hover td{background:var(--panel2)}
 .tfb{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}.tfb.on{border-color:var(--up);color:var(--up)}
 .empty{padding:30px;text-align:center;color:var(--mut)}
 tr.nw td{background:var(--onbg)}tr.nw td:first-child{box-shadow:inset 3px 0 0 var(--up)}
-@media(max-width:900px){.coin{grid-template-columns:1fr}}
+@media(max-width:900px){.coin{grid-template-columns:1fr}.coin .side{max-height:none;min-height:0}}
 @media(max-width:760px){
  #app{flex-direction:column;height:auto;min-height:100vh}
  #side{width:100%;display:flex;gap:4px;overflow-x:auto;padding:8px;border-right:0;border-bottom:1px solid var(--line)}
  .brand,.grp{display:none}.nav{white-space:nowrap}
  #top{flex-wrap:wrap}#q{max-width:none;margin:0;order:3;flex-basis:100%}
- #cwrap{height:380px}
+ #cwrap{height:420px;min-height:0}
 }
 </style></head><body>
 <div id="app">
@@ -460,16 +469,19 @@ function renderScanner(keep){
   $("tbl").querySelectorAll("th[data-s]").forEach(th=>th.onclick=()=>{const k=th.dataset.s;if(S.sort===k)S.dir=-S.dir;else{S.sort=k;S.dir=1}renderScanner(true)});
   $("tbl").querySelectorAll("tr.r").forEach(tr=>tr.onclick=()=>{location.hash="#coin/"+tr.dataset.s})}
 // ===== coin page =====
-let CH=null,cTimer=null;
-const CTF=["1m","3m","5m","15m","30m","1h","2h","3h","4h","6h","8h","12h","1d","1w","1M"],PT=["5m","15m","30m","1h","2h","4h","1d"],GT=TFS;
-async function renderCoin(sym){
-  if(CH){try{CH.remove()}catch(e){}CH=null}clearInterval(cTimer);
-  const tfNow=window._tf||"1h";
-  $("page").innerHTML='<div class="chead"><span class="star" id="st">★</span><h2 style="margin:0">'+(BY[sym]?BY[sym][0]:sym.replace("USDT",""))+'<span class="mu" style="font-size:14px"> '+(BY[sym]||SRC==="bybit"?"· Bybit perpetual":"/USDT · Binance spot")+'</span></h2><span class="p" id="pr">–</span><span id="ch24"></span><span class="mu" id="vol"></span></div><div class="coin"><div class="box"><div class="tfbar" id="tfb"></div><div id="cwrap"></div></div><div class="box side" id="sd"><h3>RSI vs its MA</h3><div id="pnl" class="mu">loading…</div></div></div>';
-  const star=$("st");const paintStar=()=>star.classList.toggle("on",wl().includes(sym));paintStar();
-  star.onclick=()=>{let a=wl();a=a.includes(sym)?a.filter(x=>x!==sym):a.concat(sym);setWl(a);paintStar()};
-  $("tfb").innerHTML=CTF.map(t=>'<button data-t="'+t+'" class="'+(t===tfNow?"on":"")+'">'+(/m$/.test(t)?t:t.toUpperCase())+'</button>').join("");
-  $("tfb").querySelectorAll("button").forEach(b=>b.onclick=()=>{window._tf=b.dataset.t;renderCoin(sym)});
+let CH=null,cTimer=null,lwT=null,CN=0;
+const CTF=["1m","3m","5m","15m","30m","1h","2h","3h","4h","6h","8h","12h","1d","1w","1M"],PT=["5m","15m","30m","1h","2h","4h","1d"],GT=TFS,G8=["5m","15m","30m","1h","2h","4h","1d","1w"];
+const TVI={"1m":"1","3m":"3","5m":"5","15m":"15","30m":"30","1h":"60","2h":"120","3h":"180","4h":"240","6h":"360","8h":"480","12h":"720","1d":"D","1w":"W","1M":"M"};
+function tvSym(sym){return SRC==="binance"&&!BY[sym]?"BINANCE:"+sym:"BYBIT:"+sym+".P"}
+function tvLoad(){return new Promise((ok,no)=>{if(window.TradingView)return ok();const s=document.createElement("script");s.src="https://s3.tradingview.com/tv.js";s.onload=ok;s.onerror=no;document.head.appendChild(s);setTimeout(()=>{if(!window.TradingView)no()},8000)})}
+function coinStop(){CN++;if(CH){try{CH.remove()}catch(e){}CH=null}clearInterval(cTimer);clearInterval(lwT)}
+function tvInit(sym,tfNow){const dark=document.documentElement.dataset.theme!=="light";$("cwrap").innerHTML="";
+  new TradingView.widget({container_id:"cwrap",autosize:true,symbol:tvSym(sym),interval:TVI[tfNow]||"60",timezone:"Asia/Karachi",theme:dark?"dark":"light",style:"1",locale:"en",toolbar_bg:dark?"#12161d":"#ffffff",backgroundColor:dark?"#0b0e13":"#ffffff",enable_publishing:false,allow_symbol_change:false,hide_side_toolbar:false,withdateranges:true,details:false,studies:["RSI@tv-basicstudies"]})}
+// fallback chart (used only if the TradingView chart cannot load)
+function lwInit(sym,tfNow){const bar=$("tfb");bar.style.display="flex";
+  bar.innerHTML=CTF.map(t=>'<button data-t="'+t+'" class="'+(t===tfNow?"on":"")+'">'+(/m$/.test(t)?t:t.toUpperCase())+'</button>').join("");
+  bar.querySelectorAll("button").forEach(b=>b.onclick=()=>{window._tf=b.dataset.t;renderCoin(sym)});
+  if(!window.LightweightCharts){$("cwrap").innerHTML='<div class="empty">The chart could not load. <a class="up" target="_blank" rel="noopener" href="https://www.tradingview.com/chart/?symbol='+encodeURIComponent(tvSym(sym))+'">Open on TradingView ↗</a></div>';return}
   const chart=LightweightCharts.createChart($("cwrap"),{layout:{background:{color:cv("--panel")},textColor:cv("--mut")},grid:{vertLines:{color:cv("--line")},horzLines:{color:cv("--line")}},timeScale:{timeVisible:true,borderColor:cv("--line")},rightPriceScale:{borderColor:cv("--line")},autoSize:true});CH=chart;
   const cs=chart.addCandlestickSeries({upColor:"#2ebd85",downColor:"#f6465d",wickUpColor:"#2ebd85",wickDownColor:"#f6465d",borderVisible:false});
   cs.priceScale().applyOptions({scaleMargins:{top:0.05,bottom:0.34}});
@@ -481,7 +493,7 @@ async function renderCoin(sym){
   async function load(first){
     try{
       const k=await ckl(sym,tfNow,500);
-      if(!first&&CH!==chart)return;
+      if(CH!==chart)return;
       const cl=k.map(x=>x[4]),r=rsiCalc(cl,RP),m=maCalc(r,CFG.maType,CFG.maLen);
       const lp=cl[cl.length-1],pr=Math.max(2,Math.min(8,4-Math.floor(Math.log10(lp))));cs.applyOptions({priceFormat:{type:"price",precision:pr,minMove:1/Math.pow(10,pr)}});
       cs.setData(k.map(x=>({time:x[0]/1000+OFF,open:x[1],high:x[2],low:x[3],close:x[4]})));
@@ -493,20 +505,42 @@ async function renderCoin(sym){
       vl.setData(eps.map(e=>({time:tt(e.lo),value:1})));
       cs.setMarkers(eps.flatMap(e=>{const m=[{time:tt(e.st),position:"aboveBar",color:"#f0b90b",shape:"arrowDown",text:"first <"+CFG.os1},{time:tt(e.lo),position:"belowBar",color:"#f6465d",shape:"arrowUp",text:"RSI "+r[e.lo].toFixed(1)}];if(e.end+1<k.length)m.push({time:tt(e.end+1),position:"belowBar",color:"#2ebd85",shape:"circle",text:"claimed "+CFG.os1});return m}).sort((a,b)=>a.time-b.time));
       if(first)chart.timeScale().setVisibleLogicalRange({from:k.length-120,to:k.length+5});
-      $("pr").textContent=g6(lp);
-      const t=await tk(sym);
-      $("ch24").innerHTML='<span class="'+(+t.priceChangePercent>=0?"up":"dn")+'">'+(+t.priceChangePercent>=0?"+":"")+(+t.priceChangePercent).toFixed(2)+'% 24h</span>';
-      $("vol").textContent="24h volume "+(+t.quoteVolume/1e6).toFixed(1)+"M USDT";
-      const A={};await pool(GT.concat(["1m","6h","12h"]),6,async tf=>{A[tf]=anTf(await kl(sym,tf,300,false))});
-      if(CH!==chart)return;
-      const below=PT.filter(t=>A[t]&&!A[t].above),above=PT.filter(t=>A[t]&&A[t].above);
-      const msg=!below.length?"RSI is above its MA on all of "+above.join(", ")+".":!above.length?"RSI is below its MA on all of "+below.join(", ")+". Better to wait for longs until it crosses back above.":"RSI is above its MA on "+above.join(", ")+" and below it on "+below.join(", ")+".";
-      $("pnl").className="";
-      $("pnl").innerHTML=PT.map(t=>'<div class="rrow"><b>'+t+'</b><span class="mu">'+(A[t]?"RSI "+A[t].rsi.toFixed(1)+" · MA "+A[t].ma.toFixed(1):"no data")+'</span>'+(A[t]?'<span class="b '+(A[t].above?"up":"dn")+'">'+(A[t].above?"Above":"Below")+'</span>':"")+'</div>').join("")+'<div class="note '+(!below.length?"g":"")+'">'+msg+'</div>'+kbox(A)+'<h3>RSI by timeframe</h3><div class="grid6">'+GT.map(t=>'<div><small>'+t+'</small><b class="'+rc(A[t]&&A[t].rsi)+'">'+(A[t]?Math.round(A[t].rsi):"–")+'</b></div>').join("")+'</div><p class="mu" style="font-size:12px">MA = '+CFG.maLen+'-period '+CFG.maType+' of RSI14, closed candles. Purple line = RSI14, yellow line = its MA.</p>';
-      const gk=$("gk");if(gk)gk.onclick=()=>{window._tf=gk.dataset.k;renderCoin(sym)};
-    }catch(e){if($("pr"))$("pr").textContent="no data for "+sym}
+    }catch(e){}
   }
-  await load(true);cTimer=setInterval(()=>load(false),20000)}
+  load(true);lwT=setInterval(()=>load(false),20000)}
+// side panel (RSI vs MA, RSI by timeframe, regime, active signals)
+async function panel(sym,my){
+  try{
+    const t=await tk(sym);if(CN!==my)return;
+    $("pr").textContent=g6(+t.lastPrice);
+    $("ch24").innerHTML='<span class="'+(+t.priceChangePercent>=0?"up":"dn")+'">'+(+t.priceChangePercent>=0?"+":"")+(+t.priceChangePercent).toFixed(2)+'% 24h</span>';
+    $("vol").textContent="24h volume "+(+t.quoteVolume/1e6).toFixed(1)+"M USDT";
+    const A={};await pool(GT.concat(["1m","6h","12h"]),6,async tf=>{A[tf]=anTf(await kl(sym,tf,300,false))});
+    if(CN!==my)return;
+    const below=PT.filter(t=>A[t]&&!A[t].above),above=PT.filter(t=>A[t]&&A[t].above);
+    const msg=!below.length?"RSI is above its MA on all "+above.length+" timeframes.":!above.length?"RSI is below its MA on all "+below.length+" timeframes. Better to wait for longs.":"RSI is above its MA on "+above.map(tfl).join(", ")+" and below it on "+below.map(tfl).join(", ")+".";
+    const s1='<div class="sec"><div class="st"><span>RSI vs its MA</span></div>'+PT.map(t=>{const a=A[t];return'<div class="rv"><span class="tfc">'+tfl(t)+'</span>'+(a?'<span class="'+(a.above?"up":"dn")+'">'+(a.above?"▲ Above":"▼ Below")+'</span><span>RSI '+a.rsi.toFixed(1)+' <span class="mu">/ MA '+a.ma.toFixed(1)+'</span></span>':'<span class="mu">no data</span><span></span>')+'</div>'}).join("")+'<div class="note '+(!below.length?"g":"")+'">'+msg+'</div></div>';
+    const s2='<div class="sec"><div class="st"><span>RSI by timeframe</span><span style="text-transform:none;letter-spacing:0">live candle</span></div><div class="g4">'+G8.map(t=>{const a=A[t],v=a?a.live:undefined;return'<div style="'+hm(v)+'"><small>'+tfl(t)+'</small><b class="'+rc(v)+'">'+(a?Math.round(v):"—")+'</b></div>'}).join("")+'</div></div>';
+    const RG=["4h","1d","1w"],bear=RG.filter(t=>A[t]&&A[t].live<40);
+    const s3='<div class="sec"><div class="st"><span>Regime · 4H and higher</span></div><div class="g3">'+RG.map(t=>{const a=A[t],r=a?regime(a.live):null;return'<div style="'+(a?(a.live<50?"background:var(--dnbg)":"background:var(--upbg)"):"")+'"><small>'+tfl(t)+' · '+(a?Math.round(a.live):"—")+'</small><span class="'+(r?r[1]:"mu")+'" style="font-size:12px;font-weight:600">'+(r?r[0]:"—")+'</span></div>'}).join("")+'</div><div class="mu" style="font-size:11px;margin-top:8px"><span class="up">●</span> &gt; 60 bullish &nbsp;<span class="up">●</span> 50–60 &nbsp;<span class="dn">●</span> 40–50 &nbsp;<span class="dn">●</span> &lt; 40 bearish</div>'+(bear.length?'<div class="dn" style="font-size:12px;margin-top:8px">⚠ A higher timeframe is in bearish territory (RSI below 40): don\'t focus on longs.</div>':"")+'</div>';
+    const sg=[];
+    G8.forEach(t=>{const a=A[t];if(a&&a.live<=CFG.os1)sg.push(["Oversold",t,"RSI "+a.live.toFixed(1),"dn"])});
+    XTF.forEach(t=>{const a=A[t];if(!a)return;const x=a.xs[0];if(x&&x.ago<2)sg.push(["RSI × MA cross "+(x.dir==="up"?"▲":"▼"),t,x.dir==="up"?"Long":"Short",x.dir==="up"?"up":"dn"]);else if(a.fx)sg.push(["RSI × MA forming "+(a.fx==="up"?"▲":"▼"),t,"LIVE","warn"])});
+    RTF.forEach(t=>{const a=A[t];if(a&&a.had){const b=band(a.live);if(b&&b!=="Monitoring")sg.push(["RSI 70 → 52 retest",t,b,"warn"])}});
+    GT.forEach(t=>{const a=A[t];if(!a)return;const x=a.dx[0];if(x&&x.ago<2)sg.push(["-DI crossed "+(x.dir==="down"?"below":"above")+" "+CFG.dmiLvl,t,"-DI "+x.di.toFixed(1),x.dir==="down"?"up":"dn"])});
+    const s5='<div class="sec" style="border-bottom:0"><div class="st"><span>Active signals</span></div>'+(sg.length?sg.map(x=>'<div class="sg"><span>'+x[0]+' <span class="tfc">'+tfl(x[1])+'</span></span><span class="b '+(x[3]==="warn"?"":x[3])+'" style="'+(x[3]==="warn"?"background:var(--nbg);color:var(--nfg)":"")+'">'+x[2]+'</span></div>').join(""):'<div class="mu" style="font-size:13px">No active signals right now.</div>')+'</div>';
+    const s4='<div class="sec">'+kbox(A)+'</div>';
+    $("pnl").className="";
+    $("pnl").innerHTML=s1+s2+s3+s4+s5;
+    const gk=$("gk");if(gk)gk.onclick=()=>{window._tf=gk.dataset.k;renderCoin(sym)};
+  }catch(e){if(CN===my&&$("pnl")&&$("pnl").className==="mu")$("pnl").textContent="no data for "+sym}}
+async function renderCoin(sym){
+  coinStop();const my=CN,tfNow=window._tf||"1h";
+  $("page").innerHTML='<div class="chead"><span class="star" id="st">★</span><h2 style="margin:0">'+(BY[sym]?BY[sym][0]:sym.replace("USDT",""))+'<span class="mu" style="font-size:14px"> '+(BY[sym]||SRC==="bybit"?"· Bybit perpetual":"/USDT · Binance spot")+'</span></h2><span class="p" id="pr">–</span><span id="ch24"></span><span class="mu" id="vol"></span></div><div class="coin"><div class="box" style="padding:0;overflow:hidden"><div class="tfbar" id="tfb" style="display:none;padding:10px 10px 0"></div><div id="cwrap"></div></div><div class="box side" id="sd"><div id="pnl" class="mu">loading…</div></div></div>';
+  const star=$("st");const paintStar=()=>star.classList.toggle("on",wl().includes(sym));paintStar();
+  star.onclick=()=>{let a=wl();a=a.includes(sym)?a.filter(x=>x!==sym):a.concat(sym);setWl(a);paintStar()};
+  panel(sym,my);cTimer=setInterval(()=>panel(sym,my),20000);
+  try{await tvLoad();if(CN!==my)return;tvInit(sym,tfNow)}catch(e){if(CN!==my)return;lwInit(sym,tfNow)}}
 // ===== watchlist =====
 async function renderWatch(){
   $("page").innerHTML='<h2>My Watchlist</h2><p class="sub">Coins you starred. Saved in this browser only.</p><div class="add"><input id="wi" placeholder="Add a coin, e.g. SOL"><button id="wb">Add</button></div><div class="tw"><table><thead><tr><th>Coin</th><th>Price</th><th>24h</th><th>RSI 15m</th><th>RSI 1h</th><th>RSI 4h</th><th>vs MA 15m / 1h / 4h</th><th></th></tr></thead><tbody id="wt"></tbody></table></div>';
@@ -572,7 +606,7 @@ function applyTheme(t){document.documentElement.dataset.theme=t;$("tg").textCont
 function route(){const h=(location.hash||"#scanner").slice(1).split("/");return{p:h[0]||"scanner",a:h[1]}}
 function go(){const r=route();
   document.querySelectorAll(".nav[data-r]").forEach(n=>n.classList.toggle("on",n.dataset.r===(r.p==="coin"?"coin/"+r.a:r.p)));
-  if(r.p!=="coin"){if(CH){try{CH.remove()}catch(e){}CH=null}clearInterval(cTimer)}
+  if(r.p!=="coin")coinStop();
   if(r.p==="coin"&&r.a){$("crumb").textContent="Coins / "+r.a;renderCoin(r.a)}
   else if(r.p==="recovery"){$("crumb").textContent="Altcoins / Recovery Report";renderRecovery();if(!S.list.length)scan()}
   else if(r.p==="macro"){$("crumb").textContent="Commodities & Indices / RSI Scanner";renderMacro();macScan()}
