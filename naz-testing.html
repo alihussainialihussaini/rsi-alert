@@ -99,9 +99,8 @@ tr.nw td{background:var(--onbg)}tr.nw td:first-child{box-shadow:inset 3px 0 0 va
   <a class="nav" data-r="coin/BTCUSDT" href="#coin/BTCUSDT">Bitcoin</a>
   <a class="nav" data-r="coin/ETHUSDT" href="#coin/ETHUSDT">Ethereum</a>
   <a class="nav" data-r="coin/SOLUSDT" href="#coin/SOLUSDT">Solana</a>
-  <div class="grp">Later</div>
-  <span class="nav off">USDT Dominance <small>soon</small></span>
-  <span class="nav off">BTC.D + ETH.D <small>soon</small></span>
+  <div class="grp">Dominance</div>
+  <a class="nav" data-r="dominance" href="#dominance">BTC.D · USDT.D · TOTAL3</a>
   <div class="grp">Other</div>
   <a class="nav" href="index.html">Alert Board</a>
  </aside>
@@ -541,6 +540,67 @@ async function renderCoin(sym){
   star.onclick=()=>{let a=wl();a=a.includes(sym)?a.filter(x=>x!==sym):a.concat(sym);setWl(a);paintStar()};
   panel(sym,my);cTimer=setInterval(()=>panel(sym,my),20000);
   try{await tvLoad();if(CN!==my)return;tvInit(sym,tfNow)}catch(e){if(CN!==my)return;lwInit(sym,tfNow)}}
+// ===== Dominance (BTC.D, USDT.D, BTC+ETH+STABLE.D, TOTAL3: calculated from coin prices x CoinGecko supply) =====
+const DSER=["BTC.D","USDT.D","BTC+ETH+STABLE.D","TOTAL3"],DTF=["15m","1h","4h","1d"],DCT=["5m","15m","30m","1h","2h","4h","1d"],COINS_USED=60;
+const SUP_STABLE=new Set(["USDT","USDC","DAI","FDUSD","TUSD","USDE","USDS","PYUSD","USD1","BUSD","USDP","RLUSD","USDD","FRAX","GUSD","LUSD","USDG","BFUSD","XUSD","USDTB"]);
+let DS={};
+async function getSupply(){
+  let c=null;try{c=JSON.parse(localStorage.getItem("supplyCache")||"null")}catch(e){}
+  if(c&&Date.now()-c.t<216e5)return c.d;
+  try{const d={};
+    for(const pg of [1,2]){const r=await fetch("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page="+pg);if(!r.ok)throw new Error("coingecko "+r.status);
+      for(const x of await r.json()){const s=(x.symbol||"").toUpperCase();if(s&&x.circulating_supply&&x.market_cap&&!(s in d))d[s]=[+x.circulating_supply,+x.market_cap]}}
+    if(!d.BTC||!d.ETH||!d.USDT)throw new Error("incomplete");
+    try{localStorage.setItem("supplyCache",JSON.stringify({t:Date.now(),d}))}catch(e){}
+    return d}
+  catch(e){return c?c.d:null}}
+function moversOf(sup){return Object.keys(sup).sort((a,b)=>sup[b][1]-sup[a][1]).filter(s=>!SUP_STABLE.has(s)).slice(0,COINS_USED)}
+async function domSeries(iv){
+  const c=DS[iv];if(c&&Date.now()-c.t<60000)return c.out;
+  const sup=await getSupply();if(!sup)throw new Error("no supply data");
+  const mv=moversOf(sup),kc={};
+  await pool(mv,8,async s=>{try{kc[s]=await kl(s+"USDT",iv,500,false)}catch(e){}});
+  if(!kc.BTC||!kc.ETH)throw new Error("no BTC/ETH data");
+  const times=kc.BTC.map(x=>x[0]),order=Object.keys(sup).sort((a,b)=>sup[b][1]-sup[a][1]);
+  const stableCap=order.filter(s=>SUP_STABLE.has(s)).reduce((a,s)=>a+sup[s][1],0),cap={};
+  for(const s of mv){const e=kc[s];if(!e)continue;const m=new Map(e.map(x=>[x[0],x[4]]));let prev=null;const v=[];for(const t of times){if(m.has(t))prev=m.get(t);v.push(prev)}
+    const first=v.find(x=>x!==null);if(first===undefined)continue;cap[s]=v.map(x=>(x===null?first:x)*sup[s][0])}
+  let fixed=stableCap;for(const s of order)if(!SUP_STABLE.has(s)&&!(s in cap))fixed+=sup[s][1];
+  const keys=Object.keys(cap),btc=cap.BTC,eth=cap.ETH,usdt=sup.USDT[1];
+  const tot=times.map((_,i)=>{let t=fixed;for(const s of keys)t+=cap[s][i];return t});
+  const out={t:times,v:{"BTC.D":tot.map((t,i)=>100*btc[i]/t),"USDT.D":tot.map(t=>100*usdt/t),"BTC+ETH+STABLE.D":tot.map((t,i)=>100*(btc[i]+eth[i]+stableCap)/t),"TOTAL3":tot.map((t,i)=>(t-btc[i]-eth[i])/1e9)}};
+  DS[iv]={t:Date.now(),out};return out}
+const dfmt=(n,v)=>n==="TOTAL3"?"$"+v.toFixed(1)+"B":v.toFixed(2)+"%";
+function domChart(name,iv,my){const bar=$("tfb");bar.style.display="flex";
+  bar.innerHTML=DCT.map(t=>'<button data-t="'+t+'" class="'+(t===iv?"on":"")+'">'+tfl(t)+'</button>').join("");
+  bar.querySelectorAll("button").forEach(b=>b.onclick=()=>{window._dtf=b.dataset.t;renderDom(name)});
+  if(!window.LightweightCharts){$("cwrap").innerHTML='<div class="empty">The chart could not load.</div>';return}
+  const chart=LightweightCharts.createChart($("cwrap"),{layout:{background:{color:cv("--panel")},textColor:cv("--mut")},grid:{vertLines:{color:cv("--line")},horzLines:{color:cv("--line")}},timeScale:{timeVisible:true,borderColor:cv("--line")},rightPriceScale:{borderColor:cv("--line")},autoSize:true});CH=chart;
+  const ls=chart.addLineSeries({color:"#4aa3ff",lineWidth:2,priceLineVisible:true});
+  ls.priceScale().applyOptions({scaleMargins:{top:0.05,bottom:0.36}});
+  const rl=chart.addLineSeries({priceScaleId:"rsi",color:"#b48cff",lineWidth:2,priceLineVisible:false,lastValueVisible:true});
+  const ml=chart.addLineSeries({priceScaleId:"rsi",color:"#f0b90b",lineWidth:2,priceLineVisible:false,lastValueVisible:false});
+  chart.priceScale("rsi").applyOptions({scaleMargins:{top:0.7,bottom:0.03}});
+  [[30,"#2ebd85"],[50,"#8591a0"],[70,"#f6465d"]].forEach(([v,c])=>rl.createPriceLine({price:v,color:c,lineWidth:1,lineStyle:2,axisLabelVisible:false,title:""+v}));
+  async function load(first){try{const o=await domSeries(iv);if(CH!==chart||CN!==my)return;
+      const v=o.v[name],r=rsiCalc(v,RP),m=maCalc(r,CFG.maType,CFG.maLen),tt=i=>o.t[i]/1000+OFF;
+      ls.setData(v.map((x,i)=>({time:tt(i),value:x})));
+      rl.setData(v.map((x,i)=>r[i]===null?null:{time:tt(i),value:r[i]}).filter(Boolean));
+      ml.setData(v.map((x,i)=>m[i]===null?null:{time:tt(i),value:m[i]}).filter(Boolean));
+      if(first)chart.timeScale().setVisibleLogicalRange({from:v.length-120,to:v.length+5})
+    }catch(e){if(first&&CN===my)$("cwrap").insertAdjacentHTML("beforeend",'<div class="empty" style="position:absolute;inset:0">Could not load data ('+(e.message||"error")+'). Retrying…</div>')}}
+  load(true);lwT=setInterval(()=>load(false),60000)}
+async function renderDom(a){
+  coinStop();const my=CN;let name="BTC.D";try{const d=decodeURIComponent(a||"");if(DSER.includes(d))name=d}catch(e){}
+  const iv=window._dtf||"1h";
+  $("page").innerHTML='<h2>Dominance</h2><p class="sub">BTC.D, USDT.D, BTC+ETH+STABLE.D and TOTAL3 · calculated from the top '+COINS_USED+' coin prices × CoinGecko supply · RSI14 and its MA · refreshes every minute. Numbers can differ a little from TradingView.</p><div class="cards" id="dcs" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">'+DSER.map(n=>'<div class="card" data-n="'+n+'" style="cursor:pointer;'+(n===name?"border-color:var(--up)":"")+'"><small>'+n+'</small><b id="dv'+DSER.indexOf(n)+'">–</b><div class="g4" style="margin-top:10px">'+DTF.map(t=>'<div id="dc'+DSER.indexOf(n)+t+'"><small>'+tfl(t)+'</small><b style="font-size:16px" class="mu">…</b></div>').join("")+'</div></div>').join("")+'</div><div class="chead"><h2 style="margin:0;font-size:18px">'+name+'</h2><span class="mu" id="dnote"></span></div><div class="box" style="padding:0;overflow:hidden"><div class="tfbar" id="tfb" style="display:none;padding:10px 10px 0"></div><div id="cwrap"></div></div><p class="mu" style="font-size:12px">Chart: blue = value, purple = RSI14, amber = RSI MA. Cards: RSI on each timeframe, ▲ = RSI above its MA, ▼ = below.</p>';
+  $("page").querySelectorAll("#dcs .card").forEach(c=>c.onclick=()=>{location.hash="#dominance/"+c.dataset.n});
+  const fill=async()=>{for(const t of DTF){try{const o=await domSeries(t);if(CN!==my)return;
+      DSER.forEach((n,i)=>{const v=o.v[n],r=rsiCalc(v,RP),m=maCalc(r,CFG.maType,CFG.maLen),L=v.length-1,e=$("dc"+i+t);if(!e||r[L]===null||m[L]===null)return;
+        const up=r[L]>m[L];e.innerHTML='<small>'+tfl(t)+'</small><b style="font-size:16px" class="'+rc(r[L])+'">'+r[L].toFixed(1)+'</b><span class="'+(up?"up":"dn")+'" style="font-size:12px">'+(up?"▲":"▼")+'</span>';
+        if(t==="1h"||!$("dv"+i).dataset.s){$("dv"+i).textContent=dfmt(n,v[L]);$("dv"+i).dataset.s=1}})}catch(e){if(CN===my&&$("dnote"))$("dnote").textContent="Could not load data ("+(e.message||"error")+"). If this stays, CoinGecko or Bybit is not reachable from your browser."}}};
+  fill();cTimer=setInterval(fill,60000);
+  domChart(name,iv,my)}
 // ===== watchlist =====
 async function renderWatch(){
   $("page").innerHTML='<h2>My Watchlist</h2><p class="sub">Coins you starred. Saved in this browser only.</p><div class="add"><input id="wi" placeholder="Add a coin, e.g. SOL"><button id="wb">Add</button></div><div class="tw"><table><thead><tr><th>Coin</th><th>Price</th><th>24h</th><th>RSI 15m</th><th>RSI 1h</th><th>RSI 4h</th><th>vs MA 15m / 1h / 4h</th><th></th></tr></thead><tbody id="wt"></tbody></table></div>';
@@ -608,6 +668,7 @@ function go(){const r=route();
   document.querySelectorAll(".nav[data-r]").forEach(n=>n.classList.toggle("on",n.dataset.r===(r.p==="coin"?"coin/"+r.a:r.p)));
   if(r.p!=="coin")coinStop();
   if(r.p==="coin"&&r.a){$("crumb").textContent="Coins / "+r.a;renderCoin(r.a)}
+  else if(r.p==="dominance"){$("crumb").textContent="Dominance / "+(r.a?decodeURIComponent(r.a):"BTC.D");renderDom(r.a)}
   else if(r.p==="recovery"){$("crumb").textContent="Altcoins / Recovery Report";renderRecovery();if(!S.list.length)scan()}
   else if(r.p==="macro"){$("crumb").textContent="Commodities & Indices / RSI Scanner";renderMacro();macScan()}
   else if(r.p==="watchlist"){$("crumb").textContent="Scanner / My Watchlist";renderWatch()}
