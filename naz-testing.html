@@ -92,6 +92,7 @@ tr.nw td{background:var(--onbg)}tr.nw td:first-child{box-shadow:inset 3px 0 0 va
   <div class="brand"><div class="logo">M</div><div><b>MARKET SCANNER</b><small>RSI &amp; levels</small></div></div>
   <div class="grp">Scanner</div>
   <a class="nav" data-r="scanner" href="#scanner">RSI Scanner</a>
+  <a class="nav" data-r="funding" href="#funding">Funding Rates</a>
   <a class="nav" data-r="recovery" href="#recovery">Recovery Report</a>
   <a class="nav" data-r="macro" href="#macro">Commodities &amp; Indices</a>
   <a class="nav" data-r="watchlist" href="#watchlist">My Watchlist</a>
@@ -197,8 +198,7 @@ function exportCsv(list){const h=["Symbol","TF","Signal","Status","Crossed at (P
   const csv=[h].concat(rows).map(r=>r.map(q).join(",")).join("\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="rsi-ma-crosses.csv";document.body.appendChild(a);a.click();a.remove()}
 // ===== MTF Confluence =====
-const PRE=[{k:"all",n:"All confluences"},{k:"r1",n:"30m + 1H → retest",t:["30m","1h"],c:"rt"},{k:"r2",n:"1H + 4H → retest",t:["1h","4h"],c:"rt"},{k:"r3",n:"30m + 1H + 4H → retest",t:["30m","1h","4h"],c:"rt"},{k:"o1",n:"5m + 15m + 30m oversold",t:["5m","15m","30m"],c:"os"},{k:"m1",n:"30m → retest + 5m oversold",x:[["30m","rt"],["5m","os"]]},{k:"o3",n:"3+ TFs oversold",o3:true}];
-const LB=["","Oversold","Strongly Oversold","Extremely Oversold"];
+const PRE=[{k:"all",n:"All confluences"},{k:"r1",n:"30m + 1H → retest",t:["30m","1h"],c:"rt"},{k:"r2",n:"1H + 4H → retest",t:["1h","4h"],c:"rt"},{k:"r3",n:"30m + 1H + 4H → retest",t:["30m","1h","4h"],c:"rt"},{k:"o1",n:"5m + 15m + 30m oversold",t:["5m","15m","30m"],c:"os"},{k:"m1",n:"30m → retest + 5m oversold",x:[["30m","rt"],["5m","os"]]},{k:"o3",n:"3+ TFs oversold",o3:true}];const LB=["","Oversold","Strongly Oversold","Extremely Oversold"];
 const lab=tf=>tf.replace(/[hdw]$/,m=>m.toUpperCase());
 function cond(a){const v=S.prev?a.live:a.rsi;let os=0;if(v<=CFG.os3)os=3;else if(v<=CFG.os2)os=2;else if(v<=CFG.os1)os=1;
   let st=null;if(a.had)st=band(v)
@@ -307,8 +307,7 @@ function msTable(mr){const list=mr.filter(x=>!S.filter||x.s.includes(S.filter)),
 const KM=[[1,"1m"],[3,"3m"],[5,"5m"],[15,"15m"],[30,"30m"],[60,"1h"],[120,"2h"],[240,"4h"],[360,"6h"],[720,"12h"],[1440,"1d"],[10080,"1w"]];
 const KL=[1,3,5,15,30,60,120,240,360,720,1440,10080];
 const kname=m=>KM.find(x=>x[0]===m)[1],klab=m=>m===10080?"1W":m===1440?"1D":m>=60?(m/60)+"H":m+"m";
-S.kx={};
-function aggK(k,ms){const o=[];let cur=null;k.forEach(x=>{const bk=Math.floor(x[0]/ms)*ms;if(!cur||cur[0]!==bk){cur=[bk,x[1],x[2],x[3],x[4],x[5]];o.push(cur)}else{if(x[2]>cur[2])cur[2]=x[2];if(x[3]<cur[3])cur[3]=x[3];cur[4]=x[4];cur[5]+=x[5]}});return o}
+S.kx={};function aggK(k,ms){const o=[];let cur=null;k.forEach(x=>{const bk=Math.floor(x[0]/ms)*ms;if(!cur||cur[0]!==bk){cur=[bk,x[1],x[2],x[3],x[4],x[5]];o.push(cur)}else{if(x[2]>cur[2])cur[2]=x[2];if(x[3]<cur[3])cur[3]=x[3];cur[4]=x[4];cur[5]+=x[5]}});return o}
 async function ckl(sym,tf,lim){if(tf==="3h")return aggK(await kl(sym,"1h",Math.min(1000,lim*3),false),108e5);if(tf==="8h")return aggK(await kl(sym,"4h",Math.min(1000,lim*2),false),288e5);return kl(sym,tf,lim,false)}
 function kget(r,m){const n=kname(m);return r.d[n]||(S.kx[r.s]&&S.kx[r.s][n])||null}
 function kval(a){return S.prev?a.live:a.rsi}
@@ -392,26 +391,28 @@ function renderXD(){const xb=$("xb"),chip=(id,k,on,txt)=>'<button class="tfb'+(o
 function axTxt(x){const c=x.axc,a=x.a;const now='<span class="mu"> ADX '+(a.adl!==null&&a.adl!==undefined?a.adl.toFixed(1):"–")+' / -DI '+a.dl.toFixed(1)+'</span>';
   if(!c)return'<span class="mu">no cross</span>'+now;
   return'<span class="b '+(c.dir==="up"?"up":"dn")+'">ADX '+(c.dir==="up"?"▲ above":"▼ below")+' -DI</span> <span class="mu">'+(c.st==="Forming"?"LIVE":c.ago===0?"this candle":c.ago+" candle"+(c.ago>1?"s":"")+" ago")+'</span>'+now}
+function hsOf(x){return x.ms?x.ms.m:(x.a&&x.a.ms)||null}
+function hsTxt(x){const m=hsOf(x);if(!m)return'<span class="mu">—</span>';return g6(m.zlo)+' – '+g6(m.zhi)+' <span class="mu">'+(m.ret?"retested":"waiting")+'</span>'}
 function dmiRsiTxt(x){if(x.rule==="ms")return "RSI "+x.v.toFixed(1)+" on "+tfl(x.tf);if(x.long)return S.dlr==="cross"?"RSI "+x.v.toFixed(1)+" · crossed above its MA":"RSI "+x.v.toFixed(1)+" above "+S.dlr;return "RSI "+x.v.toFixed(1)+" below "+CFG.os1}
-function exportDmi(list){const h=["Symbol","TF","RSI rule","Signal","Status","-DI cross candle close (PKT)","-DI before","-DI after","-DI now (live)","ADX × -DI cross","ADX now","RSI now","Price at cross","Zone low","Zone high","24h %","24h volume"];
+function exportDmi(list){const h=["Symbol","TF","RSI rule","Signal","Status","-DI cross candle close (PKT)","-DI before","-DI after","-DI now (live)","ADX × -DI cross","ADX now","RSI now","Price at cross","High swing low","High swing high","24h %","24h volume"];
   const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
-  const rows=list.map(x=>[x.s,tfl(x.tf),x.rule==="long"?"Long: RSI "+(S.dlr==="cross"?"crossed above MA":"above "+S.dlr):x.rule==="key"?"Key Timeframe":x.rule==="ms"?"Magical shorts":"Oversold RSI",x.long?"LONG":"SHORT",x.c.st,fmtT(x.close),x.c.pv.toFixed(2),x.c.di.toFixed(2),x.a.dl.toFixed(2),x.axc?(x.axc.dir==='up'?'ADX above -DI':'ADX below -DI')+' ('+(x.axc.st==='Forming'?'LIVE':x.axc.ago+' ago')+')':'',x.a.adl!==null&&x.a.adl!==undefined?x.a.adl.toFixed(2):'',x.v.toFixed(2),x.c.price,x.ms?x.ms.m.zlo:"",x.ms?x.ms.m.zhi:"",x.t.ch!==undefined?x.t.ch.toFixed(2):"",x.t.v!==undefined?Math.round(x.t.v):""]);
+  const rows=list.map(x=>[x.s,tfl(x.tf),x.rule==="long"?"Long: RSI "+(S.dlr==="cross"?"crossed above MA":"above "+S.dlr):x.rule==="key"?"Key Timeframe":x.rule==="ms"?"Magical shorts":"Oversold RSI",x.long?"LONG":"SHORT",x.c.st,fmtT(x.close),x.c.pv.toFixed(2),x.c.di.toFixed(2),x.a.dl.toFixed(2),x.axc?(x.axc.dir==='up'?'ADX above -DI':'ADX below -DI')+' ('+(x.axc.st==='Forming'?'LIVE':x.axc.ago+' ago')+')':'',x.a.adl!==null&&x.a.adl!==undefined?x.a.adl.toFixed(2):'',x.v.toFixed(2),x.c.price,hsOf(x)?hsOf(x).zlo:"",hsOf(x)?hsOf(x).zhi:"",x.t.ch!==undefined?x.t.ch.toFixed(2):"",x.t.v!==undefined?Math.round(x.t.v):""]);
   const csv=[h].concat(rows).map(r=>r.map(q).join(",")).join("\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="dmi-signals.csv";document.body.appendChild(a);a.click();a.remove()}
 function dmiTable(dr){const list=newFirst(dr.filter(x=>!S.filter||x.s.includes(S.filter)),dk),th=t=>'<th style="cursor:default">'+t+'</th>';
-  $("tbl").innerHTML='<thead><tr>'+["Symbol","TF","Signal","RSI rule","Status","-DI crossed "+CFG.dmiLvl+" (candle close)","-DI before → after","-DI now (live)","ADX × -DI","RSI now","Price at cross","Short zone","24h %","24h volume",""].map(th).join("")+'</tr></thead><tbody>'+(list.length?list.map(x=>{
+  $("tbl").innerHTML='<thead><tr>'+["Symbol","TF","Signal","RSI rule","Status","-DI crossed "+CFG.dmiLvl+" (candle close)","-DI before → after","-DI now (live)","ADX × -DI","RSI now","Price at cross","High swing entry","24h %","24h volume",""].map(th).join("")+'</tr></thead><tbody>'+(list.length?list.map(x=>{
     const sg=x.long?'<span class="b up">▲ LONG</span>':'<span class="b dn">▼ SHORT</span>',
     st=x.c.st==="Forming"?'<span class="b" style="background:var(--nbg);color:var(--nfg)">Forming · LIVE</span>':'<span class="b up">Confirmed</span>',
     when=x.c.st==="Forming"?"closes "+fmtT(x.close):fmtT(x.close)+' <span class="mu">'+agoT(x.close)+'</span>',
     rr=x.rule==="long"?'<span class="b up">Long RSI</span> <span class="mu">'+(S.dlr==="cross"?"RSI × MA cross":"RSI > "+S.dlr)+'</span>':x.rule==="key"?'<span class="b">Key TF</span> <span class="mu">chain '+x.kc.chain.map(klab).join("+")+'</span>':x.rule==="ms"?'<span class="b dn">Magical short</span> <span class="mu">grade '+x.ms.gr+'</span>':'<span class="b">Oversold</span>';
-    return'<tr class="r'+(isNew(dk(x))?" nw":"")+'" data-s="'+x.s+'" data-tf="'+x.tf+'"><td><b>'+x.s.replace("USDT","")+'</b><span class="mu">/USDT</span>'+newBadge(dk(x))+'</td><td><span class="b">'+tfl(x.tf)+'</span></td><td>'+sg+'</td><td style="text-align:left">'+rr+'</td><td>'+st+'</td><td>'+when+'</td><td>'+x.c.pv.toFixed(1)+' → <b class="'+(x.long?"up":"dn")+'">'+x.c.di.toFixed(1)+'</b></td><td class="mu">'+x.a.dl.toFixed(1)+'</td><td style="text-align:left">'+axTxt(x)+'</td><td style="text-align:left" class="'+(x.v<CFG.os1?"up":"")+'">'+dmiRsiTxt(x)+'</td><td>'+g6(x.c.price)+'</td><td>'+(x.ms?g6(x.ms.m.zlo)+' – '+g6(x.ms.m.zhi):'<span class="mu">—</span>')+'</td><td class="'+(x.t.ch>=0?"up":"dn")+'">'+(x.t.ch!==undefined?(x.t.ch>=0?"+":"")+x.t.ch.toFixed(2)+"%":"")+'</td><td>'+(x.t.v!==undefined?"$"+(x.t.v>=1e6?(x.t.v/1e6).toFixed(2)+"M":(x.t.v/1e3).toFixed(1)+"K"):"")+'</td><td><a href="#coin/'+x.s+'" class="mu">Open →</a> <a href="https://www.bybit.com/trade/usdt/'+x.s+'" target="_blank" rel="noopener" class="mu">Bybit ↗</a></td></tr>'}).join(""):'<tr><td colspan="15" class="empty">'+(S.scanning?"Scanning… results appear here as coins are checked.":"No -DI cross matches the RSI rule right now.")+'</td></tr>')+'</tbody>'}
+    return'<tr class="r'+(isNew(dk(x))?" nw":"")+'" data-s="'+x.s+'" data-tf="'+x.tf+'"><td><b>'+x.s.replace("USDT","")+'</b><span class="mu">/USDT</span>'+newBadge(dk(x))+'</td><td><span class="b">'+tfl(x.tf)+'</span></td><td>'+sg+'</td><td style="text-align:left">'+rr+'</td><td>'+st+'</td><td>'+when+'</td><td>'+x.c.pv.toFixed(1)+' → <b class="'+(x.long?"up":"dn")+'">'+x.c.di.toFixed(1)+'</b></td><td class="mu">'+x.a.dl.toFixed(1)+'</td><td style="text-align:left">'+axTxt(x)+'</td><td style="text-align:left" class="'+(x.v<CFG.os1?"up":"")+'">'+dmiRsiTxt(x)+'</td><td>'+g6(x.c.price)+'</td><td style="text-align:left">'+hsTxt(x)+'</td><td class="'+(x.t.ch>=0?"up":"dn")+'">'+(x.t.ch!==undefined?(x.t.ch>=0?"+":"")+x.t.ch.toFixed(2)+"%":"")+'</td><td>'+(x.t.v!==undefined?"$"+(x.t.v>=1e6?(x.t.v/1e6).toFixed(2)+"M":(x.t.v/1e3).toFixed(1)+"K"):"")+'</td><td><a href="#coin/'+x.s+'" class="mu">Open →</a> <a href="https://www.bybit.com/trade/usdt/'+x.s+'" target="_blank" rel="noopener" class="mu">Bybit ↗</a></td></tr>'}).join(""):'<tr><td colspan="15" class="empty">'+(S.scanning?"Scanning… results appear here as coins are checked.":"No -DI cross matches the RSI rule right now.")+'</td></tr>')+'</tbody>'}
 async function scan(){
   if(S.scanning)return;S.scanning=true;S.lastStart=Date.now();$("scanst").textContent="starting…";
   try{
     let j;
-    try{const r=await fetch("https://api.bybit.com/v5/market/tickers?category=linear");const o=await r.json();j=o.result.list.map(x=>({symbol:x.symbol,lastPrice:x.lastPrice,priceChangePercent:String(+x.price24hPcnt*100),quoteVolume:x.turnover24h}));SRC="bybit"}
+    try{const r=await fetch("https://api.bybit.com/v5/market/tickers?category=linear");const o=await r.json();j=o.result.list.map(x=>({symbol:x.symbol,lastPrice:x.lastPrice,priceChangePercent:String(+x.price24hPcnt*100),quoteVolume:x.turnover24h,fr:x.fundingRate,nf:x.nextFundingTime}));SRC="bybit"}
     catch(e){const r=await fetch(API+"/api/v3/ticker/24hr");j=await r.json();SRC="binance"}
-    S.tick={};j.forEach(x=>{S.tick[x.symbol]={p:+x.lastPrice,ch:+x.priceChangePercent,v:+x.quoteVolume}});
+    S.tick={};j.forEach(x=>{S.tick[x.symbol]={p:+x.lastPrice,ch:+x.priceChangePercent,v:+x.quoteVolume,fr:(x.fr!==undefined&&x.fr!=="")?+x.fr*100:undefined,nf:+x.nf||0}});
     if(Date.now()-S.t>3600000||!S.list.length){
       S.list=j.filter(x=>x.symbol.endsWith("USDT")&&!BY[x.symbol]&&!STABLE.has(x.symbol.slice(0,-4))&&(SRC==="bybit"||!/(UP|DOWN|BULL|BEAR)USDT$/.test(x.symbol))).map(x=>[+x.quoteVolume,x.symbol]).sort((a,b)=>b[0]-a[0]).slice(0,TOP).map(x=>x[1]);S.t=Date.now()}
     S.total=S.list.length;S.done=0;
@@ -528,6 +529,7 @@ async function panel(sym,my){
     $("pr").textContent=g6(+t.lastPrice);
     $("ch24").innerHTML='<span class="'+(+t.priceChangePercent>=0?"up":"dn")+'">'+(+t.priceChangePercent>=0?"+":"")+(+t.priceChangePercent).toFixed(2)+'% 24h</span>';
     $("vol").textContent="24h volume "+(+t.quoteVolume/1e6).toFixed(1)+"M USDT";
+    if(t.fr!==undefined&&!isNaN(t.fr)&&t.nf)$("fnd").innerHTML='Funding <b class="'+(t.fr<0?"up":t.fr>0?"dn":"")+'">'+(t.fr>0?"+":"")+t.fr.toFixed(4)+'%</b> · next payout in <span data-nf="'+t.nf+'">'+fcd(t.nf)+'</span>';
     const A={};await pool(GT.concat(["1m","6h","12h"]),6,async tf=>{A[tf]=anTf(await kl(sym,tf,300,false))});
     if(CN!==my)return;
     const below=PT.filter(t=>A[t]&&!A[t].above),above=PT.filter(t=>A[t]&&A[t].above);
@@ -550,7 +552,7 @@ async function panel(sym,my){
   }catch(e){if(CN===my&&$("pnl")&&$("pnl").className==="mu")$("pnl").textContent="no data for "+sym}}
 async function renderCoin(sym){
   coinStop();const my=CN,tfNow=window._tf||"1h";
-  $("page").innerHTML='<div class="chead"><span class="star" id="st">★</span><h2 style="margin:0">'+(BY[sym]?BY[sym][0]:sym.replace("USDT",""))+'<span class="mu" style="font-size:14px"> '+(BY[sym]||SRC==="bybit"?"· Bybit perpetual":"/USDT · Binance spot")+'</span></h2><span class="p" id="pr">–</span><span id="ch24"></span><span class="mu" id="vol"></span></div><div class="coin"><div class="box" style="padding:0;overflow:hidden"><div class="tfbar" id="tfb" style="display:none;padding:10px 10px 0"></div><div id="cwrap"></div></div><div class="box side" id="sd"><div id="pnl" class="mu">loading…</div></div></div>';
+  $("page").innerHTML='<div class="chead"><span class="star" id="st">★</span><h2 style="margin:0">'+(BY[sym]?BY[sym][0]:sym.replace("USDT",""))+'<span class="mu" style="font-size:14px"> '+(BY[sym]||SRC==="bybit"?"· Bybit perpetual":"/USDT · Binance spot")+'</span></h2><span class="p" id="pr">–</span><span id="ch24"></span><span class="mu" id="vol"></span><span class="mu" id="fnd"></span></div><div class="coin"><div class="box" style="padding:0;overflow:hidden"><div class="tfbar" id="tfb" style="display:none;padding:10px 10px 0"></div><div id="cwrap"></div></div><div class="box side" id="sd"><div id="pnl" class="mu">loading…</div></div></div>';
   const star=$("st");const paintStar=()=>star.classList.toggle("on",wl().includes(sym));paintStar();
   star.onclick=()=>{let a=wl();a=a.includes(sym)?a.filter(x=>x!==sym):a.concat(sym);setWl(a);paintStar()};
   panel(sym,my);cTimer=setInterval(()=>panel(sym,my),20000);
@@ -616,6 +618,27 @@ async function renderDom(a){
         if(t==="1h"||!$("dv"+i).dataset.s){$("dv"+i).textContent=dfmt(n,v[L]);$("dv"+i).dataset.s=1}})}catch(e){if(CN===my&&$("dnote"))$("dnote").textContent="Could not load data ("+(e.message||"error")+"). If this stays, CoinGecko or Bybit is not reachable from your browser."}}};
   fill();cTimer=setInterval(fill,60000);
   domChart(name,iv,my)}
+// ===== Funding rates (Bybit USDT perpetuals) =====
+S.fside="all";S.fmin=0.1;
+function fcd(ms){const s=Math.floor((ms-Date.now())/1000);if(s<=0)return"payout now";const h=Math.floor(s/3600),m=Math.floor(s%3600/60),c=s%60;return(h?h+"h ":"")+p2(m)+"m "+p2(c)+"s"}
+setInterval(()=>{document.querySelectorAll("[data-nf]").forEach(e=>{e.textContent=fcd(+e.dataset.nf)})},1000);
+function fundRows(){const out=[];
+  S.list.forEach(s=>{const t=S.tick[s];if(!t||t.fr===undefined||isNaN(t.fr)||!t.nf)return;
+    if(Math.abs(t.fr)<S.fmin)return;if(S.fside==="neg"&&!(t.fr<0))return;if(S.fside==="pos"&&!(t.fr>0))return;
+    out.push({s,t})});
+  out.sort((a,b)=>Math.abs(b.t.fr)-Math.abs(a.t.fr));return out}
+function renderFunding(){
+  const rows=fundRows(),chip=(k,txt)=>'<button class="tfb'+(S.fside===k?" on":"")+'" data-f="'+k+'">'+txt+'</button>';
+  $("page").innerHTML='<h2>Funding Rates</h2><p class="sub">Funding rate and countdown to the next payout · top '+TOP+' Bybit USDT perpetuals · negative rate = shorts pay longs, positive rate = longs pay shorts · the rate is per payout period (Bybit uses 1h, 2h, 4h or 8h depending on the coin) · updates with every scan.</p>'+
+   '<div class="add" style="flex-wrap:wrap;align-items:center"><span class="mu">SHOW</span>'+chip("all","All")+chip("neg","Negative · shorts pay longs")+chip("pos","Positive · longs pay shorts")+'<span class="mu">Min rate</span><select id="fm" style="'+SEL+'">'+[[0,"Any"],[0.05,"0.05%"],[0.1,"0.1%"],[0.25,"0.25%"],[0.5,"0.5%"],[1,"1%"]].map(x=>'<option value="'+x[0]+'"'+(S.fmin===x[0]?" selected":"")+'>'+x[1]+'</option>').join("")+'</select></div>'+
+   (SRC!=="bybit"?'<div class="note">Funding data comes from Bybit. Bybit could not be reached, so this page is empty.</div>':'')+
+   '<div class="rule">Payout column = what a position of $1,000 at 20x (= $20,000) would receive if the rate stays the same until the payout. Before fees, slippage and price moves. A big rate usually means a risky, thin coin: at 20x a 5% price move against you liquidates the position. Green row = payout in less than 10 minutes.</div>'+
+   '<div class="tw"><table><thead><tr>'+["Coin","Price","Funding rate","Who pays","Next payout in","Payout time (PKT)","Payout on $1,000 · 20x","24h %","24h volume",""].map(h=>'<th style="cursor:default">'+h+'</th>').join("")+'</tr></thead><tbody>'+
+   (rows.length?rows.map(x=>{const t=x.t,neg=t.fr<0,est=200*Math.abs(t.fr),soon=t.nf-Date.now()<6e5&&t.nf-Date.now()>0;
+     return'<tr class="r'+(soon?" nw":"")+'" data-s="'+x.s+'"><td><b>'+x.s.replace("USDT","")+'</b><span class="mu">/USDT</span></td><td>'+g6(t.p)+'</td><td class="'+(neg?"up":"dn")+'"><b>'+(t.fr>0?"+":"")+t.fr.toFixed(4)+'%</b></td><td style="text-align:left">'+(t.fr===0?'<span class="mu">nobody</span>':neg?'<span class="b up">Shorts pay longs</span>':'<span class="b dn">Longs pay shorts</span>')+'</td><td><b data-nf="'+t.nf+'">'+fcd(t.nf)+'</b></td><td>'+fmtT(t.nf)+'</td><td style="text-align:left">'+(neg?'<span class="up">Long +$'+est.toFixed(0)+'</span>':'<span class="dn">Short +$'+est.toFixed(0)+'</span>')+'</td><td class="'+(t.ch>=0?"up":"dn")+'">'+(t.ch>=0?"+":"")+t.ch.toFixed(2)+'%</td><td>$'+(t.v>=1e6?(t.v/1e6).toFixed(2)+"M":(t.v/1e3).toFixed(1)+"K")+'</td><td><a href="#coin/'+x.s+'" class="mu">Open →</a> <a href="https://www.bybit.com/trade/usdt/'+x.s+'" target="_blank" rel="noopener" class="mu">Bybit ↗</a></td></tr>'}).join(""):'<tr><td colspan="10" class="empty">'+(S.scanning||!S.list.length?"Loading…":"No coin matches these filters right now.")+'</td></tr>')+'</tbody></table></div>';
+  $("page").querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{S.fside=b.dataset.f;renderFunding()});
+  $("fm").onchange=e=>{S.fmin=+e.target.value;renderFunding()};
+  $("page").querySelectorAll("tr.r").forEach(tr=>tr.onclick=e=>{if(e.target.closest("a[target]"))return;location.hash="#coin/"+tr.dataset.s})}
 // ===== watchlist =====
 async function renderWatch(){
   $("page").innerHTML='<h2>My Watchlist</h2><p class="sub">Coins you starred. Saved in this browser only.</p><div class="add"><input id="wi" placeholder="Add a coin, e.g. SOL"><button id="wb">Add</button></div><div class="tw"><table><thead><tr><th>Coin</th><th>Price</th><th>24h</th><th>RSI 15m</th><th>RSI 1h</th><th>RSI 4h</th><th>vs MA 15m / 1h / 4h</th><th></th></tr></thead><tbody id="wt"></tbody></table></div>';
@@ -633,9 +656,9 @@ async function renderWatch(){
 const BY={QQQUSDT:["Nasdaq 100","NQ","NQ","#2563eb"],XAUUSDT:["Gold","XAUUSD","Au","#c9a227"],XAGUSDT:["Silver","XAGUSD","Ag","#9aa4b2"],CLUSDT:["Crude Oil","CL","Oil","#3b4656"]};
 let SRC="bybit";
 const BYI={"1m":"1","6h":"360","12h":"720","3m":"3","5m":"5","15m":"15","30m":"30","1h":"60","2h":"120","4h":"240","1d":"D","1w":"W","1M":"M"};
-const MTF=["5m","15m","1h","4h","1d","1w","1M"],HTF=["4h","1d","1w","1M"];
+const MTF=["5m","15m","30m","1h","4h","1d","1w","1M"],HTF=["4h","1d","1w","1M"];
 async function byk(sym,iv,lim){const r=await fetch("https://api.bybit.com/v5/market/kline?category=linear&symbol="+sym+"&interval="+(BYI[iv]||iv)+"&limit="+lim);NET.calls++;if(r.status===429||r.status===403||r.status===418)NET.rl++;if(!r.ok)throw new Error(r.status);const j=await r.json();if(!j.result||!j.result.list)throw new Error("bybit");return j.result.list.slice().reverse().map(x=>[+x[0],+x[1],+x[2],+x[3],+x[4],+x[5]])}
-async function tk(sym){if(BY[sym]||SRC==="bybit"){const r=await fetch("https://api.bybit.com/v5/market/tickers?category=linear&symbol="+sym);const j=await r.json();const x=j.result.list[0];return{lastPrice:x.lastPrice,priceChangePercent:String(+x.price24hPcnt*100),quoteVolume:x.turnover24h}}const r=await fetch(API+"/api/v3/ticker/24hr?symbol="+sym);return r.json()}
+async function tk(sym){if(BY[sym]||SRC==="bybit"){const r=await fetch("https://api.bybit.com/v5/market/tickers?category=linear&symbol="+sym);const j=await r.json();const x=j.result.list[0];return{lastPrice:x.lastPrice,priceChangePercent:String(+x.price24hPcnt*100),quoteVolume:x.turnover24h,fr:(x.fundingRate!==undefined&&x.fundingRate!=="")?+x.fundingRate*100:undefined,nf:+x.nextFundingTime||0}}const r=await fetch(API+"/api/v3/ticker/24hr?symbol="+sym);return r.json()}
 const cv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 let MS={d:{},t:{},last:null,busy:false};
 async function macScan(){if(MS.busy)return;MS.busy=true;
@@ -675,7 +698,7 @@ function renderRecovery(){
   $("page").querySelectorAll(".tab[data-w]").forEach(t=>t.onclick=()=>{window._rec=t.dataset.w;renderRecovery()});
   $("page").querySelectorAll("tr.r").forEach(tr=>tr.onclick=()=>{location.hash="#coin/"+tr.dataset.s})}
 document.addEventListener("mouseup",()=>{setTimeout(()=>{S.down=false},50)});
-function refresh(){if(S.down)return;const p=route().p;if(p==="scanner")renderScanner(true);else if(p==="recovery")renderRecovery()}
+function refresh(){if(S.down)return;const p=route().p;if(p==="scanner")renderScanner(true);else if(p==="recovery")renderRecovery();else if(p==="funding")renderFunding()}
 function applyTheme(t){document.documentElement.dataset.theme=t;$("tg").textContent=t==="light"?"☾":"☀";try{localStorage.setItem("theme",t)}catch(e){}}
 // ===== router =====
 function route(){const h=(location.hash||"#scanner").slice(1).split("/");return{p:h[0]||"scanner",a:h[1]}}
@@ -684,6 +707,7 @@ function go(){const r=route();
   if(r.p!=="coin")coinStop();
   if(r.p==="coin"&&r.a){$("crumb").textContent="Coins / "+r.a;renderCoin(r.a)}
   else if(r.p==="dominance"){$("crumb").textContent="Dominance / "+(r.a?decodeURIComponent(r.a):"BTC.D");renderDom(r.a)}
+  else if(r.p==="funding"){$("crumb").textContent="Scanner / Funding Rates";renderFunding();if(!S.list.length)scan()}
   else if(r.p==="recovery"){$("crumb").textContent="Altcoins / Recovery Report";renderRecovery();if(!S.list.length)scan()}
   else if(r.p==="macro"){$("crumb").textContent="Commodities & Indices / RSI Scanner";renderMacro();macScan()}
   else if(r.p==="watchlist"){$("crumb").textContent="Scanner / My Watchlist";renderWatch()}
