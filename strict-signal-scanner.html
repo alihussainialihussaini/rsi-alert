@@ -155,6 +155,24 @@
   </div>
 
   <div class="panel">
+    <h2>Paper trading — simulated, checked every scan</h2>
+    <p style="color:var(--text-dim);font-size:12px;margin:0 0 10px;">When enabled, each new strict or -DI signal opens one simulated position per symbol (no second entry while one is already open). Every scan compares the latest last-traded price to SL/TP and closes the position on a touch, writing the outcome into the journal below as win, loss or timeout. This uses last price only, not intrabar wicks, so fills are an approximation, not a guaranteed one.</p>
+    <div class="controls" style="margin-bottom:12px;">
+      <label class="toggle"><input type="checkbox" id="paperToggle" checked> Auto-open paper trades on signal</label>
+      <button id="flattenAllBtn">Close all open positions now</button>
+    </div>
+    <div class="stat-row" style="grid-template-columns:repeat(3,1fr);margin-bottom:14px;">
+      <div class="stat"><div class="num mono" id="statOpenPos">0</div><div class="lbl">Open positions</div></div>
+      <div class="stat"><div class="num mono" id="statRealizedR">—</div><div class="lbl">Realized R (sum)</div></div>
+      <div class="stat"><div class="num mono" id="statExpectancy">—</div><div class="lbl">Expectancy (avg R)</div></div>
+    </div>
+    <table id="positionsTable">
+      <thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>SL</th><th>TP</th><th>TF</th><th>Open</th><th></th></tr></thead>
+      <tbody><tr><td colspan="8" class="empty">No open paper positions.</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="panel">
     <h2>Signal journal</h2>
     <div id="journalList"><div class="empty">Signals you mark Win / Loss / Timeout will appear here, and persist across visits.</div></div>
   </div>
@@ -181,6 +199,10 @@
   const seenDiKeys = new Set();
   let sessionDiCount = 0;
   let chartIdCounter = 0;
+
+  const LS_POSITIONS = "sss_positions_v1";
+  const LS_PAPER_ENABLED = "sss_paper_enabled_v1";
+  let paperTradingEnabled = localStorage.getItem(LS_PAPER_ENABLED) !== "0";
 
   function wireChartToggle(toggleBtn, chartDiv, symbol, interval){
     toggleBtn.addEventListener("click", () => {
@@ -538,8 +560,13 @@
     if (container.querySelector(".empty")) container.innerHTML = "";
     const div = document.createElement("div");
     div.className = "signal-card" + (result.dir === "short" ? " short" : "");
-    const id = `${symbol}_${Date.now()}`;
     const chartId = `chart_${chartIdCounter++}`;
+    const actionsHtml = paperTradingEnabled
+      ? `<span class="outcome-tag" style="background:var(--surface);color:var(--text-dim);">Paper trade opened</span><button data-action="chart">View chart</button>`
+      : `<button data-outcome="win">Mark win</button>
+         <button data-outcome="loss">Mark loss</button>
+         <button data-outcome="timeout">Mark timeout</button>
+         <button data-action="chart">View chart</button>`;
     div.innerHTML = `
       <div class="sc-top">
         <div class="sc-sym">${symbol} <span class="badge ${result.dir}">${result.dir}</span></div>
@@ -551,22 +578,19 @@
       <div class="levels-row mono">
         Entry ${formatPrice(result.levels.entry)} &nbsp;|&nbsp; SL ${formatPrice(result.levels.sl)} &nbsp;|&nbsp; TP ${formatPrice(result.levels.tp)}
       </div>
-      <div class="sc-actions">
-        <button data-outcome="win">Mark win</button>
-        <button data-outcome="loss">Mark loss</button>
-        <button data-outcome="timeout">Mark timeout</button>
-        <button data-action="chart">View chart</button>
-      </div>
+      <div class="sc-actions">${actionsHtml}</div>
       <div class="chart-box" id="${chartId}"></div>`;
-    div.querySelectorAll("[data-outcome]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        addJournalEntry(symbol, result.dir, btn.dataset.outcome, result.metrics, "strict", result.levels);
-        const actions = div.querySelector(".sc-actions");
-        const chartBtn = actions.querySelector('[data-action="chart"]');
-        actions.innerHTML = `<span class="outcome-tag ${btn.dataset.outcome}">${btn.dataset.outcome}</span>`;
-        actions.appendChild(chartBtn);
+    if (!paperTradingEnabled){
+      div.querySelectorAll("[data-outcome]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          addJournalEntry(symbol, result.dir, btn.dataset.outcome, result.metrics, "strict", result.levels);
+          const actions = div.querySelector(".sc-actions");
+          const chartBtn = actions.querySelector('[data-action="chart"]');
+          actions.innerHTML = `<span class="outcome-tag ${btn.dataset.outcome}">${btn.dataset.outcome}</span>`;
+          actions.appendChild(chartBtn);
+        });
       });
-    });
+    }
     wireChartToggle(div.querySelector('[data-action="chart"]'), div.querySelector(".chart-box"), symbol);
     container.prepend(div);
   }
@@ -583,12 +607,160 @@
     }).join("");
   }
 
-  function addJournalEntry(symbol, dir, outcome, metrics, source, levels, tf){
+  function addJournalEntry(symbol, dir, outcome, metrics, source, levels, tf, rMultiple){
     const j = loadJournal();
-    j.unshift({ symbol, dir, outcome, time: Date.now(), metrics: metrics || null, source: source || "strict", levels: levels || null, tf: tf || null });
+    j.unshift({ symbol, dir, outcome, time: Date.now(), metrics: metrics || null, source: source || "strict", levels: levels || null, tf: tf || null, rMultiple: rMultiple != null ? rMultiple : null });
     saveJournal(j);
     renderJournal();
   }
+
+  // ---- Paper trading: one simulated position per symbol, opened on a fresh
+  // strict or -DI signal, closed automatically once last price touches SL/TP. ----
+
+  function loadPositions(){
+    try { return JSON.parse(localStorage.getItem(LS_POSITIONS) || "[]"); }
+    catch(e){ return []; }
+  }
+  function savePositions(p){ localStorage.setItem(LS_POSITIONS, JSON.stringify(p)); }
+
+  function hasOpenPosition(positions, symbol){
+    return positions.some(p => p.symbol === symbol && p.status === "open");
+  }
+
+  function openPaperTrade(symbol, dir, levels, source, tf){
+    if (!paperTradingEnabled) return null;
+    if (levels.entry == null || levels.sl == null || levels.tp == null) return null;
+    const positions = loadPositions();
+    if (hasOpenPosition(positions, symbol)) return null;
+    const pos = {
+      id: `${symbol}_${Date.now()}`,
+      symbol, dir, source, tf: tf || null,
+      entry: levels.entry, sl: levels.sl, tp: levels.tp,
+      openedAt: Date.now(), status: "open",
+    };
+    positions.unshift(pos);
+    savePositions(positions);
+    renderPositions();
+    return pos;
+  }
+
+  // Marks a position closed and writes the journal row. Caller saves positions.
+  function closePosition(pos, outcome, exitPrice){
+    pos.status = "closed";
+    pos.closedAt = Date.now();
+    pos.outcome = outcome;
+    pos.exitPrice = exitPrice;
+    const riskDist = Math.abs(pos.entry - pos.sl);
+    const moveDist = pos.dir === "long" ? exitPrice - pos.entry : pos.entry - exitPrice;
+    pos.rMultiple = riskDist ? moveDist / riskDist : null;
+    addJournalEntry(pos.symbol, pos.dir, outcome, null, `${pos.source}-auto`,
+      { entry: pos.entry, sl: pos.sl, tp: pos.tp }, pos.tf, pos.rMultiple);
+  }
+
+  function checkOpenPositions(tickerMap){
+    const positions = loadPositions();
+    let changed = false;
+    positions.forEach(pos => {
+      if (pos.status !== "open") return;
+      const t = tickerMap[pos.symbol];
+      if (!t) return;
+      const last = parseFloat(t.lastPrice);
+      if (!isFinite(last)) return;
+      if (pos.dir === "long"){
+        if (last <= pos.sl){ closePosition(pos, "loss", pos.sl); changed = true; }
+        else if (last >= pos.tp){ closePosition(pos, "win", pos.tp); changed = true; }
+      } else {
+        if (last >= pos.sl){ closePosition(pos, "loss", pos.sl); changed = true; }
+        else if (last <= pos.tp){ closePosition(pos, "win", pos.tp); changed = true; }
+      }
+    });
+    if (changed) savePositions(positions);
+    renderPositions();
+  }
+
+  function renderPositions(){
+    const positions = loadPositions();
+    const open = positions.filter(p => p.status === "open");
+    el("statOpenPos").textContent = open.length;
+
+    const closedWithR = positions.filter(p => p.status === "closed" && p.rMultiple != null);
+    if (closedWithR.length){
+      const sumR = closedWithR.reduce((a,p) => a + p.rMultiple, 0);
+      const avgR = sumR / closedWithR.length;
+      el("statRealizedR").textContent = `${sumR >= 0 ? "+" : ""}${sumR.toFixed(2)}R`;
+      el("statExpectancy").textContent = `${avgR >= 0 ? "+" : ""}${avgR.toFixed(2)}R`;
+    } else {
+      el("statRealizedR").textContent = "—";
+      el("statExpectancy").textContent = "—";
+    }
+
+    const tbody = el("positionsTable").querySelector("tbody");
+    if (open.length === 0){
+      tbody.innerHTML = `<tr><td colspan="8" class="empty">No open paper positions.</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = open.map(p => {
+      const elapsedMin = Math.round((Date.now() - p.openedAt) / 60000);
+      return `<tr>
+        <td>${p.symbol}</td>
+        <td><span class="badge ${p.dir}">${p.dir}</span></td>
+        <td class="mono">${formatPrice(p.entry)}</td>
+        <td class="mono">${formatPrice(p.sl)}</td>
+        <td class="mono">${formatPrice(p.tp)}</td>
+        <td class="mono">${p.tf ? tfLabel(p.tf) : "—"}</td>
+        <td class="mono">${elapsedMin}m</td>
+        <td><button data-close-id="${p.id}">Close now</button></td>
+      </tr>`;
+    }).join("");
+    tbody.querySelectorAll("[data-close-id]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        const positions2 = loadPositions();
+        const pos = positions2.find(p => p.id === btn.dataset.closeId && p.status === "open");
+        if (!pos) return;
+        let last = pos.entry;
+        try {
+          const tickers = await fetchTickers();
+          const t = tickers.find(x => x.symbol === pos.symbol);
+          if (t) last = parseFloat(t.lastPrice);
+        } catch(e){ /* fall back to entry price if the fetch fails */ }
+        const moveDist = pos.dir === "long" ? last - pos.entry : pos.entry - last;
+        const outcome = moveDist > 0 ? "win" : moveDist < 0 ? "loss" : "timeout";
+        closePosition(pos, outcome, last);
+        savePositions(positions2);
+        renderPositions();
+      });
+    });
+  }
+
+  el("paperToggle").checked = paperTradingEnabled;
+  el("paperToggle").addEventListener("change", () => {
+    paperTradingEnabled = el("paperToggle").checked;
+    localStorage.setItem(LS_PAPER_ENABLED, paperTradingEnabled ? "1" : "0");
+  });
+
+  el("flattenAllBtn").addEventListener("click", async () => {
+    const positions = loadPositions();
+    const open = positions.filter(p => p.status === "open");
+    if (!open.length) return;
+    try {
+      const tickers = await fetchTickers();
+      const tickerMap = {};
+      tickers.forEach(t => tickerMap[t.symbol] = t);
+      open.forEach(pos => {
+        const t = tickerMap[pos.symbol];
+        const last = t ? parseFloat(t.lastPrice) : pos.entry;
+        const moveDist = pos.dir === "long" ? last - pos.entry : pos.entry - last;
+        const outcome = moveDist > 0 ? "win" : moveDist < 0 ? "loss" : "timeout";
+        closePosition(pos, outcome, last);
+      });
+      savePositions(positions);
+      renderPositions();
+    } catch(e){
+      statusEl.textContent = `Could not close positions: ${e.message}`;
+      statusEl.classList.add("err");
+    }
+  });
 
   function renderDiCard(symbol, di){
     const container = el("diList");
@@ -596,6 +768,12 @@
     const div = document.createElement("div");
     div.className = "signal-card" + (di.cross === "short" ? " short" : "");
     const chartId = `chart_${chartIdCounter++}`;
+    const actionsHtml = paperTradingEnabled
+      ? `<span class="outcome-tag" style="background:var(--surface);color:var(--text-dim);">Paper trade opened</span><button data-action="chart">View chart</button>`
+      : `<button data-outcome="win">Mark win</button>
+         <button data-outcome="loss">Mark loss</button>
+         <button data-outcome="timeout">Mark timeout</button>
+         <button data-action="chart">View chart</button>`;
     div.innerHTML = `
       <div class="sc-top">
         <div class="sc-sym">${symbol} <span class="badge ${di.cross}">${di.cross}</span></div>
@@ -604,22 +782,19 @@
       <div class="levels-row mono">
         Entry ${formatPrice(di.levels.entry)} &nbsp;|&nbsp; SL ${formatPrice(di.levels.sl)} &nbsp;|&nbsp; TP ${formatPrice(di.levels.tp)}
       </div>
-      <div class="sc-actions">
-        <button data-outcome="win">Mark win</button>
-        <button data-outcome="loss">Mark loss</button>
-        <button data-outcome="timeout">Mark timeout</button>
-        <button data-action="chart">View chart</button>
-      </div>
+      <div class="sc-actions">${actionsHtml}</div>
       <div class="chart-box" id="${chartId}"></div>`;
-    div.querySelectorAll("[data-outcome]").forEach(btn => {
-      btn.addEventListener("click", () => {
-        addJournalEntry(symbol, di.cross, btn.dataset.outcome, null, "di-cross", di.levels, di.tf);
-        const actions = div.querySelector(".sc-actions");
-        const chartBtn = actions.querySelector('[data-action="chart"]');
-        actions.innerHTML = `<span class="outcome-tag ${btn.dataset.outcome}">${btn.dataset.outcome}</span>`;
-        actions.appendChild(chartBtn);
+    if (!paperTradingEnabled){
+      div.querySelectorAll("[data-outcome]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          addJournalEntry(symbol, di.cross, btn.dataset.outcome, null, "di-cross", di.levels, di.tf);
+          const actions = div.querySelector(".sc-actions");
+          const chartBtn = actions.querySelector('[data-action="chart"]');
+          actions.innerHTML = `<span class="outcome-tag ${btn.dataset.outcome}">${btn.dataset.outcome}</span>`;
+          actions.appendChild(chartBtn);
+        });
       });
-    });
+    }
     wireChartToggle(div.querySelector('[data-action="chart"]'), div.querySelector(".chart-box"), symbol, di.tf);
     container.prepend(div);
   }
@@ -635,6 +810,7 @@
           <span>${entry.symbol} <span class="badge ${entry.dir}" style="margin-left:4px;">${entry.dir}</span>
             ${entry.tf ? `<span class="mono" style="color:var(--text-dim);margin-left:6px;">${tfLabel(entry.tf)}</span>` : ""}
             ${entry.levels && entry.levels.entry != null ? `<span class="mono" style="color:var(--text-dim);margin-left:6px;">@ ${formatPrice(entry.levels.entry)}</span>` : ""}
+            ${entry.rMultiple != null ? `<span class="mono" style="color:var(--text-dim);margin-left:6px;">${entry.rMultiple>=0?"+":""}${entry.rMultiple.toFixed(2)}R</span>` : ""}
           </span>
           <span class="mono" style="color:var(--text-dim);">${new Date(entry.time).toLocaleString()}</span>
           <span class="outcome-tag ${entry.outcome}">${entry.outcome}</span>
@@ -656,6 +832,7 @@
       const tickers = await fetchTickers();
       const tickerMap = {};
       tickers.forEach(t => tickerMap[t.symbol] = t);
+      checkOpenPositions(tickerMap);
 
       const triggerInterval = el("triggerTf").value;
       const rr = Math.max(0.5, parseFloat(el("rrInput").value) || 2);
@@ -674,6 +851,7 @@
               sessionSignalCount++;
               renderStrictCard(symbol, result);
               notify(`Strict signal: ${symbol}`, `${result.dir.toUpperCase()} — all 6 conditions met`);
+              openPaperTrade(symbol, result.dir, result.levels, "strict", triggerInterval);
             }
           } else if (result.metCount >= 4){
             missRows.push(Object.assign({ symbol }, result));
@@ -686,6 +864,7 @@
                 sessionDiCount++;
                 renderDiCard(symbol, di);
                 notify(`-DI cross: ${symbol} (${tfLabel(di.tf)})`, `${di.cross.toUpperCase()} — -DI ${di.value.toFixed(1)}`);
+                openPaperTrade(symbol, di.cross, di.levels, "di-cross", di.tf);
               }
             });
           }
@@ -736,6 +915,7 @@
   });
 
   renderJournal();
+  renderPositions();
 })();
 </script>
 </body>
