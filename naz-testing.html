@@ -198,7 +198,8 @@ function exportCsv(list){const h=["Symbol","TF","Signal","Status","Crossed at (P
   const rows=list.map(x=>[x.s,x.tf,x.dir==="up"?"LONG":"SHORT",x.status,fmtT(x.close),x.x?x.x.rsi.toFixed(2):"",x.x?x.x.diff.toFixed(2):"",x.a.live.toFixed(2),x.a.lma.toFixed(2),x.x?x.x.price:"",x.tf==="4h"?"this TF":x.h4?(x.h4.above?"above":"below"):"",x.t.ch!==undefined?x.t.ch.toFixed(2):"",x.t.v!==undefined?Math.round(x.t.v):""]);
   const csv=[h].concat(rows).map(r=>r.map(q).join(",")).join("\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="rsi-ma-crosses.csv";document.body.appendChild(a);a.click();a.remove()}
-// ===== MTF Confluence =====const PRE=[{k:"all",n:"All confluences"},{k:"r1",n:"30m + 1H → retest",t:["30m","1h"],c:"rt"},{k:"r2",n:"1H + 4H → retest",t:["1h","4h"],c:"rt"},{k:"r3",n:"30m + 1H + 4H → retest",t:["30m","1h","4h"],c:"rt"},{k:"o1",n:"5m + 15m + 30m oversold",t:["5m","15m","30m"],c:"os"},{k:"m1",n:"30m → retest + 5m oversold",x:[["30m","rt"],["5m","os"]]},{k:"o3",n:"3+ TFs oversold",o3:true}];
+// ===== MTF Confluence =====
+const PRE=[{k:"all",n:"All confluences"},{k:"r1",n:"30m + 1H → retest",t:["30m","1h"],c:"rt"},{k:"r2",n:"1H + 4H → retest",t:["1h","4h"],c:"rt"},{k:"r3",n:"30m + 1H + 4H → retest",t:["30m","1h","4h"],c:"rt"},{k:"o1",n:"5m + 15m + 30m oversold",t:["5m","15m","30m"],c:"os"},{k:"m1",n:"30m → retest + 5m oversold",x:[["30m","rt"],["5m","os"]]},{k:"o3",n:"3+ TFs oversold",o3:true}];
 const LB=["","Oversold","Strongly Oversold","Extremely Oversold"];
 const lab=tf=>tf.replace(/[hdw]$/,m=>m.toUpperCase());
 function cond(a){const v=S.prev?a.live:a.rsi;let os=0;if(v<=CFG.os3)os=3;else if(v<=CFG.os2)os=2;else if(v<=CFG.os1)os=1;
@@ -308,7 +309,8 @@ function msTable(mr){const list=mr.filter(x=>!S.filter||x.s.includes(S.filter)),
 const KM=[[1,"1m"],[3,"3m"],[5,"5m"],[15,"15m"],[30,"30m"],[60,"1h"],[120,"2h"],[240,"4h"],[360,"6h"],[720,"12h"],[1440,"1d"],[10080,"1w"]];
 const KL=[1,3,5,15,30,60,120,240,360,720,1440,10080];
 const kname=m=>KM.find(x=>x[0]===m)[1],klab=m=>m===10080?"1W":m===1440?"1D":m>=60?(m/60)+"H":m+"m";
-S.kx={};function aggK(k,ms){const o=[];let cur=null;k.forEach(x=>{const bk=Math.floor(x[0]/ms)*ms;if(!cur||cur[0]!==bk){cur=[bk,x[1],x[2],x[3],x[4],x[5]];o.push(cur)}else{if(x[2]>cur[2])cur[2]=x[2];if(x[3]<cur[3])cur[3]=x[3];cur[4]=x[4];cur[5]+=x[5]}});return o}
+S.kx={};
+function aggK(k,ms){const o=[];let cur=null;k.forEach(x=>{const bk=Math.floor(x[0]/ms)*ms;if(!cur||cur[0]!==bk){cur=[bk,x[1],x[2],x[3],x[4],x[5]];o.push(cur)}else{if(x[2]>cur[2])cur[2]=x[2];if(x[3]<cur[3])cur[3]=x[3];cur[4]=x[4];cur[5]+=x[5]}});return o}
 async function ckl(sym,tf,lim){if(tf==="3h")return aggK(await kl(sym,"1h",Math.min(1000,lim*3),false),108e5);if(tf==="8h")return aggK(await kl(sym,"4h",Math.min(1000,lim*2),false),288e5);return kl(sym,tf,lim,false)}
 function kget(r,m){const n=kname(m);return r.d[n]||(S.kx[r.s]&&S.kx[r.s][n])||null}
 function kval(a){return S.prev?a.live:a.rsi}
@@ -426,7 +428,8 @@ async function scan(){
 function updateStatus(){if(S.scanning||!S.last)return;const left=Math.max(0,S.every-Math.floor((Date.now()-S.lastStart)/1000));$("scanst").textContent="last scan "+S.last.toLocaleTimeString("en-GB",{timeZone:"Asia/Karachi",hour:"2-digit",minute:"2-digit"})+" PKT · next in "+left+"s"}
 setInterval(()=>{if(!S.scanning&&S.lastStart&&Date.now()-S.lastStart>=S.every*1000)scan();updateStatus()},1000);
 function rc(v){return v===undefined||v===null?"mu":v<=CFG.os1?"up":v>=70?"dn":""}
-const SET=[["n70","Candles in a row above 70"],["lvl","Retest RSI level"],["look","Retest lookback (candles)"],["maLen","MA length"],["os1","Oversold below"],["os2","Strongly oversold below"],["os3","Extremely oversold below"],["dmiLen","-DMI length"],["dmiLvl","-DI level"]];const SEL='background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px';
+const SET=[["n70","Candles in a row above 70"],["lvl","Retest RSI level"],["look","Retest lookback (candles)"],["maLen","MA length"],["os1","Oversold below"],["os2","Strongly oversold below"],["os3","Extremely oversold below"],["dmiLen","-DMI length"],["dmiLvl","-DI level"]];
+const SEL='background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px';
 function renderXB(){const xb=$("xb");xb.style.display=(S.tab==="cross"||S.tab==="conf"||S.tab==="retest"||S.tab==="key"||S.tab==="ms"||S.tab==="dmi")?"flex":"none";if(S.tab==="dmi"){renderXD();return}if(S.tab==="ms"){renderXM();return}if(S.tab==="conf"){renderXC();return}if(S.tab==="retest"){renderXR();return}if(S.tab==="key"){renderXK();return}if(S.tab!=="cross")return;
   xb.innerHTML='<span class="mu">SIGNAL</span><button class="tfb'+(S.sigL?" on":"")+'" id="sL">Long (cross up)</button><button class="tfb'+(S.sigS?" on":"")+'" id="sS">Short (cross down)</button><span class="mu">Crossed within last</span><select id="sw" style="'+SEL+'">'+[1,2,3,4,5].map(n=>'<option value="'+n+'"'+(S.within===n?" selected":"")+'>'+n+' candle'+(n>1?"s":"")+'</option>').join("")+'</select><label><input type="checkbox" id="cf"'+(S.forming?" checked":"")+'> Forming crosses (LIVE)</label><label><input type="checkbox" id="c4"'+(S.only4?" checked":"")+'> Only with 4H aligned</label><label><input type="checkbox" id="cs"'+(S.sound?" checked":"")+'> Sound + notification</label><button id="ex" class="tfb">Export CSV</button>';
   $("sL").onclick=()=>{S.sigL=!S.sigL;S._xbFor=null;renderScanner(true)};
@@ -545,7 +548,8 @@ async function panel(sym,my){
     GT.forEach(t=>{const a=A[t];if(!a)return;const x=a.dx[0];if(x&&x.ago<2)sg.push(["-DI crossed "+(x.dir==="down"?"below":"above")+" "+CFG.dmiLvl,t,"-DI "+x.di.toFixed(1),x.dir==="down"?"up":"dn"])});
     GT.forEach(t=>{const a=A[t];if(!a)return;const x=a.ax&&a.ax[0];if(x&&x.ago<2)sg.push(["ADX crossed "+(x.dir==="up"?"above":"below")+" -DI",t,"ADX "+x.adx.toFixed(1),x.dir==="up"?"up":"dn"]);else if(a.afx)sg.push(["ADX × -DI forming "+(a.afx==="up"?"▲":"▼"),t,"LIVE","warn"])});
     GT.forEach(t=>{const a=A[t];if(!a||a.adn===null||a.adn===undefined||a.adp===null||a.adp===undefined)return;if(a.adn>=25&&a.adn>a.adp)sg.push(["ADX rising · strong trend",t,"ADX "+a.adn.toFixed(1),"up"])});
-    const s5='<div class="sec" style="border-bottom:0"><div class="st"><span>Active signals</span></div>'+(sg.length?sg.map(x=>'<div class="sg"><span>'+x[0]+' <span class="tfc">'+tfl(x[1])+'</span></span><span class="b '+(x[3]==="warn"?"":x[3])+'" style="'+(x[3]==="warn"?"background:var(--nbg);color:var(--nfg)":"")+'">'+x[2]+'</span></div>').join(""):'<div class="mu" style="font-size:13px">No active signals right now.</div>')+'</div>';    const s4='<div class="sec">'+kbox(A)+'</div>';
+    const s5='<div class="sec" style="border-bottom:0"><div class="st"><span>Active signals</span></div>'+(sg.length?sg.map(x=>'<div class="sg"><span>'+x[0]+' <span class="tfc">'+tfl(x[1])+'</span></span><span class="b '+(x[3]==="warn"?"":x[3])+'" style="'+(x[3]==="warn"?"background:var(--nbg);color:var(--nfg)":"")+'">'+x[2]+'</span></div>').join(""):'<div class="mu" style="font-size:13px">No active signals right now.</div>')+'</div>';
+    const s4='<div class="sec">'+kbox(A)+'</div>';
     $("pnl").className="";
     $("pnl").innerHTML=s1+s2+s3+s4+s5;
     const gk=$("gk");if(gk)gk.onclick=()=>{window._tf=gk.dataset.k;renderCoin(sym)};
