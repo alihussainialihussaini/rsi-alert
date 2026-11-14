@@ -619,24 +619,37 @@ async function renderDom(a){
         if(t==="1h"||!$("dv"+i).dataset.s){$("dv"+i).textContent=dfmt(n,v[L]);$("dv"+i).dataset.s=1}})}catch(e){if(CN===my&&$("dnote"))$("dnote").textContent="Could not load data ("+(e.message||"error")+"). If this stays, CoinGecko or Bybit is not reachable from your browser."}}};
   fill();cTimer=setInterval(fill,60000);
   domChart(name,iv,my)}
-// ===== Funding rates (Bybit USDT perpetuals) =====
-S.fside="all";S.fmin=0.1;
+// ===== Funding rates (WEEX futures, falls back to Bybit) =====
+S.fside="all";S.fmin=0.1;S.wx={t:0,rows:null,err:"",busy:false};
 function fcd(ms){const s=Math.floor((ms-Date.now())/1000);if(s<=0)return"payout now";const h=Math.floor(s/3600),m=Math.floor(s%3600/60),c=s%60;return(h?h+"h ":"")+p2(m)+"m "+p2(c)+"s"}
 setInterval(()=>{document.querySelectorAll("[data-nf]").forEach(e=>{e.textContent=fcd(+e.dataset.nf)})},1000);
-function fundRows(){const out=[];
-  S.list.forEach(s=>{const t=S.tick[s];if(!t||t.fr===undefined||isNaN(t.fr)||!t.nf)return;
-    if(Math.abs(t.fr)<S.fmin)return;if(S.fside==="neg"&&!(t.fr<0))return;if(S.fside==="pos"&&!(t.fr>0))return;
-    out.push({s,t})});
+async function wxLoad(){if(S.wx.busy||(S.wx.rows&&Date.now()-S.wx.t<60000))return;S.wx.busy=true;
+  try{const W="https://api-contract.weex.com/capi/v3/market/",rs=await Promise.all([fetch(W+"premiumIndex"),fetch(W+"ticker/24hr")]);
+    if(!rs[0].ok)throw new Error("Weex "+rs[0].status);
+    const pi=await rs[0].json(),tj=rs[1].ok?await rs[1].json():[],m={};
+    (Array.isArray(tj)?tj:[tj]).forEach(x=>{if(x&&x.symbol)m[x.symbol]=x});
+    S.wx.rows=(Array.isArray(pi)?pi:[pi]).filter(x=>x&&x.symbol&&/USDT$/.test(x.symbol)).map(x=>{const q=m[x.symbol]||{},lp=+q.lastPrice||+x.markPrice,op=+q.openPrice,fc=(x.forecastFundingRate!==undefined&&x.forecastFundingRate!=="")?+x.forecastFundingRate:+x.lastFundingRate;
+      return{s:x.symbol,src:"weex",t:{p:lp,ch:op>0?(lp-op)/op*100:0,v:+q.quoteVolume||0,fr:fc*100,nf:+x.nextFundingTime||0,cyc:+x.collectCycle||0}}}).filter(x=>!isNaN(x.t.fr)&&x.t.nf);
+    if(!S.wx.rows.length)throw new Error("Weex sent no data");
+    S.wx.t=Date.now();S.wx.err=""}
+  catch(e){S.wx.err=e.message||"error";if(!S.list.length)scan()}
+  S.wx.busy=false;if(route().p==="funding")renderFunding()}
+setInterval(()=>{if(route().p==="funding")wxLoad()},60000);
+function fundRows(){const out=[],ok=(t)=>{if(!t||t.fr===undefined||isNaN(t.fr)||!t.nf)return false;if(Math.abs(t.fr)<S.fmin)return false;if(S.fside==="neg"&&!(t.fr<0))return false;if(S.fside==="pos"&&!(t.fr>0))return false;return true};
+  if(S.wx.rows)S.wx.rows.forEach(x=>{if(ok(x.t))out.push(x)});
+  else S.list.forEach(s=>{const t=S.tick[s];if(ok(t))out.push({s,t,src:"bybit"})});
   out.sort((a,b)=>Math.abs(b.t.fr)-Math.abs(a.t.fr));return out}
 function renderFunding(){
-  const rows=fundRows(),chip=(k,txt)=>'<button class="tfb'+(S.fside===k?" on":"")+'" data-f="'+k+'">'+txt+'</button>';
-  $("page").innerHTML='<h2>Funding Rates</h2><p class="sub">Funding rate and countdown to the next payout · top '+TOP+' Bybit USDT perpetuals · negative rate = shorts pay longs, positive rate = longs pay shorts · the rate is per payout period (Bybit uses 1h, 2h, 4h or 8h depending on the coin) · updates with every scan.</p>'+
+  const rows=fundRows(),wx=!!S.wx.rows,chip=(k,txt)=>'<button class="tfb'+(S.fside===k?" on":"")+'" data-f="'+k+'">'+txt+'</button>';
+  $("page").innerHTML='<h2>Funding Rates</h2><p class="sub">Funding rate and countdown to the next payout · '+(wx?"WEEX USDT futures (all pairs)":"top "+TOP+" Bybit USDT perpetuals")+' · negative rate = shorts pay longs, positive rate = longs pay shorts · the rate is per payout period · refreshes every minute.</p>'+
    '<div class="add" style="flex-wrap:wrap;align-items:center"><span class="mu">SHOW</span>'+chip("all","All")+chip("neg","Negative · shorts pay longs")+chip("pos","Positive · longs pay shorts")+'<span class="mu">Min rate</span><select id="fm" style="'+SEL+'">'+[[0,"Any"],[0.05,"0.05%"],[0.1,"0.1%"],[0.25,"0.25%"],[0.5,"0.5%"],[1,"1%"]].map(x=>'<option value="'+x[0]+'"'+(S.fmin===x[0]?" selected":"")+'>'+x[1]+'</option>').join("")+'</select></div>'+
-   (SRC!=="bybit"?'<div class="note">Funding data comes from Bybit. Bybit could not be reached, so this page is empty.</div>':'')+
-   '<div class="rule">Payout column = what a position of $1,000 at 20x (= $20,000) would receive if the rate stays the same until the payout. Before fees, slippage and price moves. A big rate usually means a risky, thin coin: at 20x a 5% price move against you liquidates the position. Green row = payout in less than 10 minutes.</div>'+
+   (!wx&&S.wx.err?'<div class="note">Could not load WEEX ('+S.wx.err+'). Showing Bybit data instead. If this stays, your browser may be blocking the WEEX request.</div>':'')+
+   (!wx&&!S.wx.err&&S.wx.busy?'<div class="note">Loading WEEX data…</div>':'')+
+   (!wx&&SRC!=="bybit"?'<div class="note">Bybit could not be reached either, so this page is empty.</div>':'')+
+   '<div class="rule">Payout column = what a position of $1,000 at 20x (= $20,000) would receive if the rate stays the same until the payout. Before fees, slippage and price moves. A big rate usually means a risky, thin coin: at 20x a 5% price move against you liquidates the position. Green row = payout in less than 10 minutes. WEEX rate = the forecast rate for the next payout.</div>'+
    '<div class="tw"><table><thead><tr>'+["Coin","Price","Funding rate","Who pays","Next payout in","Payout time (PKT)","Payout on $1,000 · 20x","24h %","24h volume",""].map(h=>'<th style="cursor:default">'+h+'</th>').join("")+'</tr></thead><tbody>'+
    (rows.length?rows.map(x=>{const t=x.t,neg=t.fr<0,est=200*Math.abs(t.fr),soon=t.nf-Date.now()<6e5&&t.nf-Date.now()>0;
-     return'<tr class="r'+(soon?" nw":"")+'" data-s="'+x.s+'"><td><b>'+x.s.replace("USDT","")+'</b><span class="mu">/USDT</span></td><td>'+g6(t.p)+'</td><td class="'+(neg?"up":"dn")+'"><b>'+(t.fr>0?"+":"")+t.fr.toFixed(4)+'%</b></td><td style="text-align:left">'+(t.fr===0?'<span class="mu">nobody</span>':neg?'<span class="b up">Shorts pay longs</span>':'<span class="b dn">Longs pay shorts</span>')+'</td><td><b data-nf="'+t.nf+'">'+fcd(t.nf)+'</b></td><td>'+fmtT(t.nf)+'</td><td style="text-align:left">'+(neg?'<span class="up">Long +$'+est.toFixed(0)+'</span>':'<span class="dn">Short +$'+est.toFixed(0)+'</span>')+'</td><td class="'+(t.ch>=0?"up":"dn")+'">'+(t.ch>=0?"+":"")+t.ch.toFixed(2)+'%</td><td>$'+(t.v>=1e6?(t.v/1e6).toFixed(2)+"M":(t.v/1e3).toFixed(1)+"K")+'</td><td><a href="#coin/'+x.s+'" class="mu">Open →</a> <a href="https://www.bybit.com/trade/usdt/'+x.s+'" target="_blank" rel="noopener" class="mu">Bybit ↗</a></td></tr>'}).join(""):'<tr><td colspan="10" class="empty">'+(S.scanning||!S.list.length?"Loading…":"No coin matches these filters right now.")+'</td></tr>')+'</tbody></table></div>';
+     return'<tr class="r'+(soon?" nw":"")+'" data-s="'+x.s+'"><td><b>'+x.s.replace("USDT","")+'</b><span class="mu">/USDT</span></td><td>'+g6(t.p)+'</td><td class="'+(neg?"up":"dn")+'"><b>'+(t.fr>0?"+":"")+t.fr.toFixed(4)+'%</b></td><td style="text-align:left">'+(t.fr===0?'<span class="mu">nobody</span>':neg?'<span class="b up">Shorts pay longs</span>':'<span class="b dn">Longs pay shorts</span>')+'</td><td><b data-nf="'+t.nf+'">'+fcd(t.nf)+'</b></td><td>'+fmtT(t.nf)+(t.cyc?' <span class="mu">· every '+(t.cyc%60===0?t.cyc/60+"h":t.cyc+"m")+'</span>':"")+'</td><td style="text-align:left">'+(neg?'<span class="up">Long +$'+est.toFixed(0)+'</span>':'<span class="dn">Short +$'+est.toFixed(0)+'</span>')+'</td><td class="'+(t.ch>=0?"up":"dn")+'">'+(t.ch>=0?"+":"")+t.ch.toFixed(2)+'%</td><td>$'+(t.v>=1e6?(t.v/1e6).toFixed(2)+"M":(t.v/1e3).toFixed(1)+"K")+'</td><td><a href="#coin/'+x.s+'" class="mu">Open →</a>'+(x.src==="bybit"?' <a href="https://www.bybit.com/trade/usdt/'+x.s+'" target="_blank" rel="noopener" class="mu">Bybit ↗</a>':"")+'</td></tr>'}).join(""):'<tr><td colspan="10" class="empty">'+(S.scanning||S.wx.busy||(!wx&&!S.list.length)?"Loading…":"No coin matches these filters right now.")+'</td></tr>')+'</tbody></table></div>';
   $("page").querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{S.fside=b.dataset.f;renderFunding()});
   $("fm").onchange=e=>{S.fmin=+e.target.value;renderFunding()};
   $("page").querySelectorAll("tr.r").forEach(tr=>tr.onclick=e=>{if(e.target.closest("a[target]"))return;location.hash="#coin/"+tr.dataset.s})}
@@ -760,7 +773,7 @@ function go(){const r=route();
   if(r.p!=="coin")coinStop();
   if(r.p==="coin"&&r.a){$("crumb").textContent="Coins / "+r.a;renderCoin(r.a)}
   else if(r.p==="dominance"){$("crumb").textContent="Dominance / "+(r.a?decodeURIComponent(r.a):"BTC.D");renderDom(r.a)}
-  else if(r.p==="funding"){$("crumb").textContent="Scanner / Funding Rates";renderFunding();if(!S.list.length)scan()}
+  else if(r.p==="funding"){$("crumb").textContent="Scanner / Funding Rates";renderFunding();wxLoad()}
   else if(r.p==="recovery"){$("crumb").textContent="Altcoins / Recovery Report";renderRecovery();if(!S.list.length)scan()}
   else if(r.p==="macro"){$("crumb").textContent="Commodities & Indices / RSI Scanner";renderMacro();macScan()}
   else if(r.p==="bot"){$("crumb").textContent="Scanner / Demo Bot";renderBot()}
