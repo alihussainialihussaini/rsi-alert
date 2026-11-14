@@ -97,6 +97,7 @@ tr.nw td{background:var(--onbg)}tr.nw td:first-child{box-shadow:inset 3px 0 0 va
   <a class="nav" data-r="recovery" href="#recovery">Recovery Report</a>
   <a class="nav" data-r="macro" href="#macro">Commodities &amp; Indices</a>
   <a class="nav" data-r="watchlist" href="#watchlist">My Watchlist</a>
+  <a class="nav" data-r="bot" href="#bot">Demo Bot</a>
   <div class="grp">Majors</div>
   <a class="nav" data-r="coin/BTCUSDT" href="#coin/BTCUSDT">Bitcoin</a>
   <a class="nav" data-r="coin/ETHUSDT" href="#coin/ETHUSDT">Ethereum</a>
@@ -172,7 +173,7 @@ const RULES={
  os:["Oversold",()=>"RSI14 at or below "+CFG.os1+" on a closed candle (strong "+CFG.os2+", extreme "+CFG.os3+"). Any timeframe.",TFS,a=>a.rsi<=CFG.os1],
  conf:["MTF Confluence",()=>"Coins that sit in the same condition on several timeframes at once: oversold (RSI ≤ "+CFG.os1+", strong "+CFG.os2+", extreme "+CFG.os3+") or a retest after RSI held 70+ (Retest Zone 49–52, Alert 52–54, Near Retest 54–57, Early Warning 57–60; Monitoring 60–65 only if ticked). Pick a preset below.",ALLC,a=>a.above],
  key:["Key Timeframe",()=>"Timeframes: 1m, 3m, 5m, 15m, 30m, 1H, 2H, 4H, 6H, 12H, 1D, 1W (what Bybit has). Start at the lowest timeframe where RSI is below "+CFG.os1+" and go up one by one while the next is also below; stop at the first that is not. Key timeframe = sum of the minutes ÷ how many timeframes, rounded to the nearest one. Then wait for RSI to claim "+CFG.os1+" on that timeframe. 1m, 6H and 12H are loaded only for coins within 5 points of oversold on some timeframe.",[],a=>false],
- dmi:["-DMI",()=>"Only -DI (DMI "+CFG.dmiLen+") and ADX, nothing else. LONG = -DI crosses DOWN through "+CFG.dmiLvl+" (selling pressure fading). SHORT = -DI crosses UP through "+CFG.dmiLvl+" (selling pressure growing). Works on every timeframe you switch on with the TF buttons. ADX × -DI column: shows when ADX crossed above or below the -DI line. ADX trend column: strong trend = ADX rising (higher than the last closed candle) and 20 or more, while -DI keeps moving the same way as the signal (LONG: -DI still falling, SHORT: -DI still rising). Use the two ADX filters to list only those signals.",[],a=>false]
+ dmi:["-DMI",()=>"Only -DI (DMI "+CFG.dmiLen+") and ADX, nothing else. LONG = -DI crosses DOWN through "+CFG.dmiLvl+" (selling pressure fading). SHORT = -DI crosses UP through "+CFG.dmiLvl+" (selling pressure growing). Works on every timeframe you switch on with the TF buttons. ADX × -DI column: shows when ADX crossed above or below the -DI line. ADX trend column: ADX rising (higher than the last closed candle) = STRONG trend. ADX falling = WEAK trend (it is still a signal, but the trend is weak). The ADX level only adds a label: below 20 = Choppy, 20 to 50 = Trended, above 50 = Exhaustion. Use the two ADX filters to list only those signals.",[],a=>false]
 };
 function match(d,k){const R=RULES[k],hit=R[2].filter(t=>(k==="conf"||S.tfOn[t])&&d[t]&&R[3](d[t]));return k==="conf"?(hit.length===R[2].length?hit:[]):hit}
 function getRows(){return Object.keys(S.data).map(s=>({s,d:S.data[s],t:S.tick[s]||{}})).filter(r=>(r.t.v||0)>=S.minv)}
@@ -362,26 +363,23 @@ function newFirst(list,kf){const ix=new Map();list.forEach((x,i)=>ix.set(x,i));l
 const dk=x=>x.s+"|"+x.tf+"|"+x.rule+"|"+(x.long?"L":"S")+"|"+x.c.t,kk=x=>x.s+"|key|"+x.key;
 function seedNew(){if(S.nseed)return;const rw=getRows();dmiRows(rw).forEach(x=>newAt(dk(x)));keyRows(rw).forEach(x=>newAt(kk(x)));S.nseed=true}
 // ===== -DMI (only -DI and ADX) =====
-S.dadx="off";S.dax="off";S.drule="key";S.dlr="40";S.dL=true;S.dS=true;S.dwithin=2;S.dforming=true;
-const DRULES=[["key","Key Timeframe"],["ms","Magical shorts"],["os","Oversold RSI"]];
+S.dadx="off";S.dax="off";S.dL=true;S.dS=true;S.dwithin=2;S.dforming=true;
 function dmiRows(rows){const out=[];
   const find=a=>{const w=Math.max(1,S.dwithin),o=[];
     a.dx.forEach(x=>{if(x.ago<w)o.push({dir:x.dir,st:"Confirmed",di:x.di,pv:x.pv,t:x.t+0,price:x.price,ago:x.ago})});
     if(S.dforming&&a.dfx)o.push({dir:a.dfx,st:"Forming",di:a.dl,pv:a.dn,t:a.ft,price:a.price,ago:-1});
     return o};
   const axOf=a=>{const w=Math.max(1,S.dwithin),c=a.ax.find(x=>x.ago<w);if(c)return{dir:c.dir,st:"Confirmed",ago:c.ago,t:c.t};if(S.dforming&&a.afx)return{dir:a.afx,st:"Forming",ago:-1};return null};
-  const strOf=(a,long)=>{const n=a.adn,p=a.adp;if(n===null||n===undefined||p===null||p===undefined)return null;
-    const rising=n>p,diOk=(a.dn!==null&&a.dn!==undefined&&a.dpv!==null&&a.dpv!==undefined)?(long?a.dn<=a.dpv:a.dn>=a.dpv):false;
-    return{adx:n,prev:p,rising,diOk,ok:rising&&diOk&&n>=20}};
+  const strOf=(a,long)=>{const n=a.adn,p=a.adp;if(n===null||n===undefined||p===null||p===undefined)return null;return{adx:n,prev:p,rising:n>p,ok:n>p}};
   rows.forEach(r=>TFS.forEach(tf=>{const a=r.d[tf];if(!a||!S.tfOn[tf]||a.dn===null||a.dn===undefined)return;
     find(a).forEach(c=>{const long=c.dir==="down";if((long&&!S.dL)||(!long&&!S.dS))return;
       const axc=axOf(a);if(S.dax!=="off"&&(!axc||(S.dax!=="any"&&axc.dir!==S.dax)))return;
-      const stg=strOf(a,long);if(S.dadx!=="off"&&!(stg&&stg.ok&&stg.adx>=+S.dadx))return;
+      const stg=strOf(a,long);if(S.dadx==="strong"&&!(stg&&stg.ok))return;if(S.dadx==="weak"&&!(stg&&!stg.ok))return;
       const close=c.st==="Forming"?a.ft+TFMS[tf]:c.t+TFMS[tf];
       out.push({s:r.s,tf,t:r.t,a,rule:"dmi",long,c,close,axc,stg})})}));
   out.sort((p,q)=>q.close-p.close);return out}
 function renderXD(){const xb=$("xb"),chip=(id,k,on,txt)=>'<button class="tfb'+(on?" on":"")+'" data-d="'+id+'" data-k="'+k+'">'+txt+'</button>';
-  xb.innerHTML='<span class="mu">ADX × -DI filter</span>'+[["off","Off (just show)"],["up","ADX crossed above -DI"],["down","ADX crossed below -DI"],["any","Either"]].map(x=>chip("x",x[0],S.dax===x[0],x[1])).join("")+'<span class="mu">ADX trend filter</span>'+[["off","Off (just show)"],["20","ADX rising · 20+"],["25","ADX rising · 25+ (strong)"],["40","ADX rising · 40+ (very strong)"]].map(x=>chip("a",x[0],S.dadx===x[0],x[1])).join("")+'<span class="mu">SHOW</span>'+chip("s","L",S.dL,"Long")+chip("s","S",S.dS,"Short")+'<span class="mu">Crossed within last</span><select id="dw" style="'+SEL+'">'+[1,2,3,4,5].map(n=>'<option value="'+n+'"'+(S.dwithin===n?" selected":"")+'>'+n+' candle'+(n>1?"s":"")+'</option>').join("")+'</select><label><input type="checkbox" id="df"'+(S.dforming?" checked":"")+'> Forming crosses (LIVE)</label><label><input type="checkbox" id="dno"'+(S.onlyNew?" checked":"")+'> Only NEW (last 30 min)</label><button id="exd" class="tfb">Export CSV</button><span class="mu">LONG = -DI crosses down through '+CFG.dmiLvl+' · SHORT = -DI crosses up through '+CFG.dmiLvl+' · TF buttons above choose the timeframes · only -DI and ADX are used here</span>';
+  xb.innerHTML='<span class="mu">ADX × -DI filter</span>'+[["off","Off (just show)"],["up","ADX crossed above -DI"],["down","ADX crossed below -DI"],["any","Either"]].map(x=>chip("x",x[0],S.dax===x[0],x[1])).join("")+'<span class="mu">ADX trend filter</span>'+[["off","Off (just show)"],["strong","Strong · ADX rising"],["weak","Weak · ADX falling"]].map(x=>chip("a",x[0],S.dadx===x[0],x[1])).join("")+'<span class="mu">SHOW</span>'+chip("s","L",S.dL,"Long")+chip("s","S",S.dS,"Short")+'<span class="mu">Crossed within last</span><select id="dw" style="'+SEL+'">'+[1,2,3,4,5].map(n=>'<option value="'+n+'"'+(S.dwithin===n?" selected":"")+'>'+n+' candle'+(n>1?"s":"")+'</option>').join("")+'</select><label><input type="checkbox" id="df"'+(S.dforming?" checked":"")+'> Forming crosses (LIVE)</label><label><input type="checkbox" id="dno"'+(S.onlyNew?" checked":"")+'> Only NEW (last 30 min)</label><button id="exd" class="tfb">Export CSV</button><span class="mu">LONG = -DI crosses down through '+CFG.dmiLvl+' · SHORT = -DI crosses up through '+CFG.dmiLvl+' · ADX rising = strong trend, ADX falling = weak trend · TF buttons above choose the timeframes · only -DI and ADX are used here</span>';
   xb.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>{const k=b.dataset.k,d=b.dataset.d;if(d==="a")S.dadx=k;else if(d==="x")S.dax=k;else if(k==="L")S.dL=!S.dL;else S.dS=!S.dS;S._xbFor=null;renderScanner(true)});
   $("dw").onchange=e=>{S.dwithin=+e.target.value;renderScanner(true)};
   $("df").onchange=e=>{S.dforming=e.target.checked;renderScanner(true)};
@@ -392,15 +390,14 @@ function axTxt(x){const c=x.axc,a=x.a;const now='<span class="mu"> ADX '+(a.adl!
   return'<span class="b '+(c.dir==="up"?"up":"dn")+'">ADX '+(c.dir==="up"?"▲ above":"▼ below")+' -DI</span> <span class="mu">'+(c.st==="Forming"?"LIVE":c.ago===0?"this candle":c.ago+" candle"+(c.ago>1?"s":"")+" ago")+'</span>'+now}
 function trTxt(x){const g=x.stg,a=x.a,now='<span class="mu"> · live ADX '+(a.adl!==null&&a.adl!==undefined?a.adl.toFixed(1):"–")+'</span>';
   if(!g)return'<span class="mu">no ADX data</span>';
-  const lv=g.adx>=40?"very strong":g.adx>=25?"strong":g.adx>=20?"building":"weak",mv='<span class="mu"> '+g.prev.toFixed(1)+' → '+g.adx.toFixed(1)+'</span>';
-  if(g.ok)return'<span class="b '+(x.long?"up":"dn")+'">'+(x.long?"▲ Strong uptrend":"▼ Strong downtrend")+' · ADX '+lv+'</span>'+mv+now;
-  const why=!g.rising?"ADX not rising":!g.diOk?"-DI not "+(x.long?"falling":"rising"):"ADX below 20";
-  return'<span class="mu">'+why+'</span>'+mv+now}
+  const mv='<span class="mu"> '+g.prev.toFixed(1)+' → '+g.adx.toFixed(1)+'</span>',zn=g.adx<20?'<span class="b mu">Choppy</span>':g.adx>50?'<span class="b" style="background:var(--nbg);color:var(--nfg)">Exhaustion</span>':'<span class="b up">Trended</span>';
+  if(g.ok)return'<span class="b '+(x.long?"up":"dn")+'">'+(x.long?"▲ Strong uptrend":"▼ Strong downtrend")+' · ADX rising</span>'+zn+mv+now;
+  return'<span class="b" style="background:var(--nbg);color:var(--nfg)">'+(x.long?"▲ Weak uptrend":"▼ Weak downtrend")+' · ADX falling</span>'+zn+mv+now}
 function hsOf(x){return x.ms?x.ms.m:(x.a&&x.a.ms)||null}
 function hsTxt(x){const m=hsOf(x);if(!m)return'<span class="mu">—</span>';return g6(m.zlo)+' – '+g6(m.zhi)+' <span class="mu">'+(m.ret?"retested":"waiting")+'</span>'}
 function exportDmi(list){const h=["Symbol","TF","Signal","Status","-DI cross candle close (PKT)","-DI before","-DI after","-DI now (live)","ADX × -DI cross","ADX trend","ADX prev","ADX now","Price at cross","High swing low","High swing high","24h %","24h volume"];
   const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
-  const rows=list.map(x=>[x.s,tfl(x.tf),x.long?"LONG":"SHORT",x.c.st,fmtT(x.close),x.c.pv.toFixed(2),x.c.di.toFixed(2),x.a.dl.toFixed(2),x.axc?(x.axc.dir==='up'?'ADX above -DI':'ADX below -DI')+' ('+(x.axc.st==='Forming'?'LIVE':x.axc.ago+' ago')+')':'',x.stg?(x.stg.ok?"Strong "+(x.long?"uptrend":"downtrend"):"Not confirmed"):"",x.stg?x.stg.prev.toFixed(2):"",x.stg?x.stg.adx.toFixed(2):"",x.c.price,hsOf(x)?hsOf(x).zlo:"",hsOf(x)?hsOf(x).zhi:"",x.t.ch!==undefined?x.t.ch.toFixed(2):"",x.t.v!==undefined?Math.round(x.t.v):""]);
+  const rows=list.map(x=>[x.s,tfl(x.tf),x.long?"LONG":"SHORT",x.c.st,fmtT(x.close),x.c.pv.toFixed(2),x.c.di.toFixed(2),x.a.dl.toFixed(2),x.axc?(x.axc.dir==='up'?'ADX above -DI':'ADX below -DI')+' ('+(x.axc.st==='Forming'?'LIVE':x.axc.ago+' ago')+')':'',x.stg?(x.stg.ok?"Strong ":"Weak ")+(x.long?"uptrend":"downtrend")+" · "+(x.stg.adx<20?"Choppy":x.stg.adx>50?"Exhaustion":"Trended"):"",x.stg?x.stg.prev.toFixed(2):"",x.stg?x.stg.adx.toFixed(2):"",x.c.price,hsOf(x)?hsOf(x).zlo:"",hsOf(x)?hsOf(x).zhi:"",x.t.ch!==undefined?x.t.ch.toFixed(2):"",x.t.v!==undefined?Math.round(x.t.v):""]);
   const csv=[h].concat(rows).map(r=>r.map(q).join(",")).join("\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download="dmi-signals.csv";document.body.appendChild(a);a.click();a.remove()}
 function dmiTable(dr){const list=newFirst(dr.filter(x=>!S.filter||x.s.includes(S.filter)),dk),th=t=>'<th style="cursor:default">'+t+'</th>';
@@ -422,7 +419,7 @@ async function scan(){
     await pool(S.list,8,async s=>{const d={};
       for(const t of TFS){try{const k=await kl(s,t,300,false),a=anTf(k);if(a){if(MST.includes(t))a.ms=msCalc(k,t);d[t]=a}}catch(e){NET.fail++}}
       S.data[s]=d;S.done++;$("scanst").textContent="Scanning "+S.done+"/"+S.total;if(S.done%10===0)refresh()});
-    $("scanst").textContent="Key timeframes…";await keyExtras();S.last=new Date();S.dur=Math.round((Date.now()-S.lastStart)/1000);notifyNew();seedNew();
+    $("scanst").textContent="Key timeframes…";await keyExtras();S.last=new Date();S.dur=Math.round((Date.now()-S.lastStart)/1000);notifyNew();seedNew();botScan();botTick();
   }catch(e){$("scanst").textContent="scan failed, retrying"}
   S.scanning=false;refresh();updateStatus()}
 function updateStatus(){if(S.scanning||!S.last)return;const left=Math.max(0,S.every-Math.floor((Date.now()-S.lastStart)/1000));$("scanst").textContent="last scan "+S.last.toLocaleTimeString("en-GB",{timeZone:"Asia/Karachi",hour:"2-digit",minute:"2-digit"})+" PKT · next in "+left+"s"}
@@ -702,8 +699,60 @@ function renderRecovery(){
   $("page").querySelectorAll(".tab[data-w]").forEach(t=>t.onclick=()=>{window._rec=t.dataset.w;renderRecovery()});
   $("page").querySelectorAll("tr.r").forEach(tr=>tr.onclick=()=>{location.hash="#coin/"+tr.dataset.s})}
 document.addEventListener("mouseup",()=>{setTimeout(()=>{S.down=false},50)});
-function refresh(){if(S.down)return;const p=route().p;if(p==="scanner")renderScanner(true);else if(p==="recovery")renderRecovery();else if(p==="funding")renderFunding()}
+function refresh(){if(S.down)return;const p=route().p;if(p==="scanner")renderScanner(true);else if(p==="recovery")renderRecovery();else if(p==="funding")renderFunding();else if(p==="bot")renderBot(true)}
 function applyTheme(t){document.documentElement.dataset.theme=t;$("tg").textContent=t==="light"?"☾":"☀";try{localStorage.setItem("theme",t)}catch(e){}}
+// ===== Demo Bot (paper trading, fake money) =====
+let B={on:false,sl:2,tp:4,size:100,max:10,src:{dmi:1,key:1,ms:1},adxOnly:1,trades:[],seen:{},seeded:false,id:0},BL={};
+try{const o=JSON.parse(localStorage.getItem("bot")||"null");if(o){B=Object.assign(B,o);B.src=Object.assign({dmi:1,key:1,ms:1},o.src||{})}B.seeded=false}catch(e){}
+function botSave(){try{localStorage.setItem("bot",JSON.stringify(B))}catch(e){}}
+function botSignals(){const out=[],rw=getRows();
+  if(B.src.dmi){const a=S.dax,b=S.dadx;S.dax="off";S.dadx="off";let l=[];try{l=dmiRows(rw)}catch(e){}S.dax=a;S.dadx=b;
+    l.forEach(x=>{if(B.adxOnly&&!(x.stg&&x.stg.ok))return;out.push({k:"d|"+dk(x),s:x.s,tf:x.tf,src:"-DMI",long:x.long})})}
+  if(B.src.key){keyRows(rw).forEach(x=>{const a=x.a,tf=kname(x.key);if(kstat(x)[1]!=="up")return;if(!(a.c30===null||a.c30<=1))return;
+    const t=a.c30===null?a.ft:a.ft-(1+a.c30)*TFMS[tf];out.push({k:"k|"+x.s+"|"+tf+"|"+t,s:x.s,tf,src:"Key TF",long:true})})}
+  if(B.src.ms){msRows(rw).forEach(x=>{const p=(S.tick[x.s]||{}).p;if(p===undefined||!(p>=x.m.zlo&&p<=x.m.zhi))return;out.push({k:"m|"+x.s+"|"+x.tf+"|"+x.m.conf,s:x.s,tf:x.tf,src:"Magical shorts",long:false})})}
+  return out}
+function botScan(){if(!B.on)return;const sg=botSignals(),now=Date.now();
+  if(!B.seeded){sg.forEach(x=>{B.seen[x.k]=now});B.seeded=true;botSave();return}
+  sg.forEach(x=>{if(B.seen[x.k])return;B.seen[x.k]=now;
+    const p=(S.tick[x.s]||{}).p;if(!p)return;
+    if(B.trades.some(t=>t.st==="open"&&t.s===x.s))return;
+    if(B.trades.filter(t=>t.st==="open").length>=B.max)return;
+    B.trades.push({id:++B.id,s:x.s,tf:x.tf,src:x.src,long:x.long,en:p,sl:x.long?p*(1-B.sl/100):p*(1+B.sl/100),tp:x.long?p*(1+B.tp/100):p*(1-B.tp/100),size:B.size,t:now,st:"open"});BL[x.s]=p});
+  Object.keys(B.seen).forEach(k=>{if(now-B.seen[k]>2592e5)delete B.seen[k]});
+  botSave()}
+function botCheck(){let ch=false;const now=Date.now();
+  B.trades.forEach(t=>{if(t.st!=="open")return;const p=BL[t.s];if(!p)return;let ex=null,why="";
+    if(t.long){if(p<=t.sl){ex=t.sl;why="Stop loss"}else if(p>=t.tp){ex=t.tp;why="Take profit"}}
+    else{if(p>=t.sl){ex=t.sl;why="Stop loss"}else if(p<=t.tp){ex=t.tp;why="Take profit"}}
+    if(ex!==null){t.st="closed";t.ex=ex;t.xt=now;t.why=why;t.pct=(t.long?(ex-t.en)/t.en:(t.en-ex)/t.en)*100;t.usd=t.size*t.pct/100;ch=true}});
+  if(ch){botSave();if(route().p==="bot")renderBot(true)}}
+async function botTick(){const op=B.trades.filter(t=>t.st==="open");if(!op.length)return;
+  const sy=[...new Set(op.map(t=>t.s))];
+  await pool(sy,4,async s=>{try{const t=await tk(s);if(+t.lastPrice>0)BL[s]=+t.lastPrice}catch(e){}});
+  botCheck();if(route().p==="bot")renderBot(true)}
+setInterval(botTick,20000);
+function botPnl(t){if(t.st==="closed")return{pct:t.pct,usd:t.usd};const p=BL[t.s];if(!p)return null;const pct=(t.long?(p-t.en)/t.en:(t.en-p)/t.en)*100;return{pct,usd:t.size*pct/100}}
+function renderBot(auto){
+  if(auto&&document.activeElement&&document.activeElement.tagName==="INPUT"&&$("page").contains(document.activeElement))return;
+  const op=B.trades.filter(t=>t.st==="open"),cl=B.trades.filter(t=>t.st==="closed").slice().reverse(),win=cl.filter(t=>t.usd>0).length;
+  const tot=cl.reduce((a,t)=>a+t.usd,0),opn=op.reduce((a,t)=>{const q=botPnl(t);return a+(q?q.usd:0)},0);
+  const sgn=v=>(v>=0?"+":"")+v.toFixed(2),cls=v=>v>=0?"up":"dn";
+  const chip=(k,txt)=>'<button class="tfb'+(B.src[k]?" on":"")+'" data-bs="'+k+'">'+txt+'</button>';
+  const inp=(k,l)=>'<span class="mu">'+l+'</span><input data-bk="'+k+'" type="number" value="'+B[k]+'" style="width:80px">';
+  $("page").innerHTML='<h2>Demo Bot</h2><p class="sub">Paper trading with fake money. It opens a fake trade when a scanner signal appears and closes it at your stop loss or take profit. No real orders. It runs only while this page is open in the browser. Trades are saved in this browser.</p>'+
+   '<div class="cards"><div class="card"><small>Bot</small><b class="'+(B.on?"up":"mu")+'">'+(B.on?"ON":"OFF")+'</b></div><div class="card"><small>Open trades</small><b>'+op.length+'</b></div><div class="card"><small>Closed trades</small><b>'+cl.length+'</b></div><div class="card"><small>Win rate</small><b>'+(cl.length?Math.round(win/cl.length*100)+"%":"–")+'</b></div><div class="card"><small>Closed P/L (fake $)</small><b class="'+cls(tot)+'">'+sgn(tot)+'</b></div><div class="card"><small>Open P/L (fake $)</small><b class="'+cls(opn)+'">'+sgn(opn)+'</b></div></div>'+
+   '<div class="add" style="flex-wrap:wrap;align-items:center"><button id="bon" style="background:'+(B.on?"var(--dn)":"var(--up)")+'">'+(B.on?"Stop bot":"Start bot")+'</button>'+inp("sl","Stop loss %")+inp("tp","Take profit %")+inp("size","Trade size $")+inp("max","Max open trades")+'</div>'+
+   '<div class="add" style="flex-wrap:wrap;align-items:center"><span class="mu">SIGNALS</span>'+chip("dmi","-DMI (-DI + ADX)")+chip("key","Key Timeframe (long)")+chip("ms","Magical shorts (short)")+'<label><input type="checkbox" id="bax"'+(B.adxOnly?" checked":"")+'> -DMI: only when ADX is rising (strong)</label><button id="brs" class="tfb">Reset all trades</button></div>'+
+   '<div class="rule">Rules: -DMI LONG/SHORT = the -DI cross of the -DMI tab (uses the timeframes you switched on in the scanner). Key Timeframe = LONG when RSI claims '+CFG.os1+' on the key timeframe. Magical shorts = SHORT when price enters the short zone. Only signals that appear AFTER you press Start are traded. One open trade per coin. Fills use the live price, with no fees or slippage, so real results would be a bit worse. The price is checked every 20 seconds, so a fast spike can be missed.</div>'+
+   '<h3>Open trades</h3><div class="tw" style="margin-bottom:16px"><table><thead><tr>'+["Coin","TF","Signal","Side","Entry","Now","Stop loss","Take profit","P/L %","P/L $","Opened (PKT)"].map(h=>'<th style="cursor:default">'+h+'</th>').join("")+'</tr></thead><tbody>'+(op.length?op.map(t=>{const q=botPnl(t);return'<tr class="r" data-s="'+t.s+'"><td><b>'+t.s.replace("USDT","")+'</b><span class="mu">/USDT</span></td><td><span class="b">'+tfl(t.tf)+'</span></td><td class="mu">'+t.src+'</td><td>'+(t.long?'<span class="b up">▲ LONG</span>':'<span class="b dn">▼ SHORT</span>')+'</td><td>'+g6(t.en)+'</td><td>'+(BL[t.s]?g6(BL[t.s]):"–")+'</td><td class="dn">'+g6(t.sl)+'</td><td class="up">'+g6(t.tp)+'</td><td class="'+(q?cls(q.pct):"mu")+'">'+(q?sgn(q.pct)+"%":"–")+'</td><td class="'+(q?cls(q.usd):"mu")+'">'+(q?sgn(q.usd):"–")+'</td><td>'+fmtT(t.t)+'</td></tr>'}).join(""):'<tr><td colspan="11" class="empty">'+(B.on?"No open trades. Waiting for a new signal…":"Bot is off. Press Start bot.")+'</td></tr>')+'</tbody></table></div>'+
+   '<h3>Closed trades</h3><div class="tw"><table><thead><tr>'+["Coin","TF","Signal","Side","Entry","Exit","Result","P/L %","P/L $","Opened (PKT)","Closed (PKT)"].map(h=>'<th style="cursor:default">'+h+'</th>').join("")+'</tr></thead><tbody>'+(cl.length?cl.slice(0,100).map(t=>'<tr class="r" data-s="'+t.s+'"><td><b>'+t.s.replace("USDT","")+'</b><span class="mu">/USDT</span></td><td><span class="b">'+tfl(t.tf)+'</span></td><td class="mu">'+t.src+'</td><td>'+(t.long?'<span class="b up">▲ LONG</span>':'<span class="b dn">▼ SHORT</span>')+'</td><td>'+g6(t.en)+'</td><td>'+g6(t.ex)+'</td><td class="'+(t.usd>=0?"up":"dn")+'">'+t.why+'</td><td class="'+cls(t.pct)+'">'+sgn(t.pct)+'%</td><td class="'+cls(t.usd)+'">'+sgn(t.usd)+'</td><td>'+fmtT(t.t)+'</td><td>'+fmtT(t.xt)+'</td></tr>').join(""):'<tr><td colspan="11" class="empty">No closed trades yet.</td></tr>')+'</tbody></table></div>';
+  $("bon").onclick=()=>{B.on=!B.on;B.seeded=false;botSave();if(B.on)botScan();renderBot()};
+  $("page").querySelectorAll("[data-bk]").forEach(i=>i.onchange=()=>{const v=+i.value;if(v>0){B[i.dataset.bk]=v;botSave()}renderBot()});
+  $("page").querySelectorAll("[data-bs]").forEach(b=>b.onclick=()=>{B.src[b.dataset.bs]=B.src[b.dataset.bs]?0:1;botSave();renderBot()});
+  $("bax").onchange=e=>{B.adxOnly=e.target.checked?1:0;botSave();renderBot()};
+  $("brs").onclick=()=>{if(confirm("Delete all demo trades?")){B.trades=[];B.seen={};B.seeded=false;botSave();renderBot()}};
+  $("page").querySelectorAll("tr.r").forEach(tr=>tr.onclick=()=>{location.hash="#coin/"+tr.dataset.s})}
 // ===== router =====
 function route(){const h=(location.hash||"#scanner").slice(1).split("/");return{p:h[0]||"scanner",a:h[1]}}
 function go(){const r=route();
@@ -714,6 +763,7 @@ function go(){const r=route();
   else if(r.p==="funding"){$("crumb").textContent="Scanner / Funding Rates";renderFunding();if(!S.list.length)scan()}
   else if(r.p==="recovery"){$("crumb").textContent="Altcoins / Recovery Report";renderRecovery();if(!S.list.length)scan()}
   else if(r.p==="macro"){$("crumb").textContent="Commodities & Indices / RSI Scanner";renderMacro();macScan()}
+  else if(r.p==="bot"){$("crumb").textContent="Scanner / Demo Bot";renderBot()}
   else if(r.p==="watchlist"){$("crumb").textContent="Scanner / My Watchlist";renderWatch()}
   else{$("crumb").textContent="Scanner / RSI Scanner";renderScanner(false)}}
 window.addEventListener("hashchange",go);
