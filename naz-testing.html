@@ -112,9 +112,13 @@ tr.nw td{background:var(--onbg)}tr.nw td:first-child{box-shadow:inset 3px 0 0 va
   <div id="page"></div>
  </div>
 </div>
+<script>
+window.addEventListener("error",function(e){try{if(e.target&&e.target!==window)return;var d=document.getElementById("errbar");if(!d){d=document.createElement("div");d.id="errbar";d.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#37161d;color:#ff9aa6;font:12px/1.4 monospace;padding:8px 12px;white-space:pre-wrap;border-top:1px solid #f6465d";document.body.appendChild(d)}d.textContent="Page error (v21): "+e.message+" · line "+e.lineno+":"+e.colno}catch(x){}});
+window.addEventListener("load",function(){setTimeout(function(){if(window.__ok)return;var d=document.createElement("div");d.style.cssText="position:fixed;left:0;right:0;bottom:0;z-index:99999;background:#37161d;color:#ff9aa6;font:13px/1.4 system-ui;padding:10px 12px;border-top:1px solid #f6465d";d.textContent="The page code did not start (v21). The file is probably cut off or broken. Upload the full file again and hard refresh.";document.body.appendChild(d)},800)});
+</script>
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <script>
-const API="https://data-api.binance.vision",OFF=5*3600,$=id=>document.getElementById(id);
+window.__ok=1;const API="https://data-api.binance.vision",OFF=5*3600,$=id=>document.getElementById(id);
 const STABLE=new Set(["USDC","FDUSD","TUSD","USDP","BUSD","DAI","EUR","AEUR","USD1","XUSD","USDE","PYUSD","EURI","RLUSD","BFUSD","USDS","UST"]);
 const TOP=500,TFS=["3m","5m","15m","30m","1h","2h","4h","1d","1w"],WTF=["15m","1h","4h"],RP=14;
 const DEF={n70:3,lvl:52,look:100,maLen:14,maType:"SMA",os1:30,os2:25,os3:20,dmiLen:14,dmiLvl:20};
@@ -698,13 +702,4 @@ async function wxLoad(){if(S.wx.busy||(S.wx.rows&&Date.now()-S.wx.t<60000))retur
     if(!rs[0].ok)throw new Error("Weex "+rs[0].status);
     const pi=await rs[0].json(),tj=rs[1].ok?await rs[1].json():[],m={};
     (Array.isArray(tj)?tj:[tj]).forEach(x=>{if(x&&x.symbol)m[x.symbol]=x});
-    S.wx.rows=(Array.isArray(pi)?pi:[pi]).filter(x=>x&&x.symbol&&/USDT$/.test(x.symbol)).map(x=>{const q=m[x.symbol]||{},lp=+q.lastPrice||+x.markPrice,op=+q.openPrice,fc=(x.forecastFundingRate!==undefined&&x.forecastFundingRate!=="")?+x.forecastFundingRate:+x.lastFundingRate;
-      return{s:x.symbol,src:"weex",t:{p:lp,ch:op>0?(lp-op)/op*100:0,v:+q.quoteVolume||0,fr:fc*100,nf:+x.nextFundingTime||0,cyc:+x.collectCycle||0}}}).filter(x=>!isNaN(x.t.fr)&&x.t.nf);
-    if(!S.wx.rows.length)throw new Error("Weex sent no data");
-    S.wx.t=Date.now();S.wx.err=""}
-  catch(e){S.wx.err=e.message||"error";if(!S.list.length)scan()}
-  S.wx.busy=false;if(route().p==="funding")renderFunding()}
-setInterval(()=>{if(route().p==="funding")wxLoad()},60000);
-function fundRows(){const out=[],ok=(t)=>{if(!t||t.fr===undefined||isNaN(t.fr)||!t.nf)return false;if(Math.abs(t.fr)<S.fmin)return false;if(S.fside==="neg"&&!(t.fr<0))return false;if(S.fside==="pos"&&!(t.fr>0))return false;return true};
-  if(S.wx.rows)S.wx.rows.forEach(x=>{if(ok(x.t))out.push(x)});
-  else S.list.forEach(s=>{const t=S.tick[s];if(ok(t))out.push({s,t,s
+    S.wx.rows=(Array.isArray(pi)?pi:[pi]).filter(x=>x&&x.symbol&&/USDT$/.test(x.symbol)).map(x=>{const q=m[x.symbol
