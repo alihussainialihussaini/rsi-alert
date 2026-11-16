@@ -178,7 +178,8 @@ const RULES={
  conf:["MTF Confluence",()=>"Coins that sit in the same condition on several timeframes at once: oversold (RSI ≤ "+CFG.os1+", strong "+CFG.os2+", extreme "+CFG.os3+") or a retest after RSI held 70+ (Retest Zone 49–52, Alert 52–54, Near Retest 54–57, Early Warning 57–60; Monitoring 60–65 only if ticked). Pick a preset below.",ALLC,a=>a.above],
  key:["Key Timeframe",()=>"Timeframes: 1m, 3m, 5m, 15m, 30m, 1H, 2H, 4H, 6H, 12H, 1D, 1W (what Bybit has). Start at the lowest timeframe where RSI is below "+CFG.os1+" and go up one by one while the next is also below; stop at the first that is not. Key timeframe = sum of the minutes ÷ how many timeframes, rounded to the nearest one. Then wait for RSI to claim "+CFG.os1+" on that timeframe. 1m, 6H and 12H are loaded only for coins within 5 points of oversold on some timeframe.",[],a=>false],
  dmi:["-DMI",()=>"Only -DI (DMI "+CFG.dmiLen+") and ADX, nothing else. LONG = -DI crosses DOWN through "+CFG.dmiLvl+" (selling pressure fading). SHORT = -DI crosses UP through "+CFG.dmiLvl+" (selling pressure growing). Works on every timeframe you switch on with the TF buttons. ADX × -DI column: shows when ADX crossed above or below the -DI line. ADX trend column: ADX rising (higher than the last closed candle) = STRONG trend. ADX falling = WEAK trend (it is still a signal, but the trend is weak). The ADX level only adds a label: below 20 = Choppy, 20 to 50 = Trended, above 50 = Exhaustion. Use the two ADX filters to list only those signals.",[],a=>false],
- spot:["Spot Signals",()=>"Intraday, LONG only (spot has no short). A coin is listed when 4H RSI is above its MA AND one of these happens on 15m, 30m or 1H: a -DMI LONG (-DI crossed down through "+CFG.dmiLvl+" in the last 2 closed candles) or the Key Timeframe claimed RSI "+CFG.os1+". Strength out of 3 = ADX rising + ADX not above 50 (not exhausted) + the other signal (Key TF or -DMI) agrees on the same coin. Entry = live price. Stop loss and take profit use the Demo Bot percentages. Idea only, not advice.",[],a=>false]
+ spot:["Spot Signals",()=>"Intraday, LONG only (spot has no short). A coin is listed when 4H RSI is above its MA AND one of these happens on 15m, 30m or 1H: a -DMI LONG (-DI crossed down through "+CFG.dmiLvl+" in the last 2 closed candles) or the Key Timeframe claimed RSI "+CFG.os1+". Strength out of 3 = ADX rising + ADX not above 50 (not exhausted) + the other signal (Key TF or -DMI) agrees on the same coin. Entry = live price. Stop loss and take profit use the Demo Bot percentages. Idea only, not advice.",[],a=>false],
+ scalp:["Scalp Signals",()=>"Fast signals for quick trades on 3m and 5m. LONG when -DI crosses down through "+CFG.dmiLvl+", or RSI crosses up through its MA. SHORT is the opposite. LIVE means the candle is still open, so it shows at once but can disappear. Strength out of 3 = ADX rising + this timeframe RSI on the right side of its MA + 15m RSI trend agrees. Entry = live price. Own small stop loss and take profit. Idea only, not advice.",[],a=>false]
 };
 function match(d,k){const R=RULES[k],hit=R[2].filter(t=>(k==="conf"||S.tfOn[t])&&d[t]&&R[3](d[t]));return k==="conf"?(hit.length===R[2].length?hit:[]):hit}
 function getRows(){return Object.keys(S.data).map(s=>({s,d:S.data[s],t:S.tick[s]||{}})).filter(r=>(r.t.v||0)>=S.minv)}
@@ -366,7 +367,7 @@ function newBadge(k){return isNew(k)?' <span class="b up">NEW '+agoT(S.nseen[k])
 function newFirst(list,kf){const ix=new Map();list.forEach((x,i)=>ix.set(x,i));let o=list.slice();if(S.onlyNew)o=o.filter(x=>isNew(kf(x)));
   return o.sort((p,q)=>(isNew(kf(q))-isNew(kf(p)))||(isNew(kf(p))?newAt(kf(q))-newAt(kf(p)):0)||ix.get(p)-ix.get(q))}
 const dk=x=>x.s+"|"+x.tf+"|"+x.rule+"|"+(x.long?"L":"S")+"|"+x.c.t,kk=x=>x.s+"|key|"+x.key;
-function seedNew(){if(S.nseed)return;const rw=getRows();dmiRows(rw).forEach(x=>newAt(dk(x)));keyRows(rw).forEach(x=>newAt(kk(x)));spotRows(rw).forEach(x=>newAt(sk(x)));S.nseed=true}
+function seedNew(){if(S.nseed)return;const rw=getRows();dmiRows(rw).forEach(x=>newAt(dk(x)));keyRows(rw).forEach(x=>newAt(kk(x)));spotRows(rw).forEach(x=>newAt(sk(x)));scalpRows(rw).forEach(x=>newAt(sck(x)));S.nseed=true}
 // ===== -DMI (only -DI and ADX) =====
 S.dadx="off";S.dax="off";S.dL=true;S.dS=true;S.dwithin=2;S.dforming=true;
 function dmiRows(rows){const out=[];
@@ -430,6 +431,42 @@ function renderXS(){const xb=$("xb");
   $("spm").onchange=e=>{S.spMin=+e.target.value;renderScanner(true)};
   $("sno").onchange=e=>{S.onlyNew=e.target.checked;renderScanner(true)};
   $("exs").onclick=()=>exportSpot(spotRows(getRows()).filter(x=>!S.filter||x.s.includes(S.filter)))}
+
+S.scTf={"3m":1,"5m":1};S.scMin=2;S.scL=true;S.scS=true;S.scLive=true;S.scSl=0.7;S.scTp=1.4;
+function sck(x){return x.s+"|sc|"+x.tf+"|"+x.src+"|"+(x.long?"L":"S")+"|"+x.ct}
+function scalpRows(rows){const out=[];
+  rows.forEach(r=>{const p=(r.t||{}).p,a15=r.d["15m"];if(p===undefined||!a15)return;
+    ["3m","5m"].forEach(tf=>{if(!S.scTf[tf])return;const a=r.d[tf];if(!a||a.live===null||a.live===undefined||a.lma===null||a.lma===undefined)return;
+      const T=[];
+      const dc=a.dx.find(x=>x.ago<1);
+      if(dc)T.push({src:"-DMI",long:dc.dir==="down",ct:dc.t,live:false});
+      else if(S.scLive&&a.dfx)T.push({src:"-DMI",long:a.dfx==="down",ct:a.ft,live:true});
+      const rc=a.xs.find(x=>x.ago<1);
+      if(rc)T.push({src:"RSI×MA",long:rc.dir==="up",ct:rc.t,live:false});
+      else if(S.scLive&&a.fx)T.push({src:"RSI×MA",long:a.fx==="up",ct:a.ft,live:true});
+      T.forEach(g=>{if((g.long&&!S.scL)||(!g.long&&!S.scS))return;
+        const hasA=a.adn!==null&&a.adn!==undefined&&a.adp!==null&&a.adp!==undefined,rise=hasA&&(g.live&&a.adl!==null&&a.adl!==undefined?a.adl>a.adn:a.adn>a.adp),
+          side=g.long?a.live>a.lma:a.live<a.lma,
+          tr=(a15.live!==null&&a15.live!==undefined&&a15.lma!==null&&a15.lma!==undefined)?(g.long?a15.live>a15.lma:a15.live<a15.lma):false,
+          sc=(rise?1:0)+(side?1:0)+(tr?1:0);
+        if(sc<S.scMin)return;
+        out.push({s:r.s,tf,src:g.src,long:g.long,live:g.live,ct:g.ct,close:g.ct+TFMS[tf],a,a15,t:r.t,p,sc,rise,side,tr})})})});
+  out.sort((x,y)=>(y.live-x.live)||y.sc-x.sc||y.close-x.close);return out}
+function renderXQ(){const xb=$("xb");
+  xb.innerHTML='<span class="mu">TF</span>'+["3m","5m"].map(t=>'<button class="tfb'+(S.scTf[t]?" on":"")+'" data-t="'+t+'">'+tfl(t)+'</button>').join("")+'<span class="mu">SHOW</span><button class="tfb'+(S.scL?" on":"")+'" id="qL">Long</button><button class="tfb'+(S.scS?" on":"")+'" id="qS">Short</button><span class="mu">Min strength</span><select id="qm" style="'+SEL+'">'+[0,1,2,3].map(n=>'<option value="'+n+'"'+(S.scMin===n?" selected":"")+'>'+n+' / 3</option>').join("")+'</select><label><input type="checkbox" id="qf"'+(S.scLive?" checked":"")+'> LIVE signals (candle still open)</label><label><input type="checkbox" id="qn"'+(S.onlyNew?" checked":"")+'> Only NEW (last 30 min)</label><span class="mu">SL %</span><input id="qs" type="number" step="0.1" value="'+S.scSl+'" style="width:60px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px"><span class="mu">TP %</span><input id="qt" type="number" step="0.1" value="'+S.scTp+'" style="width:60px;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:4px">';
+  xb.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{S.scTf[b.dataset.t]=S.scTf[b.dataset.t]?0:1;S._xbFor=null;renderScanner(true)});
+  $("qL").onclick=()=>{S.scL=!S.scL;S._xbFor=null;renderScanner(true)};
+  $("qS").onclick=()=>{S.scS=!S.scS;S._xbFor=null;renderScanner(true)};
+  $("qm").onchange=e=>{S.scMin=+e.target.value;renderScanner(true)};
+  $("qf").onchange=e=>{S.scLive=e.target.checked;renderScanner(true)};
+  $("qn").onchange=e=>{S.onlyNew=e.target.checked;renderScanner(true)};
+  $("qs").onchange=e=>{const v=+e.target.value;if(v>0)S.scSl=v;renderScanner(true)};
+  $("qt").onchange=e=>{const v=+e.target.value;if(v>0)S.scTp=v;renderScanner(true)}}
+function scChecks(x){return[(x.rise?"ADX rising":"ADX not rising"),(x.side?"RSI vs MA ok":"RSI vs MA against"),(x.tr?"15m trend agrees":"15m trend against")]}
+function scalpTable(sr){const list=newFirst(sr.filter(x=>!S.filter||x.s.includes(S.filter)),sck),th=t=>'<th style="cursor:default">'+t+'</th>';
+  $("tbl").innerHTML='<thead><tr>'+["Symbol","TF","Signal","Status","Strength","Checks","Entry (live)","Stop loss","Take profit","15m RSI vs MA","Signal candle","24h %",""].map(th).join("")+'</tr></thead><tbody>'+(list.length?list.map(x=>{
+    const cl=x.sc>=3?"b up":"b",sty=x.sc===2?' style="background:var(--nbg);color:var(--nfg)"':"",L=x.long,sl=L?x.p*(1-S.scSl/100):x.p*(1+S.scSl/100),tp=L?x.p*(1+S.scTp/100):x.p*(1-S.scTp/100),a15=x.a15;
+    return'<tr class="r'+(isNew(sck(x))?" nw":"")+'" data-s="'+x.s+'" data-tf="'+x.tf+'"><td><b>'+x.s.replace("USDT","")+'</b><span class="mu">/USDT</span>'+newBadge(sck(x))+'</td><td><span class="b">'+tfl(x.tf)+'</span></td><td><span class="b '+(L?"up":"dn")+'">'+(L?"▲ LONG":"▼ SHORT")+' · '+x.src+'</span></td><td>'+(x.live?'<span class="b up">LIVE</span>':'<span class="b">Closed</span>')+'</td><td><span class="'+cl+'"'+sty+'>'+x.sc+' / 3</span></td><td style="text-align:left" class="mu">'+scChecks(x).join(" · ")+'</td><td>'+g6(x.p)+'</td><td class="dn">'+g6(sl)+'</td><td class="up">'+g6(tp)+'</td><td>'+a15.live.toFixed(1)+' <span class="mu">/ MA '+a15.lma.toFixed(1)+'</span></td><td>'+fmtT(x.ct)+' <span class="mu">'+agoT(x.ct)+'</span></td><td class="'+(x.t.ch>=0?"up":"dn")+'">'+(x.t.ch!==undefined?(x.t.ch>=0?"+":"")+x.t.ch.toFixed(2)+"%":"")+'</td><td><a href="#coin/'+x.s+'" class="mu">Open →</a></td></tr>'}).join(""):'<tr><td colspan="13" class="empty">'+(S.scanning?"Scanning… results appear here as coins are checked.":"No scalp signal matches right now.")+'</td></tr>')+'</tbody>'}
 function spChecks(x){return[(x.rise?"ADX rising":"ADX not rising"),(x.ok50?"ADX ≤ 50":"ADX above 50 (exhaustion)"),(x.agree?(x.src==="-DMI"?"Key TF agrees":"-DMI agrees"):"no second signal")]}
 function exportSpot(list){const h=["Symbol","TF","Signal","Strength (of 3)","Checks","Entry (live)","Stop loss","Take profit","4H RSI","4H RSI MA","ADX prev","ADX now","Signal candle (PKT)","24h %","24h volume"];
   const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
@@ -461,7 +498,7 @@ setInterval(()=>{if(!S.scanning&&S.lastStart&&Date.now()-S.lastStart>=S.every*10
 function rc(v){return v===undefined||v===null?"mu":v<=CFG.os1?"up":v>=70?"dn":""}
 const SET=[["n70","Candles in a row above 70"],["lvl","Retest RSI level"],["look","Retest lookback (candles)"],["maLen","MA length"],["os1","Oversold below"],["os2","Strongly oversold below"],["os3","Extremely oversold below"],["dmiLen","-DMI length"],["dmiLvl","-DI level"]];
 const SEL='background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px';
-function renderXB(){const xb=$("xb");xb.style.display=(S.tab==="cross"||S.tab==="conf"||S.tab==="retest"||S.tab==="key"||S.tab==="ms"||S.tab==="dmi"||S.tab==="spot")?"flex":"none";if(S.tab==="spot"){renderXS();return}if(S.tab==="dmi"){renderXD();return}if(S.tab==="ms"){renderXM();return}if(S.tab==="conf"){renderXC();return}if(S.tab==="retest"){renderXR();return}if(S.tab==="key"){renderXK();return}if(S.tab!=="cross")return;
+function renderXB(){const xb=$("xb");xb.style.display=(S.tab==="cross"||S.tab==="conf"||S.tab==="retest"||S.tab==="key"||S.tab==="ms"||S.tab==="dmi"||S.tab==="spot"||S.tab==="scalp")?"flex":"none";if(S.tab==="scalp"){renderXQ();return}if(S.tab==="spot"){renderXS();return}if(S.tab==="dmi"){renderXD();return}if(S.tab==="ms"){renderXM();return}if(S.tab==="conf"){renderXC();return}if(S.tab==="retest"){renderXR();return}if(S.tab==="key"){renderXK();return}if(S.tab!=="cross")return;
   xb.innerHTML='<span class="mu">SIGNAL</span><button class="tfb'+(S.sigL?" on":"")+'" id="sL">Long (cross up)</button><button class="tfb'+(S.sigS?" on":"")+'" id="sS">Short (cross down)</button><span class="mu">Crossed within last</span><select id="sw" style="'+SEL+'">'+[1,2,3,4,5].map(n=>'<option value="'+n+'"'+(S.within===n?" selected":"")+'>'+n+' candle'+(n>1?"s":"")+'</option>').join("")+'</select><label><input type="checkbox" id="cf"'+(S.forming?" checked":"")+'> Forming crosses (LIVE)</label><label><input type="checkbox" id="c4"'+(S.only4?" checked":"")+'> Only with 4H aligned</label><label><input type="checkbox" id="cs"'+(S.sound?" checked":"")+'> Sound + notification</label><button id="ex" class="tfb">Export CSV</button>';
   $("sL").onclick=()=>{S.sigL=!S.sigL;S._xbFor=null;renderScanner(true)};
   $("sS").onclick=()=>{S.sigS=!S.sigS;S._xbFor=null;renderScanner(true)};
@@ -486,10 +523,10 @@ function renderScanner(keep){
     $("sv").onclick=()=>{$("sp").querySelectorAll("input").forEach(i=>{const v=+i.value;if(v>0)CFG[i.dataset.k]=v});CFG.maType=$("mt").value;apply()};
     $("rs").onclick=()=>{CFG=Object.assign({},DEF);apply()}}
   if(S._xbFor!==S.tab){S._xbFor=S.tab;renderXB()}
-  $("tfw").style.display=(S.tab==="conf"||S.tab==="key"||S.tab==="ms"||S.tab==="spot")?"none":"contents";
+  $("tfw").style.display=(S.tab==="conf"||S.tab==="key"||S.tab==="ms"||S.tab==="spot"||S.tab==="scalp")?"none":"contents";
   document.querySelectorAll("#fb .tfb[data-t]").forEach(b=>b.style.display=(S.tab==="retest"&&!RTF.includes(b.dataset.t))?"none":"");
-  const rows=getRows(),xr=crossRows(rows),cr=confRows(rows),rr=retestRows(rows),kr=keyRows(rows),mr=msRows(rows),dr=dmiRows(rows),sr=spotRows(rows);dr.forEach(x=>newAt(dk(x)));kr.forEach(x=>newAt(kk(x)));sr.forEach(x=>newAt(sk(x)));
-  const cnt={};for(const k in RULES)cnt[k]=k==="cross"?xr.length:k==="conf"?cr.length:k==="retest"?rr.length:k==="key"?kr.length:k==="ms"?mr.length:k==="dmi"?dr.length:k==="spot"?sr.length:rows.filter(r=>match(r.d,k).length).length;
+  const rows=getRows(),xr=crossRows(rows),cr=confRows(rows),rr=retestRows(rows),kr=keyRows(rows),mr=msRows(rows),dr=dmiRows(rows),sr=spotRows(rows),qr=scalpRows(rows);dr.forEach(x=>newAt(dk(x)));kr.forEach(x=>newAt(kk(x)));sr.forEach(x=>newAt(sk(x)));qr.forEach(x=>newAt(sck(x)));
+  const cnt={};for(const k in RULES)cnt[k]=k==="cross"?xr.length:k==="conf"?cr.length:k==="retest"?rr.length:k==="key"?kr.length:k==="ms"?mr.length:k==="dmi"?dr.length:k==="spot"?sr.length:k==="scalp"?qr.length:rows.filter(r=>match(r.d,k).length).length;
   $("cds").innerHTML='<div class="card"><small>Coins scanned</small><b>'+rows.length+'</b></div><div class="card"><small>Approaching RSI '+CFG.lvl+'</small><b>'+cnt.a52+'</b></div><div class="card"><small>Oversold (RSI ≤ '+CFG.os1+')</small><b class="up">'+cnt.os+'</b></div><div class="card"><small>MTF Confluence</small><b>'+cnt.conf+'</b></div><div class="card" style="grid-column:span 2"><small>Scan progress</small><b style="font-size:18px">'+(S.scanning?"Scanning "+S.done+"/"+S.total:S.last?"Idle · last scan "+S.dur+"s":"Starting…")+'</b><div style="height:4px;background:var(--line);border-radius:2px;margin:8px 0"><div style="height:4px;width:'+(S.scanning?(S.total?Math.round(S.done/S.total*100):0):S.last?100:0)+'%;background:var(--blue);border-radius:2px"></div></div><small style="text-transform:none;letter-spacing:0">'+NET.calls+' API calls · '+NET.rl+' rate-limit hits · '+NET.fail+' failures</small></div>';
   $("tbs").innerHTML=Object.keys(RULES).map(k=>'<span class="tab'+(S.tab===k?" on":"")+'" data-k="'+k+'">'+RULES[k][0]+'<i>'+cnt[k]+'</i></span>').join("");
   $("tbs").querySelectorAll(".tab").forEach(t=>t.onclick=()=>{S.tab=t.dataset.k;renderScanner(true)});
@@ -509,6 +546,7 @@ function renderScanner(keep){
   if(S.tab==="ms"){msTable(mr);return}
   if(S.tab==="dmi"){dmiTable(dr);return}
   if(S.tab==="spot"){spotTable(sr);return}
+  if(S.tab==="scalp"){scalpTable(qr);return}
   const lv=v=>v<=CFG.os3?" ●●●":v<=CFG.os2?" ●●":" ●";
   const tag=(r,t)=>{const a=r.d[t];let x=t;if(S.tab==="os")x+=lv(a.rsi);return'<span class="b up">'+x+'</span>'};
   let list=rows.map(r=>({r,m:match(r.d,S.tab)})).filter(x=>x.m.length&&(!S.filter||x.r.s.includes(S.filter)));
