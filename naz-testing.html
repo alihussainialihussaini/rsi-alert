@@ -566,6 +566,15 @@ function opinion(A,K,p,t){
   const kc=keyCalc(m=>A[kname(m)]||null);
   if(kc){const st=kstat(kc);if(st[1]==="up")hasLong=true;sg.push([st[1]==="up"?"up":"warn","Key timeframe "+klab(kc.key)+": "+st[0]])}
   ["15m","1h","4h","6h","12h","1d"].forEach(tf=>{if(!K[tf])return;let m=null;try{m=msCalc(K[tf],tf)}catch(x){}if(m)sg.push(["dn","Short zone "+tfl(tf)+": "+g6(m.zlo)+" – "+g6(m.zhi)+(p>=m.zlo&&p<=m.zhi?" · price is inside":"")+(m.ret?" · retested":"")])});
+  const lvc=(tf,n)=>{const k=K[tf];if(!k||k.length<4)return null;const c=k.slice(0,-1).slice(-n);let hi=-1e99,lo=1e99;c.forEach(x=>{if(x[2]>hi)hi=x[2];if(x[3]<lo)lo=x[3]});return{hi,lo,n:c.length,cur:k[k.length-1]}};
+  const lw=lvc("1w",26),ld=lvc("1d",30);
+  const lsig=(nm,l)=>{if(!l)return;const d1=(l.hi-p)/p*100,d2=(p-l.lo)/p*100;
+    if(p>l.hi)sg.push(["up","Price is above the "+nm+" high "+g6(l.hi)+": breakout"]);
+    else if(l.cur[2]>=l.hi&&p<l.hi)sg.push(["dn","Price tested the "+nm+" high "+g6(l.hi)+" and is back below it: rejection"]);
+    else if(d1<=3)sg.push(["warn","Price is "+d1.toFixed(1)+"% below the "+nm+" high "+g6(l.hi)+" (resistance)"]);
+    if(p<l.lo)sg.push(["dn","Price is below the "+nm+" low "+g6(l.lo)+": breakdown"]);
+    else if(d2<=3)sg.push(["warn","Price is "+d2.toFixed(1)+"% above the "+nm+" low "+g6(l.lo)+" (support)"])};
+  lsig("weekly",lw);lsig("daily",ld);
   const vb=sc>=3?["Bullish","up"]:sc>=1?["Leaning bullish","up"]:sc===0?["Neutral","mu"]:sc>=-2?["Leaning bearish","dn"]:["Bearish","dn"];
   const h1=A["1h"],ob=h1&&h1.live>=70;let plan,pc="note";
   if(sc>=1&&hasLong&&!ob){pc="note g";plan="Long idea: entry around "+g6(p)+", stop loss "+g6(p*(1-B.sl/100))+" (−"+B.sl+"%), take profit "+g6(p*(1+B.tp/100))+" (+"+B.tp+"%). Signals below back it up."}
@@ -581,7 +590,7 @@ function opinion(A,K,p,t){
    '<div class="'+pc+'">'+plan+'</div>'+
    '<h3>Why</h3>'+e.map(row).join("")+
    '<h3 style="margin-top:12px">Signals now</h3>'+(sg.length?sg.map(row).join(""):'<div class="mu" style="font-size:13px">No fresh signal right now.</div>')+
-   (l1||l4?'<h3 style="margin-top:12px">Recent range <span class="mu">(resistance ↑ / support ↓)</span></h3>'+lrow("1H · 2d",l1)+lrow("4H · 7d",l4):"")+
+   (l1||l4||lw||ld?'<h3 style="margin-top:12px">Recent range <span class="mu">(resistance ↑ / support ↓)</span></h3>'+lrow("1H · 2d",l1)+lrow("4H · 7d",l4)+(ld?lrow("1D · "+ld.n+"d",ld):"")+(lw?lrow("1W · "+lw.n+"w",lw):"")+(lw&&lw.n<8?'<div class="mu" style="font-size:11px">Short weekly history: only '+lw.n+' closed weeks, so the weekly level is less reliable.</div>':""):"")+
    '<p class="mu" style="font-size:11px;margin:10px 0 0">Rule-based opinion from the scanner\'s own rules. It is not advice and it can be wrong.</p></div>'}
 // side panel (RSI vs MA, RSI by timeframe, regime, active signals)
 async function panel(sym,my){
@@ -698,158 +707,4 @@ async function wxLoad(){if(S.wx.busy||(S.wx.rows&&Date.now()-S.wx.t<60000))retur
 setInterval(()=>{if(route().p==="funding")wxLoad()},60000);
 function fundRows(){const out=[],ok=(t)=>{if(!t||t.fr===undefined||isNaN(t.fr)||!t.nf)return false;if(Math.abs(t.fr)<S.fmin)return false;if(S.fside==="neg"&&!(t.fr<0))return false;if(S.fside==="pos"&&!(t.fr>0))return false;return true};
   if(S.wx.rows)S.wx.rows.forEach(x=>{if(ok(x.t))out.push(x)});
-  else S.list.forEach(s=>{const t=S.tick[s];if(ok(t))out.push({s,t,src:"bybit"})});
-  out.sort((a,b)=>Math.abs(b.t.fr)-Math.abs(a.t.fr));return out}
-function renderFunding(){
-  const rows=fundRows(),wx=!!S.wx.rows,chip=(k,txt)=>'<button class="tfb'+(S.fside===k?" on":"")+'" data-f="'+k+'">'+txt+'</button>';
-  $("page").innerHTML='<h2>Funding Rates</h2><p class="sub">Funding rate and countdown to the next payout · '+(wx?"WEEX USDT futures (all pairs)":"top "+TOP+" Bybit USDT perpetuals")+' · negative rate = shorts pay longs, positive rate = longs pay shorts · the rate is per payout period · refreshes every minute.</p>'+
-   '<div class="add" style="flex-wrap:wrap;align-items:center"><span class="mu">SHOW</span>'+chip("all","All")+chip("neg","Negative · shorts pay longs")+chip("pos","Positive · longs pay shorts")+'<span class="mu">Min rate</span><select id="fm" style="'+SEL+'">'+[[0,"Any"],[0.05,"0.05%"],[0.1,"0.1%"],[0.25,"0.25%"],[0.5,"0.5%"],[1,"1%"]].map(x=>'<option value="'+x[0]+'"'+(S.fmin===x[0]?" selected":"")+'>'+x[1]+'</option>').join("")+'</select></div>'+
-   (!wx&&S.wx.err?'<div class="note">Could not load WEEX ('+S.wx.err+'). Showing Bybit data instead. If this stays, your browser may be blocking the WEEX request.</div>':'')+
-   (!wx&&!S.wx.err&&S.wx.busy?'<div class="note">Loading WEEX data…</div>':'')+
-   (!wx&&SRC!=="bybit"?'<div class="note">Bybit could not be reached either, so this page is empty.</div>':'')+
-   '<div class="rule">Payout column = what a position of $1,000 at 20x (= $20,000) would receive if the rate stays the same until the payout. Before fees, slippage and price moves. A big rate usually means a risky, thin coin: at 20x a 5% price move against you liquidates the position. Green row = payout in less than 10 minutes. WEEX rate = the forecast rate for the next payout.</div>'+
-   '<div class="tw"><table><thead><tr>'+["Coin","Price","Funding rate","Who pays","Next payout in","Payout time (PKT)","Payout on $1,000 · 20x","24h %","24h volume",""].map(h=>'<th style="cursor:default">'+h+'</th>').join("")+'</tr></thead><tbody>'+
-   (rows.length?rows.map(x=>{const t=x.t,neg=t.fr<0,est=200*Math.abs(t.fr),soon=t.nf-Date.now()<6e5&&t.nf-Date.now()>0;
-     return'<tr class="r'+(soon?" nw":"")+'" data-s="'+x.s+'"><td><b>'+x.s.replace("USDT","")+'</b><span class="mu">/USDT</span></td><td>'+g6(t.p)+'</td><td class="'+(neg?"up":"dn")+'"><b>'+(t.fr>0?"+":"")+t.fr.toFixed(4)+'%</b></td><td style="text-align:left">'+(t.fr===0?'<span class="mu">nobody</span>':neg?'<span class="b up">Shorts pay longs</span>':'<span class="b dn">Longs pay shorts</span>')+'</td><td><b data-nf="'+t.nf+'">'+fcd(t.nf)+'</b></td><td>'+fmtT(t.nf)+(t.cyc?' <span class="mu">· every '+(t.cyc%60===0?t.cyc/60+"h":t.cyc+"m")+'</span>':"")+'</td><td style="text-align:left">'+(neg?'<span class="up">Long +$'+est.toFixed(0)+'</span>':'<span class="dn">Short +$'+est.toFixed(0)+'</span>')+'</td><td class="'+(t.ch>=0?"up":"dn")+'">'+(t.ch>=0?"+":"")+t.ch.toFixed(2)+'%</td><td>$'+(t.v>=1e6?(t.v/1e6).toFixed(2)+"M":(t.v/1e3).toFixed(1)+"K")+'</td><td><a href="#coin/'+x.s+'" class="mu">Open →</a>'+(x.src==="bybit"?' <a href="https://www.bybit.com/trade/usdt/'+x.s+'" target="_blank" rel="noopener" class="mu">Bybit ↗</a>':"")+'</td></tr>'}).join(""):'<tr><td colspan="10" class="empty">'+(S.scanning||S.wx.busy||(!wx&&!S.list.length)?"Loading…":"No coin matches these filters right now.")+'</td></tr>')+'</tbody></table></div>';
-  $("page").querySelectorAll("[data-f]").forEach(b=>b.onclick=()=>{S.fside=b.dataset.f;renderFunding()});
-  $("fm").onchange=e=>{S.fmin=+e.target.value;renderFunding()};
-  $("page").querySelectorAll("tr.r").forEach(tr=>tr.onclick=e=>{if(e.target.closest("a[target]"))return;location.hash="#coin/"+tr.dataset.s})}
-// ===== watchlist =====
-async function renderWatch(){
-  $("page").innerHTML='<h2>My Watchlist</h2><p class="sub">Coins you starred. Saved in this browser only.</p><div class="add"><input id="wi" placeholder="Add a coin, e.g. SOL"><button id="wb">Add</button></div><div class="tw"><table><thead><tr><th>Coin</th><th>Price</th><th>24h</th><th>RSI 15m</th><th>RSI 1h</th><th>RSI 4h</th><th>vs MA 15m / 1h / 4h</th><th></th></tr></thead><tbody id="wt"></tbody></table></div>';
-  const add=()=>{const s=fix($("wi").value);if(!s)return;const a=wl();if(!a.includes(s)){a.push(s);setWl(a)}$("wi").value="";renderWatch()};
-  $("wb").onclick=add;$("wi").onkeydown=e=>{if(e.key==="Enter")add()};
-  const a=wl();if(!a.length){$("wt").innerHTML='<tr><td colspan="8" class="empty">Nothing here yet. Add a coin above, or press the ★ on a coin page.</td></tr>';return}
-  $("wt").innerHTML=a.map(s=>'<tr class="r" data-s="'+s+'"><td><b>'+s.replace("USDT","")+'</b><span class="mu">/USDT</span></td><td id="w1'+s+'">…</td><td id="w2'+s+'"></td><td id="w3'+s+'"></td><td id="w4'+s+'"></td><td id="w5'+s+'"></td><td id="w6'+s+'"></td><td><span class="star on" data-x="'+s+'">★</span></td></tr>').join("");
-  $("wt").querySelectorAll("tr.r").forEach(tr=>tr.onclick=e=>{if(e.target.dataset.x){setWl(wl().filter(x=>x!==e.target.dataset.x));renderWatch();return}location.hash="#coin/"+tr.dataset.s});
-  await pool(a,4,async s=>{
-    try{const t=await tk(s);if($("w1"+s)){$("w1"+s).textContent=g6(+t.lastPrice);$("w2"+s).innerHTML='<span class="'+(+t.priceChangePercent>=0?"up":"dn")+'">'+(+t.priceChangePercent>=0?"+":"")+(+t.priceChangePercent).toFixed(2)+"%</span>"}}catch(e){if($("w1"+s))$("w1"+s).textContent="no data"}
-    const d={};for(const tf of WTF){try{const x=anTf(await kl(s,tf,300,false));if(x)d[tf]=x}catch(e){}}
-    WTF.forEach((tf,i)=>{const c=$("w"+(3+i)+s);if(c){c.className=rc(d[tf]&&d[tf].rsi);c.textContent=d[tf]?d[tf].rsi.toFixed(1):"–"}});
-    const c6=$("w6"+s);if(c6)c6.innerHTML=WTF.map(tf=>d[tf]?'<span class="b '+(d[tf].above?"up":"dn")+'">'+tf+(d[tf].above?" ▲":" ▼")+"</span>":'<span class="b mu">'+tf+" –</span>").join("")})}
-// ===== Bybit (commodities & indices) =====
-const BY={QQQUSDT:["Nasdaq 100","NQ","NQ","#2563eb"],XAUUSDT:["Gold","XAUUSD","Au","#c9a227"],XAGUSDT:["Silver","XAGUSD","Ag","#9aa4b2"],CLUSDT:["Crude Oil","CL","Oil","#3b4656"]};
-let SRC="bybit";
-const BYI={"1m":"1","6h":"360","12h":"720","3m":"3","5m":"5","15m":"15","30m":"30","1h":"60","2h":"120","4h":"240","1d":"D","1w":"W","1M":"M"};
-const MTF=["5m","15m","30m","1h","4h","1d","1w","1M"],HTF=["4h","1d","1w","1M"];
-async function byk(sym,iv,lim){const r=await fetch("https://api.bybit.com/v5/market/kline?category=linear&symbol="+sym+"&interval="+(BYI[iv]||iv)+"&limit="+lim);NET.calls++;if(r.status===429||r.status===403||r.status===418)NET.rl++;if(!r.ok)throw new Error(r.status);const j=await r.json();if(!j.result||!j.result.list)throw new Error("bybit");return j.result.list.slice().reverse().map(x=>[+x[0],+x[1],+x[2],+x[3],+x[4],+x[5]])}
-async function tk(sym){if(BY[sym]||SRC==="bybit"){const r=await fetch("https://api.bybit.com/v5/market/tickers?category=linear&symbol="+sym);const j=await r.json();const x=j.result.list[0];return{lastPrice:x.lastPrice,priceChangePercent:String(+x.price24hPcnt*100),quoteVolume:x.turnover24h,fr:(x.fundingRate!==undefined&&x.fundingRate!=="")?+x.fundingRate*100:undefined,nf:+x.nextFundingTime||0}}const r=await fetch(API+"/api/v3/ticker/24hr?symbol="+sym);return r.json()}
-const cv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-let MS={d:{},t:{},last:null,busy:false};
-async function macScan(){if(MS.busy)return;MS.busy=true;
-  await pool(Object.keys(BY),4,async s=>{const d={};
-    await pool(MTF,4,async tf=>{try{const a=anTf(await byk(s,tf,300));if(a)d[tf]=a}catch(e){}});
-    try{const t=await tk(s);MS.t[s]={p:+t.lastPrice,ch:+t.priceChangePercent}}catch(e){}
-    MS.d[s]=d});
-  MS.last=new Date();MS.busy=false;if(route().p==="macro")renderMacro()}
-setInterval(()=>{if(route().p==="macro")macScan()},60000);
-function regime(v){return v>60?["Bullish","up"]:v>=50?["Neutral–bullish","up"]:v>=40?["Neutral–bearish","dn"]:["Bearish","dn"]}
-function hm(v){if(v===undefined)return"";return v>=70?"background:rgba(246,70,93,.28)":v>=60?"background:rgba(246,70,93,.12)":v<=30?"background:rgba(46,189,133,.28)":v<=40?"background:rgba(46,189,133,.12)":""}
-function stage(v){return band(v)||"–"}
-function renderMacro(){
-  const ks=Object.keys(BY),D=s=>MS.d[s]||{};
-  let h='<h2>Commodities &amp; Indices</h2><p class="sub">NQ · Gold · Silver · Oil · RSI14 on every timeframe, 5m to Monthly · data: Bybit perpetuals (QQQUSDT stands in for Nasdaq) · refreshes every minute.</p>';
-  h+='<div class="tabs">'+[["XAUUSDT","Gold chart"],["XAGUSDT","Silver chart"],["CLUSDT","Oil chart"],["QQQUSDT","NQ chart"]].map(x=>'<a class="tab" href="#coin/'+x[0]+'">'+x[1]+'</a>').join("")+'<span class="tab on">RSI Scanner</span></div>';
-  if(!MS.last)h+='<div class="note">Loading Bybit data…'+(MS.busy?"":" If this stays empty, your browser could not reach Bybit.")+'</div>';
-  h+='<div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">'+ks.map(s=>{const d=D(s),t=MS.t[s]||{},b=BY[s];
-    const have=HTF.filter(x=>d[x]),bear=have.filter(x=>d[x].live<50),bull=have.filter(x=>d[x].live>=50);
-    const msg=!have.length?"No data yet.":!bull.length?"RSI is below 50 on every timeframe from 4H up. Don't focus on longs; oversold readings can stay oversold.":!bear.length?"RSI is 50 or higher on every timeframe from 4H up.":bull.join(", ").toUpperCase()+": 50 or higher · "+bear.join(", ").toUpperCase()+": below 50.";
-    return'<a class="card" href="#coin/'+s+'" style="display:block"><div style="display:flex;gap:10px;align-items:center"><span class="logo" style="background:'+b[3]+';color:#fff;font-size:11px">'+b[2]+'</span><div><b style="font-size:16px;margin:0">'+b[0]+'</b><small>'+b[1]+'</small></div></div><div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:8px"><b style="font-size:26px;margin:0">'+(t.p!==undefined?g6(t.p):"–")+'</b><span class="'+(t.ch>=0?"up":"dn")+'">'+(t.ch!==undefined?(t.ch>=0?"+":"")+t.ch.toFixed(2)+"%":"")+'</span></div><div class="grid6" style="grid-template-columns:repeat(4,1fr);margin:10px 0">'+HTF.map(x=>{const a=d[x],r=a?regime(a.live):null;return'<div><small>'+x.toUpperCase()+' · '+(a?Math.round(a.live):"—")+'</small><span class="'+(r?r[1]:"mu")+'" style="font-size:11px">'+(r?r[0]:"—")+'</span></div>'}).join("")+'</div><div class="mu" style="font-size:12px">'+msg+'</div></a>'}).join("")+'</div>';
-  h+='<div class="rule">RSI heatmap · ≥70 red, 60–70 light red, 30–40 light green, ≤30 green · live candle</div><div class="tw" style="margin-bottom:16px"><table><thead><tr><th>Market</th>'+MTF.map(x=>'<th style="cursor:default">'+x.toUpperCase()+'</th>').join("")+'</tr></thead><tbody>'+ks.map(s=>{const d=D(s);return'<tr><td><b>'+BY[s][0]+'</b></td>'+MTF.map(x=>{const v=d[x]?d[x].live:undefined;return'<td style="'+hm(v)+'">'+(v!==undefined?Math.round(v):"—")+'</td>'}).join("")+'</tr>'}).join("")+'</tbody></table></div>';
-  const rt=[];ks.forEach(s=>MTF.forEach(x=>{const a=D(s)[x];if(a&&a.had&&a.live>=49&&a.live<=65)rt.push([s,x,a])}));
-  h+='<div class="rule">RSI 70 → 52 Retests · all timeframes 5m to 1M · RSI stayed at 70+ for '+CFG.n70+' candles in the last '+CFG.look+', now 49–65</div><div class="tw" style="margin-bottom:16px"><table><thead><tr><th>Market</th><th>TF</th><th>RSI</th><th>Peak</th><th>Dist. to 52</th><th>Status</th></tr></thead><tbody>'+(rt.length?rt.map(x=>'<tr><td><b>'+BY[x[0]][0]+'</b></td><td>'+x[1].toUpperCase()+'</td><td>'+x[2].live.toFixed(1)+'</td><td>'+x[2].pk.toFixed(1)+'</td><td>'+(x[2].live-52).toFixed(1)+'</td><td>'+stage(x[2].live)+'</td></tr>').join(""):'<tr><td colspan="6" class="empty">No market is pulling back from RSI 70 right now.</td></tr>')+'</tbody></table></div>';
-  const os=[];ks.forEach(s=>MTF.forEach(x=>{const a=D(s)[x];if(a&&a.rsi<30)os.push([s,x,a])}));os.sort((a,b)=>a[2].rsi-b[2].rsi);
-  const bearH=s=>["4h","1d"].some(x=>D(s)[x]&&D(s)[x].live<40);
-  h+='<div class="rule">Oversold · RSI &lt; 30 on any timeframe · closed candles</div><div class="tw" style="margin-bottom:16px"><table><thead><tr><th>Market</th><th>TF</th><th>RSI</th><th>Context</th></tr></thead><tbody>'+(os.length?os.map(x=>'<tr><td><b>'+BY[x[0]][0]+'</b></td><td>'+x[1].toUpperCase()+'</td><td class="up">'+x[2].rsi.toFixed(1)+'</td><td class="'+(bearH(x[0])?"dn":"mu")+'" style="text-align:left">'+(bearH(x[0])?"⚠ Bearish HTF: avoid longs":"Higher timeframes not bearish")+'</td></tr>').join(""):'<tr><td colspan="4" class="empty">Nothing oversold right now.</td></tr>')+'</tbody></table></div>';
-  h+='<div class="box"><h3>How to read the regime <span class="mu">(each timeframe 4H and above)</span></h3><div><span class="up">●</span> Above 60: bullish territory</div><div><span class="up">●</span> 50–60: neutral to bullish</div><div><span class="dn">●</span> 40–50: neutral to bearish</div><div><span class="dn">●</span> Below 40: bearish territory, don\'t focus on longs</div></div><p class="mu" style="font-size:12px">Retest stages: Monitoring 60–65, Early Warning 57–60, Near Retest 54–57, Alert 52–54, Retest Zone 49–52. Perpetual prices can differ slightly from spot charts. 1M may show — when a market has too little history.'+(MS.last?" Updated "+MS.last.toLocaleTimeString("en-GB",{timeZone:"Asia/Karachi"})+" PKT.":"")+'</p>';
-  $("page").innerHTML=h}
-// ===== Recovery Report =====
-function renderRecovery(){
-  const side=window._rec||"bull";
-  const rows=S.list.map(s=>({s,t:S.tick[s]||{},d:S.data[s]||{}})).filter(r=>r.t.ch!==undefined).sort((a,b)=>b.t.ch-a.t.ch);
-  const bull=rows.slice(0,30),bear=rows.slice().reverse().slice(0,30),list=side==="bull"?bull:bear;
-  const cols=["15m","1h","4h","1d"];
-  $("page").innerHTML='<h2>Recovery Report</h2><p class="sub">Top '+TOP+' '+(SRC==="bybit"?"Bybit USDT perpetuals":"Binance USDT coins")+' by 24h volume, ranked by 24h change · RSI14 on closed candles · biggest 30 gainers and 30 losers.</p><div class="tabs"><span class="tab'+(side==="bull"?" on":"")+'" data-w="bull">▲ Bullish<i>'+bull.length+'</i></span><span class="tab'+(side==="bear"?" on":"")+'" data-w="bear">▼ Bearish<i>'+bear.length+'</i></span></div><div class="tw"><table><thead><tr><th>#</th><th>Coin</th><th>Price</th><th>24h</th>'+cols.map(x=>'<th style="cursor:default">RSI '+x+'</th>').join("")+'<th style="cursor:default">vs MA 1h</th></tr></thead><tbody>'+(list.length?list.map((r,i)=>'<tr class="r" data-s="'+r.s+'"><td class="mu">'+(i+1)+'</td><td><b>'+r.s.replace("USDT","")+'</b><span class="mu">/USDT</span></td><td>'+g6(r.t.p)+'</td><td class="'+(r.t.ch>=0?"up":"dn")+'">'+(r.t.ch>=0?"+":"")+r.t.ch.toFixed(2)+'%</td>'+cols.map(x=>'<td class="'+rc(r.d[x]&&r.d[x].rsi)+'">'+(r.d[x]?r.d[x].rsi.toFixed(1):"–")+'</td>').join("")+'<td>'+(r.d["1h"]?'<span class="b '+(r.d["1h"].above?"up":"dn")+'">'+(r.d["1h"].above?"▲ above":"▼ below")+'</span>':"–")+'</td></tr>').join(""):'<tr><td colspan="9" class="empty">'+(S.scanning?"Loading…":"No data yet.")+'</td></tr>')+'</tbody></table></div>';
-  $("page").querySelectorAll(".tab[data-w]").forEach(t=>t.onclick=()=>{window._rec=t.dataset.w;renderRecovery()});
-  $("page").querySelectorAll("tr.r").forEach(tr=>tr.onclick=()=>{location.hash="#coin/"+tr.dataset.s})}
-document.addEventListener("mouseup",()=>{setTimeout(()=>{S.down=false},50)});
-function refresh(){if(S.down)return;const p=route().p;if(p==="scanner")renderScanner(true);else if(p==="recovery")renderRecovery();else if(p==="funding")renderFunding();else if(p==="bot")renderBot(true)}
-function applyTheme(t){document.documentElement.dataset.theme=t;$("tg").textContent=t==="light"?"☾":"☀";try{localStorage.setItem("theme",t)}catch(e){}}
-// ===== Demo Bot (paper trading, fake money) =====
-let B={on:false,start:200,sl:2,tp:4,size:100,max:10,src:{dmi:1,key:1,ms:1,spot:1},adxOnly:1,trades:[],seen:{},seeded:false,id:0},BL={};
-try{const o=JSON.parse(localStorage.getItem("bot")||"null");if(o){B=Object.assign(B,o);B.src=Object.assign({dmi:1,key:1,ms:1,spot:1},o.src||{})}B.seeded=false}catch(e){}
-function botBal(){return B.start+B.trades.filter(t=>t.st==="closed").reduce((a,t)=>a+t.usd,0)}
-function botLocked(){return B.trades.filter(t=>t.st==="open").reduce((a,t)=>a+t.size,0)}
-function botSave(){try{localStorage.setItem("bot",JSON.stringify(B))}catch(e){}}
-function botSignals(){const out=[],rw=getRows();
-  if(B.src.dmi){const a=S.dax,b=S.dadx;S.dax="off";S.dadx="off";let l=[];try{l=dmiRows(rw)}catch(e){}S.dax=a;S.dadx=b;
-    l.forEach(x=>{if(B.adxOnly&&!(x.stg&&x.stg.ok))return;out.push({k:"d|"+dk(x),s:x.s,tf:x.tf,src:"-DMI",long:x.long})})}
-  if(B.src.key){keyRows(rw).forEach(x=>{const a=x.a,tf=kname(x.key);if(kstat(x)[1]!=="up")return;if(!(a.c30===null||a.c30<=1))return;
-    const t=a.c30===null?a.ft:a.ft-(1+a.c30)*TFMS[tf];out.push({k:"k|"+x.s+"|"+tf+"|"+t,s:x.s,tf,src:"Key TF",long:true})})}
-  if(B.src.ms){msRows(rw).forEach(x=>{const p=(S.tick[x.s]||{}).p;if(p===undefined||!(p>=x.m.zlo&&p<=x.m.zhi))return;out.push({k:"m|"+x.s+"|"+x.tf+"|"+x.m.conf,s:x.s,tf:x.tf,src:"Magical shorts",long:false})})}
-  if(B.src.spot){spotRows(rw).forEach(x=>{out.push({k:"s|"+sk(x),s:x.s,tf:x.tf,src:"Spot",long:true})})}
-  return out}
-function botScan(){if(!B.on)return;const sg=botSignals(),now=Date.now();
-  if(!B.seeded){sg.forEach(x=>{B.seen[x.k]=now});B.seeded=true;botSave();return}
-  sg.forEach(x=>{if(B.seen[x.k])return;B.seen[x.k]=now;
-    const p=(S.tick[x.s]||{}).p;if(!p)return;
-    if(B.trades.some(t=>t.st==="open"&&t.s===x.s))return;
-    if(B.trades.filter(t=>t.st==="open").length>=B.max)return;
-    if(botBal()-botLocked()<B.size)return;
-    B.trades.push({id:++B.id,s:x.s,tf:x.tf,src:x.src,long:x.long,en:p,sl:x.long?p*(1-B.sl/100):p*(1+B.sl/100),tp:x.long?p*(1+B.tp/100):p*(1-B.tp/100),size:B.size,t:now,st:"open"});BL[x.s]=p});
-  Object.keys(B.seen).forEach(k=>{if(now-B.seen[k]>2592e5)delete B.seen[k]});
-  botSave()}
-function botCheck(){let ch=false;const now=Date.now();
-  B.trades.forEach(t=>{if(t.st!=="open")return;const p=BL[t.s];if(!p)return;let ex=null,why="";
-    if(t.long){if(p<=t.sl){ex=t.sl;why="Stop loss"}else if(p>=t.tp){ex=t.tp;why="Take profit"}}
-    else{if(p>=t.sl){ex=t.sl;why="Stop loss"}else if(p<=t.tp){ex=t.tp;why="Take profit"}}
-    if(ex!==null){t.st="closed";t.ex=ex;t.xt=now;t.why=why;t.pct=(t.long?(ex-t.en)/t.en:(t.en-ex)/t.en)*100;t.usd=t.size*t.pct/100;ch=true}});
-  if(ch){botSave();if(route().p==="bot")renderBot(true)}}
-async function botTick(){const op=B.trades.filter(t=>t.st==="open");if(!op.length)return;
-  const sy=[...new Set(op.map(t=>t.s))];
-  await pool(sy,4,async s=>{try{const t=await tk(s);if(+t.lastPrice>0)BL[s]=+t.lastPrice}catch(e){}});
-  botCheck();if(route().p==="bot")renderBot(true)}
-setInterval(botTick,20000);
-function botPnl(t){if(t.st==="closed")return{pct:t.pct,usd:t.usd};const p=BL[t.s];if(!p)return null;const pct=(t.long?(p-t.en)/t.en:(t.en-p)/t.en)*100;return{pct,usd:t.size*pct/100}}
-function renderBot(auto){
-  if(auto&&document.activeElement&&document.activeElement.tagName==="INPUT"&&$("page").contains(document.activeElement))return;
-  const op=B.trades.filter(t=>t.st==="open"),cl=B.trades.filter(t=>t.st==="closed").slice().reverse(),win=cl.filter(t=>t.usd>0).length;
-  const tot=cl.reduce((a,t)=>a+t.usd,0),opn=op.reduce((a,t)=>{const q=botPnl(t);return a+(q?q.usd:0)},0);
-  const sgn=v=>(v>=0?"+":"")+v.toFixed(2),cls=v=>v>=0?"up":"dn";
-  const bal=botBal(),lock=botLocked(),free=bal-lock,eq=bal+opn,tpl=eq-B.start,tpp=B.start>0?tpl/B.start*100:0;
-  const chip=(k,txt)=>'<button class="tfb'+(B.src[k]?" on":"")+'" data-bs="'+k+'">'+txt+'</button>';
-  const inp=(k,l)=>'<span class="mu">'+l+'</span><input data-bk="'+k+'" type="number" value="'+B[k]+'" style="width:80px">';
-  $("page").innerHTML='<h2>Demo Bot</h2><p class="sub">Paper trading with fake money. It opens a fake trade when a scanner signal appears and closes it at your stop loss or take profit. No real orders. It runs only while this page is open in the browser. Trades are saved in this browser.</p>'+
-   '<div class="cards"><div class="card"><small>Start balance (fake $)</small><b>'+B.start.toFixed(2)+'</b></div><div class="card"><small>Balance (closed trades)</small><b class="'+cls(bal-B.start)+'">'+bal.toFixed(2)+'</b></div><div class="card"><small>Equity (with open trades)</small><b class="'+cls(tpl)+'">'+eq.toFixed(2)+'</b></div><div class="card"><small>Total profit / loss</small><b class="'+cls(tpl)+'">'+sgn(tpl)+' $</b><small style="text-transform:none;letter-spacing:0">'+sgn(tpp)+'% of start</small></div><div class="card"><small>In open trades</small><b>'+lock.toFixed(2)+'</b></div><div class="card"><small>Free to trade</small><b>'+free.toFixed(2)+'</b></div></div>'+(free<B.size?'<div class="note">Not enough free balance for a new trade of $'+B.size+'. New signals are skipped until a trade closes (or lower the trade size).</div>':'')+
-   '<div class="cards"><div class="card"><small>Bot</small><b class="'+(B.on?"up":"mu")+'">'+(B.on?"ON":"OFF")+'</b></div><div class="card"><small>Open trades</small><b>'+op.length+'</b></div><div class="card"><small>Closed trades</small><b>'+cl.length+'</b></div><div class="card"><small>Win rate</small><b>'+(cl.length?Math.round(win/cl.length*100)+"%":"–")+'</b></div><div class="card"><small>Closed P/L (fake $)</small><b class="'+cls(tot)+'">'+sgn(tot)+'</b></div><div class="card"><small>Open P/L (fake $)</small><b class="'+cls(opn)+'">'+sgn(opn)+'</b></div></div>'+
-   '<div class="add" style="flex-wrap:wrap;align-items:center"><button id="bon" style="background:'+(B.on?"var(--dn)":"var(--up)")+'">'+(B.on?"Stop bot":"Start bot")+'</button>'+inp("start","Start balance $")+inp("sl","Stop loss %")+inp("tp","Take profit %")+inp("size","Trade size $")+inp("max","Max open trades")+'</div>'+
-   '<div class="add" style="flex-wrap:wrap;align-items:center"><span class="mu">SIGNALS</span>'+chip("dmi","-DMI (-DI + ADX)")+chip("key","Key Timeframe (long)")+chip("ms","Magical shorts (short)")+chip("spot","Spot Signals (long)")+'<label><input type="checkbox" id="bax"'+(B.adxOnly?" checked":"")+'> -DMI: only when ADX is rising (strong)</label><button id="brs" class="tfb">Reset all trades</button></div>'+
-   '<div class="rule">Rules: -DMI LONG/SHORT = the -DI cross of the -DMI tab (uses the timeframes you switched on in the scanner). Key Timeframe = LONG when RSI claims '+CFG.os1+' on the key timeframe. Magical shorts = SHORT when price enters the short zone. Spot Signals = LONG from the Spot Signals tab (uses its strength setting). Only signals that appear AFTER you press Start are traded. One open trade per coin. Each trade uses its size from your fake balance (start balance default $200). If the free balance is smaller than the trade size, the signal is skipped. Fills use the live price, with no fees or slippage, so real results would be a bit worse. The price is checked every 20 seconds, so a fast spike can be missed.</div>'+
-   '<h3>Open trades</h3><div class="tw" style="margin-bottom:16px"><table><thead><tr>'+["Coin","TF","Signal","Side","Entry","Now","Stop loss","Take profit","P/L %","P/L $","Opened (PKT)"].map(h=>'<th style="cursor:default">'+h+'</th>').join("")+'</tr></thead><tbody>'+(op.length?op.map(t=>{const q=botPnl(t);return'<tr class="r" data-s="'+t.s+'"><td><b>'+t.s.replace("USDT","")+'</b><span class="mu">/USDT</span></td><td><span class="b">'+tfl(t.tf)+'</span></td><td class="mu">'+t.src+'</td><td>'+(t.long?'<span class="b up">▲ LONG</span>':'<span class="b dn">▼ SHORT</span>')+'</td><td>'+g6(t.en)+'</td><td>'+(BL[t.s]?g6(BL[t.s]):"–")+'</td><td class="dn">'+g6(t.sl)+'</td><td class="up">'+g6(t.tp)+'</td><td class="'+(q?cls(q.pct):"mu")+'">'+(q?sgn(q.pct)+"%":"–")+'</td><td class="'+(q?cls(q.usd):"mu")+'">'+(q?sgn(q.usd):"–")+'</td><td>'+fmtT(t.t)+'</td></tr>'}).join(""):'<tr><td colspan="11" class="empty">'+(B.on?"No open trades. Waiting for a new signal…":"Bot is off. Press Start bot.")+'</td></tr>')+'</tbody></table></div>'+
-   '<h3>Closed trades</h3><div class="tw"><table><thead><tr>'+["Coin","TF","Signal","Side","Entry","Exit","Result","P/L %","P/L $","Opened (PKT)","Closed (PKT)"].map(h=>'<th style="cursor:default">'+h+'</th>').join("")+'</tr></thead><tbody>'+(cl.length?cl.slice(0,100).map(t=>'<tr class="r" data-s="'+t.s+'"><td><b>'+t.s.replace("USDT","")+'</b><span class="mu">/USDT</span></td><td><span class="b">'+tfl(t.tf)+'</span></td><td class="mu">'+t.src+'</td><td>'+(t.long?'<span class="b up">▲ LONG</span>':'<span class="b dn">▼ SHORT</span>')+'</td><td>'+g6(t.en)+'</td><td>'+g6(t.ex)+'</td><td class="'+(t.usd>=0?"up":"dn")+'">'+t.why+'</td><td class="'+cls(t.pct)+'">'+sgn(t.pct)+'%</td><td class="'+cls(t.usd)+'">'+sgn(t.usd)+'</td><td>'+fmtT(t.t)+'</td><td>'+fmtT(t.xt)+'</td></tr>').join(""):'<tr><td colspan="11" class="empty">No closed trades yet.</td></tr>')+'</tbody></table></div>';
-  $("bon").onclick=()=>{B.on=!B.on;B.seeded=false;botSave();if(B.on)botScan();renderBot()};
-  $("page").querySelectorAll("[data-bk]").forEach(i=>i.onchange=()=>{const v=+i.value;if(v>0){B[i.dataset.bk]=v;botSave()}renderBot()});
-  $("page").querySelectorAll("[data-bs]").forEach(b=>b.onclick=()=>{B.src[b.dataset.bs]=B.src[b.dataset.bs]?0:1;botSave();renderBot()});
-  $("bax").onchange=e=>{B.adxOnly=e.target.checked?1:0;botSave();renderBot()};
-  $("brs").onclick=()=>{if(confirm("Delete all demo trades?")){B.trades=[];B.seen={};B.seeded=false;botSave();renderBot()}};
-  $("page").querySelectorAll("tr.r").forEach(tr=>tr.onclick=()=>{location.hash="#coin/"+tr.dataset.s})}
-// ===== router =====
-function route(){const h=(location.hash||"#scanner").slice(1).split("/");return{p:h[0]||"scanner",a:h[1]}}
-function go(){const r=route();
-  document.querySelectorAll(".nav[data-r]").forEach(n=>n.classList.toggle("on",n.dataset.r===(r.p==="coin"?"coin/"+r.a:r.p)));
-  if(r.p!=="coin")coinStop();
-  if(r.p==="coin"&&r.a){$("crumb").textContent="Coins / "+r.a;renderCoin(r.a)}
-  else if(r.p==="dominance"){$("crumb").textContent="Dominance / "+(r.a?decodeURIComponent(r.a):"BTC.D");renderDom(r.a)}
-  else if(r.p==="funding"){$("crumb").textContent="Scanner / Funding Rates";renderFunding();wxLoad()}
-  else if(r.p==="recovery"){$("crumb").textContent="Altcoins / Recovery Report";renderRecovery();if(!S.list.length)scan()}
-  else if(r.p==="macro"){$("crumb").textContent="Commodities & Indices / RSI Scanner";renderMacro();macScan()}
-  else if(r.p==="bot"){$("crumb").textContent="Scanner / Demo Bot";renderBot()}
-  else if(r.p==="watchlist"){$("crumb").textContent="Scanner / My Watchlist";renderWatch()}
-  else{$("crumb").textContent="Scanner / RSI Scanner";renderScanner(false)}}
-window.addEventListener("hashchange",go);
-$("q").onkeydown=e=>{if(e.key==="Enter"){const s=fix($("q").value);if(s){location.hash="#coin/"+s;$("q").value=""}}};
-let th="dark";try{th=localStorage.getItem("theme")||"dark"}catch(e){}
-$("tg").onclick=()=>{applyTheme(document.documentElement.dataset.theme==="light"?"dark":"light");if(route().p==="coin")go()};
-applyTheme(th);
-go();scan();
-</script></body></html>
+  else S.list.forEach(s=>{const t=S.tick[s];if(ok(t))out.push({s,t,s
