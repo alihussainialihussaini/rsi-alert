@@ -674,7 +674,7 @@ function coinStop(){CN++;if(CH){try{CH.remove()}catch(e){}CH=null}clearInterval(
 function tvInit(sym,tfNow){const dark=document.documentElement.dataset.theme!=="light";$("cwrap").innerHTML="";
   new TradingView.widget({container_id:"cwrap",autosize:true,symbol:tvSym(sym),interval:TVI[tfNow]||"60",timezone:"Asia/Karachi",theme:dark?"dark":"light",style:"1",locale:"en",toolbar_bg:dark?"#12161d":"#ffffff",backgroundColor:dark?"#0b0e13":"#ffffff",enable_publishing:false,allow_symbol_change:false,hide_side_toolbar:false,withdateranges:true,details:false,hide_volume:true,disabled_features:["create_volume_indicator_by_default"],studies:["RSI@tv-basicstudies","DM@tv-basicstudies"],studies_overrides:{"directional movement.adx.visible":false,"directional movement.+di.visible":false}})}
 // fallback chart (used only if the TradingView chart cannot load)
-function swLines(cs,k){(cs._swl||[]).forEach(l=>{try{cs.removePriceLine(l)}catch(e){}});cs._swl=[];const f=swFind(k,k.length-1);
+function swLines(cs,k){(cs._swl||[]).forEach(l=>{try{cs.removePriceLine(l)}catch(e){}});cs._swl=[];if(!LAY().sw)return;const f=swFind(k,k.length-1);
   f.H.slice(0,3).forEach((x,n)=>cs._swl.push(cs.createPriceLine({price:x.p,color:"#f6465d",lineWidth:n?1:2,lineStyle:2,axisLabelVisible:true,title:"Swing high"})));
   f.L.slice(0,3).forEach((x,n)=>cs._swl.push(cs.createPriceLine({price:x.p,color:"#2ebd85",lineWidth:n?1:2,lineStyle:2,axisLabelVisible:true,title:"Swing low"})))}
 function ZoneP(chart,series,z,col,txt,tm){this.c=chart;this.s=series;this.z=z;this.col=col;this.txt=txt;this.tm=tm;const me=this;this._v=[{zOrder:()=>"bottom",renderer:()=>({draw:t=>me.draw(t)})}]}
@@ -683,13 +683,17 @@ ZoneP.prototype.draw=function(target){const me=this;target.useBitmapCoordinateSp
   const ctx=sc.context,hr=sc.horizontalPixelRatio,vr=sc.verticalPixelRatio,xs=x*hr,top=Math.min(y1,y2)*vr,h=Math.max(2,Math.abs(y2-y1)*vr);
   ctx.fillStyle=me.col+"33";ctx.fillRect(xs,top,sc.bitmapSize.width-xs,h);ctx.fillStyle=me.col+"cc";ctx.fillRect(xs,top,sc.bitmapSize.width-xs,Math.max(1,vr));ctx.fillRect(xs,top+h-Math.max(1,vr),sc.bitmapSize.width-xs,Math.max(1,vr));
   ctx.font=Math.round(12*vr)+"px system-ui,sans-serif";ctx.fillStyle=me.col;ctx.textBaseline="top";ctx.fillText(me.txt,xs+6*hr,top+3*vr)}catch(e){}})};
-function swZones(cs,k){(cs._zl||[]).forEach(l=>{try{cs.removePriceLine(l)}catch(e){}});cs._zl=[];(cs._zp||[]).forEach(q=>{try{cs.detachPrimitive(q)}catch(e){}});cs._zp=[];if(k.length<12)return;const L=k.length-1,pr=k[L][4];
+function swZones(cs,k){(cs._zl||[]).forEach(l=>{try{cs.removePriceLine(l)}catch(e){}});cs._zl=[];(cs._zp||[]).forEach(q=>{try{cs.detachPrimitive(q)}catch(e){}});cs._zp=[];if(!LAY().zn||k.length<12)return;const L=k.length-1,pr=k[L][4];
   znFind(k,L).sort((a,b)=>Math.abs((a.lo+a.hi)/2-pr)-Math.abs((b.lo+b.hi)/2-pr)).slice(0,4).forEach(z=>{const c=z.kind==="fvg"?"#4aa3ff":"#f0b90b",nm=(z.bull?"Bull ":"Bear ")+(z.kind==="fvg"?"FVG":"OB");
     try{const q=new ZoneP(chart0(cs),cs,z,c,nm+(z.bull?" (support)":" (resistance)"),z.t/1000+OFF);cs.attachPrimitive(q);cs._zp.push(q)}catch(e){cs._zl.push(cs.createPriceLine({price:z.hi,color:c,lineWidth:1,lineStyle:0,axisLabelVisible:true,title:nm}));cs._zl.push(cs.createPriceLine({price:z.lo,color:c,lineWidth:1,lineStyle:0,axisLabelVisible:false,title:""}))}
     cs._zl.push(cs.createPriceLine({price:z.hi,color:c,lineWidth:1,lineStyle:2,axisLabelVisible:true,title:nm}))})}
 function chart0(cs){return CH}
-function swFib(cs,k,tf){(cs._fl||[]).forEach(l=>{try{cs.removePriceLine(l)}catch(e){}});cs._fl=[];if(!window._fib)return;const fx=fbCalc(k,tf),f=fx&&(S.fbLeg==="done"?fx.c:fx.f);if(!f)return;
-  fbLv(f).forEach(x=>{const g=x.r===0.5||x.r===0.618||x.r===0.786,c=g?"#f0b90b":"#8591a0";cs._fl.push(cs.createPriceLine({price:x.p,color:c,lineWidth:1,lineStyle:3,axisLabelVisible:true,title:"Fib "+x.r}))})}
+function LAY(){return window._lay||(window._lay={sw:1,zn:1,fib:0})}
+function fbM(k,tf){if(!LAY().fib)return[];const fx=fbCalc(k,tf),f=fx&&(S.fbLeg==="done"?fx.c:fx.f);if(!f)return[];const t=x=>x/1000+OFF;
+  return[{time:t(f.up?f.loT:f.hiT),position:f.up?"belowBar":"aboveBar",color:"#f0b90b",shape:f.up?"arrowUp":"arrowDown",text:"Fib start"},{time:t(f.up?f.hiT:f.loT),position:f.up?"aboveBar":"belowBar",color:"#f0b90b",shape:f.up?"arrowDown":"arrowUp",text:"Fib end"}]}
+function swFib(cs,k,tf){(cs._fl||[]).forEach(l=>{try{cs.removePriceLine(l)}catch(e){}});cs._fl=[];if(!LAY().fib)return;const fx=fbCalc(k,tf),f=fx&&(S.fbLeg==="done"?fx.c:fx.f);if(!f)return;
+  fbLv(f).forEach(x=>{const g=x.r===0.5||x.r===0.618||x.r===0.786,c=g?"#f0b90b":"#8591a0";cs._fl.push(cs.createPriceLine({price:x.p,color:c,lineWidth:g?2:1,lineStyle:2,axisLabelVisible:true,title:"Fib "+x.r}))});
+  const rg=f.hi-f.lo;FIBE.forEach(e=>cs._fl.push(cs.createPriceLine({price:f.up?f.lo+e*rg:f.hi-e*rg,color:"#b48cff",lineWidth:1,lineStyle:3,axisLabelVisible:true,title:"Ext "+e})))}
 function swM(k){if(k.length<SWN*2+5)return[];const f=swFind(k,k.length-1),t=i=>k[i][0]/1000+OFF;
   return f.aH.map(x=>({time:t(x.i),position:"aboveBar",color:"#f6465d",shape:"circle"})).concat(f.aL.map(x=>({time:t(x.i),position:"belowBar",color:"#2ebd85",shape:"circle"})))}
 function lwInit(sym,tfNow){const bar=$("tfb");bar.style.display="flex";
@@ -717,7 +721,7 @@ function lwInit(sym,tfNow){const bar=$("tfb");bar.style.display="flex";
       const eps=ep.slice(-8),tt=i=>k[i][0]/1000+OFF;
       vf.setData(eps.map(e=>({time:tt(e.st),value:1})));
       vl.setData(eps.map(e=>({time:tt(e.lo),value:1})));
-      cs.setMarkers(swM(k).concat(eps.flatMap(e=>{const m=[{time:tt(e.st),position:"aboveBar",color:"#f0b90b",shape:"arrowDown",text:"first <"+CFG.os1},{time:tt(e.lo),position:"belowBar",color:"#f6465d",shape:"arrowUp",text:"RSI "+r[e.lo].toFixed(1)}];if(e.end+1<k.length)m.push({time:tt(e.end+1),position:"belowBar",color:"#2ebd85",shape:"circle",text:"claimed "+CFG.os1});return m})).sort((a,b)=>a.time-b.time));swLines(cs,k);swZones(cs,k);swFib(cs,k,tfNow);
+      cs.setMarkers((LAY().sw?swM(k):[]).concat(fbM(k,tfNow)).concat(eps.flatMap(e=>{const m=[{time:tt(e.st),position:"aboveBar",color:"#f0b90b",shape:"arrowDown",text:"first <"+CFG.os1},{time:tt(e.lo),position:"belowBar",color:"#f6465d",shape:"arrowUp",text:"RSI "+r[e.lo].toFixed(1)}];if(e.end+1<k.length)m.push({time:tt(e.end+1),position:"belowBar",color:"#2ebd85",shape:"circle",text:"claimed "+CFG.os1});return m})).sort((a,b)=>a.time-b.time));swLines(cs,k);swZones(cs,k);swFib(cs,k,tfNow);
       if(first)chart.timeScale().setVisibleLogicalRange({from:k.length-120,to:k.length+5});
     }catch(e){}
   }
@@ -796,8 +800,9 @@ async function renderCoin(sym){
   const star=$("st");const paintStar=()=>star.classList.toggle("on",wl().includes(sym));paintStar();
   star.onclick=()=>{let a=wl();a=a.includes(sym)?a.filter(x=>x!==sym):a.concat(sym);setWl(a);paintStar()};
   panel(sym,my);cTimer=setInterval(()=>panel(sym,my),20000);
-  $("cmode").innerHTML='<button class="'+(window._swing?"":"on")+'" data-m="0">TradingView chart</button><button class="'+(window._swing?"on":"")+'" data-m="1">Swing chart (high / low lines)</button>'+(window._swing?'<button class="'+(window._fib?"on":"")+'" data-m="2">Fib levels</button><span class="mu" style="align-self:center;font-size:12px">Red line = swing high (resistance) · green line = swing low (support) · dots = swing points · blue box = FVG · yellow box = order block (box = the zone, top to bottom)</span>':'');
-  $("cmode").querySelectorAll("button").forEach(b=>b.onclick=()=>{if(b.dataset.m==="2")window._fib=!window._fib;else window._swing=b.dataset.m==="1";renderCoin(sym)});
+  {const lay=LAY(),sw=window._swing,fo=lay.fib&&!lay.sw&&!lay.zn;
+  $("cmode").innerHTML='<button class="'+(sw?"":"on")+'" data-m="0">TradingView chart</button><button class="'+(sw&&!fo?"on":"")+'" data-m="1">Swing chart</button><button class="'+(sw&&fo?"on":"")+'" data-m="3">Fibonacci chart</button>'+(sw?'<span class="mu" style="align-self:center;font-size:12px">Show:</span><button class="'+(lay.sw?"on":"")+'" data-l="sw">Swing lines</button><button class="'+(lay.zn?"on":"")+'" data-l="zn">FVG / OB</button><button class="'+(lay.fib?"on":"")+'" data-l="fib">Fib levels</button>'+(lay.fib?'<button data-l="leg">Leg: '+(S.fbLeg==="done"?"last completed":"latest")+'</button>':"")+'<span class="mu" style="align-self:center;font-size:12px;flex-basis:100%">Red / green dashed = swing high / low · blue box = FVG · yellow box = order block · gold / grey dashed = Fib levels (gold = 0.5, 0.618, 0.786) · purple dotted = Fib extensions</span>':"");
+  $("cmode").querySelectorAll("button").forEach(b=>b.onclick=()=>{const m=b.dataset.m,l=b.dataset.l;if(m==="0")window._swing=false;else if(m==="1"){window._swing=true;window._lay={sw:1,zn:1,fib:0}}else if(m==="3"){window._swing=true;window._lay={sw:0,zn:0,fib:1}}else if(l==="leg")S.fbLeg=S.fbLeg==="done"?"latest":"done";else if(l){const y=LAY();y[l]=y[l]?0:1}renderCoin(sym)})}
   try{if(window._swing)throw 0;await tvLoad();if(CN!==my)return;tvInit(sym,tfNow)}catch(e){if(CN!==my)return;lwInit(sym,tfNow)}}
 // ===== Dominance (BTC.D, USDT.D, BTC+ETH+STABLE.D, TOTAL3: calculated from coin prices x CoinGecko supply) =====
 const DSER=["BTC.D","USDT.D","BTC+ETH+STABLE.D","TOTAL3"],DTF=["15m","1h","4h","1d"],DCT=["5m","15m","30m","1h","2h","4h","1d"],COINS_USED=60;
