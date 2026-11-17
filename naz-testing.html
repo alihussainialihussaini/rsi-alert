@@ -147,16 +147,51 @@ function adxCalc(k,p){const n=k.length,o=new Array(n).fill(null);if(n<2*p+1)retu
   dx[p]=dxAt();for(let i=p+1;i<n;i++){st=st-st/p+tr[i];sp=sp-sp/p+pd[i];sm=sm-sm/p+md[i];dx[i]=dxAt()}
   let a=0;for(let i=p;i<2*p;i++)a+=dx[i];a/=p;o[2*p-1]=a;for(let i=2*p;i<n;i++){a=(a*(p-1)+dx[i])/p;o[i]=a}return o}
 // analysis of one timeframe: k = klines incl. the forming candle (last)
+const FIBR=[0,0.236,0.382,0.5,0.618,0.705,0.786,1],FIBE=[1.272,1.618,2];
+function fbMult(tf){return tf==="1w"?2:tf==="1d"?2.5:3}
+function fbZig(k,mult){const n=k.length,h=k.map(x=>x[2]),l=k.map(x=>x[3]),a=new Array(n).fill(NaN);let prev=null;
+  for(let i=0;i<n;i++){const pc=i?k[i-1][4]:null,tr=i?Math.max(h[i]-l[i],Math.abs(h[i]-pc),Math.abs(l[i]-pc)):h[i]-l[i];prev=prev===null?tr:(tr/14+prev*(1-1/14));if(i>=13)a[i]=prev}
+  const piv=[];let dir=0,hi=h[0],hiI=0,lo=l[0],loI=0;
+  for(let i=1;i<n;i++){const thr=mult*a[i];
+    if(isNaN(thr)){if(h[i]>hi){hi=h[i];hiI=i}if(l[i]<lo){lo=l[i];loI=i}continue}
+    if(dir===0){if(h[i]>hi){hi=h[i];hiI=i}if(l[i]<lo){lo=l[i];loI=i}
+      if(hi-l[i]>=thr){piv.push({pos:hiI,price:hi,kind:"H",conf:true});dir=-1;lo=l[i];loI=i}
+      else if(h[i]-lo>=thr){piv.push({pos:loI,price:lo,kind:"L",conf:true});dir=1;hi=h[i];hiI=i}}
+    else if(dir===1){if(h[i]>hi){hi=h[i];hiI=i}else if(hi-l[i]>=thr){piv.push({pos:hiI,price:hi,kind:"H",conf:true});dir=-1;lo=l[i];loI=i}}
+    else{if(l[i]<lo){lo=l[i];loI=i}else if(h[i]-lo>=thr){piv.push({pos:loI,price:lo,kind:"L",conf:true});dir=1;hi=h[i];hiI=i}}}
+  if(dir===1)piv.push({pos:hiI,price:hi,kind:"H",conf:false});else if(dir===-1)piv.push({pos:loI,price:lo,kind:"L",conf:false});
+  return piv}
+function fbCalc(k,tf){if(k.length<40)return null;const pv=fbZig(k,fbMult(tf)),Hs=pv.filter(x=>x.kind==="H"),Ls=pv.filter(x=>x.kind==="L");if(!Hs.length||!Ls.length)return null;
+  const H=Hs[Hs.length-1],L=Ls[Ls.length-1];if(H.pos===L.pos||H.price<=L.price)return null;
+  return{up:H.pos>L.pos,hi:H.price,lo:L.price,hiT:k[H.pos][0],loT:k[L.pos][0],endT:k[Math.max(H.pos,L.pos)][0],conf:H.conf&&L.conf}}
+function fbLv(f){const rg=f.hi-f.lo;return FIBR.map(r=>({r,p:f.up?f.hi-r*rg:f.lo+r*rg}))}
 const SWN=5,SWLB=120;
 function swFind(k,upto){const H=[],L=[],lo=Math.max(SWN,upto-SWLB);
   for(let i=upto-SWN;i>=lo;i--){let h=true,l=true;for(let j=1;j<=SWN;j++){if(!(k[i][2]>=k[i-j][2]&&k[i][2]>k[i+j][2]))h=false;if(!(k[i][3]<=k[i-j][3]&&k[i][3]<k[i+j][3]))l=false;if(!h&&!l)break}
     if(h)H.push({i,p:k[i][2]});if(l)L.push({i,p:k[i][3]})}
   const ub=(a,hi)=>a.filter(x=>{for(let j=x.i+1;j<=upto;j++){if(hi?k[j][2]>=x.p:k[j][3]<=x.p)return false}return true});
   return{aH:H,aL:L,H:ub(H,true).sort((a,b)=>a.p-b.p),L:ub(L,false).sort((a,b)=>b.p-a.p)}}
+const ZLB=80,ZMIN=0.001;
+function znFind(k,upto){const out=[],lo=Math.max(2,upto-ZLB);let ab=0,n=0;for(let i=Math.max(0,upto-20);i<=upto;i++){ab+=Math.abs(k[i][4]-k[i][1]);n++}ab=n?ab/n:0;const mid=k[upto][4]||1;
+  const add=(kind,bull,zlo,zhi,fi)=>{for(let m=fi+1;m<=upto;m++){if(bull?k[m][3]<=zhi:k[m][2]>=zlo)return}out.push({kind,bull,lo:zlo,hi:zhi,fi,t:k[fi][0]})};
+  for(let i=lo;i<=upto;i++){
+    if(i>=2){const a=k[i-2],c=k[i];
+      if(a[2]<c[3]&&(c[3]-a[2])/mid>=ZMIN)add("fvg",true,a[2],c[3],i);
+      else if(a[3]>c[2]&&(a[3]-c[2])/mid>=ZMIN)add("fvg",false,c[2],a[3],i)}
+    if(i>=1&&ab>0){const j=k[i-1],c=k[i];
+      if(Math.abs(c[4]-c[1])>=1.5*ab){
+        if(j[4]<j[1]&&c[4]>c[1]&&c[4]>j[2])add("ob",true,j[3],j[2],i);
+        else if(j[4]>j[1]&&c[4]<c[1]&&c[4]<j[3])add("ob",false,j[3],j[2],i)}}}
+  return out}
 function swCalc(k){const L=k.length-1;if(L<SWN*2+5)return null;const sig=[];
   [[L,-1],[L-1,0]].forEach(([idx,ago])=>{const f=swFind(k,idx-1),hi=f.H[0],lo=f.L[0],c=k[idx];
     if(hi&&c[2]>hi.p)sig.push({type:c[4]>hi.p?"bu":"sh",long:c[4]>hi.p,lvl:hi.p,ago,t:c[0],st:k[hi.i][0]});
-    if(lo&&c[3]<lo.p)sig.push({type:c[4]<lo.p?"bd":"sl",long:c[4]>=lo.p,lvl:lo.p,ago,t:c[0],st:k[lo.i][0]})});
+    if(lo&&c[3]<lo.p)sig.push({type:c[4]<lo.p?"bd":"sl",long:c[4]>=lo.p,lvl:lo.p,ago,t:c[0],st:k[lo.i][0]});
+    const zs=znFind(k,idx-1);
+    ["fvg","ob"].forEach(kd=>{
+      const zb=zs.filter(z=>z.kind===kd&&z.bull&&c[3]<=z.hi&&c[4]>=z.lo).sort((a,b)=>b.fi-a.fi)[0],zr=zs.filter(z=>z.kind===kd&&!z.bull&&c[2]>=z.lo&&c[4]<=z.hi).sort((a,b)=>b.fi-a.fi)[0];
+      if(zb)sig.push({type:kd==="fvg"?"gb":"ob",long:true,lvl:zb.hi,zlo:zb.lo,zhi:zb.hi,ago,t:c[0],st:zb.t});
+      if(zr)sig.push({type:kd==="fvg"?"gr":"or",long:false,lvl:zr.lo,zlo:zr.lo,zhi:zr.hi,ago,t:c[0],st:zr.t})})});
   const f=swFind(k,L);return{sig,hi:f.H[0]?f.H[0].p:null,lo:f.L[0]?f.L[0].p:null}}
 function anTf(k){const cl=k.map(x=>x[4]),ra=rsiCalc(cl,RP),L=ra.length-1,live=ra[L],ml=maCalc(ra,CFG.maType,CFG.maLen);
   const r=ra.slice(0,-1),m=maCalc(r,CFG.maType,CFG.maLen),n=r.length-1;if(n<2||r[n]===null||m[n]===null||ml[L]===null)return null;
@@ -191,7 +226,8 @@ const RULES={
  dmi:["-DMI",()=>"Only -DI (DMI "+CFG.dmiLen+") and ADX, nothing else. LONG = -DI crosses DOWN through "+CFG.dmiLvl+" (selling pressure fading). SHORT = -DI crosses UP through "+CFG.dmiLvl+" (selling pressure growing). Works on every timeframe you switch on with the TF buttons. ADX × -DI column: shows when ADX crossed above or below the -DI line. ADX trend column: ADX rising (higher than the last closed candle) = STRONG trend. ADX falling = WEAK trend (it is still a signal, but the trend is weak). The ADX level only adds a label: below 20 = Choppy, 20 to 50 = Trended, above 50 = Exhaustion. Use the two ADX filters to list only those signals.",[],a=>false],
  spot:["Spot Signals",()=>"Intraday, LONG only (spot has no short). A coin is listed when 4H RSI is above its MA AND one of these happens on 15m, 30m or 1H: a -DMI LONG (-DI crossed down through "+CFG.dmiLvl+" in the last 2 closed candles) or the Key Timeframe claimed RSI "+CFG.os1+". Strength out of 3 = ADX rising + ADX not above 50 (not exhausted) + the other signal (Key TF or -DMI) agrees on the same coin. Entry = live price. Stop loss and take profit use the Demo Bot percentages. Idea only, not advice.",[],a=>false],
  scalp:["Scalp Signals",()=>"Fast signals for quick trades on 3m, 5m and 15m. LONG when -DI crosses down through "+CFG.dmiLvl+", or RSI crosses up through its MA. SHORT is the opposite. LIVE means the candle is still open, so it shows at once but can disappear. Strength out of 3 = ADX rising + this timeframe RSI on the right side of its MA + trend agrees (15m RSI for 3m and 5m, 1H RSI for 15m). Entry = live price. Own small stop loss and take profit. Idea only, not advice.",[],a=>false],
- swing:["Swing Alerts",()=>"Swing high = a candle high that is higher than the 5 candles on each side. Swing low = the opposite. Only swings that price has not broken yet count. LONG: price closes above a swing high (breakout) OR price wicks below a swing low but closes back above (sweep). SHORT: price closes below a swing low (breakdown) OR price wicks above a swing high but closes back below (sweep). LIVE means the candle is still open. Idea only, not advice.",[],a=>false]
+ swing:["Swing Alerts",()=>"Swing high = a candle high that is higher than the 5 candles on each side. Swing low = the opposite. Only swings that price has not broken yet count. LONG: price closes above a swing high (breakout) OR price wicks below a swing low but closes back above (sweep). SHORT: price closes below a swing low (breakdown) OR price wicks above a swing high but closes back below (sweep). LIVE means the candle is still open. Also: Fair Value Gap (FVG) = a gap left between candle 1 and candle 3 of a fast move. Order Block (OB) = the last opposite candle before a strong move. A zone counts only while price has not touched it yet. LONG when price drops into a fresh bullish zone and holds above its bottom. SHORT when price rises into a fresh bearish zone and holds below its top. Idea only, not advice.",[],a=>false],
+ fib:["Fibonacci",()=>"Finds the latest big leg on each timeframe with a ZigZag (a swing only counts after price reverses by 3 x ATR on most timeframes, 2.5 on 1D and 2 on 1W). LONG idea: after an UP leg, price pulls back into the chosen Fib zone. SHORT idea: after a DOWN leg, price bounces into the zone. Stop loss = the start of the leg (Fib 1). Take profit 1 = the end of the leg (Fib 0), take profit 2 = Fib extension 1.272. Provisional means the leg end can still move. Idea only, not advice.",[],a=>false]
 };
 function match(d,k){const R=RULES[k],hit=R[2].filter(t=>(k==="conf"||S.tfOn[t])&&d[t]&&R[3](d[t]));return k==="conf"?(hit.length===R[2].length?hit:[]):hit}
 function getRows(){return Object.keys(S.data).map(s=>({s,d:S.data[s],t:S.tick[s]||{}})).filter(r=>(r.t.v||0)>=S.minv)}
@@ -379,7 +415,7 @@ function newBadge(k){return isNew(k)?' <span class="b up">NEW '+agoT(S.nseen[k])
 function newFirst(list,kf){const ix=new Map();list.forEach((x,i)=>ix.set(x,i));let o=list.slice();if(S.onlyNew)o=o.filter(x=>isNew(kf(x)));
   return o.sort((p,q)=>(isNew(kf(q))-isNew(kf(p)))||(isNew(kf(p))?newAt(kf(q))-newAt(kf(p)):0)||ix.get(p)-ix.get(q))}
 const dk=x=>x.s+"|"+x.tf+"|"+x.rule+"|"+(x.long?"L":"S")+"|"+x.c.t,kk=x=>x.s+"|key|"+x.key;
-function seedNew(){if(S.nseed)return;const rw=getRows();dmiRows(rw).forEach(x=>newAt(dk(x)));keyRows(rw).forEach(x=>newAt(kk(x)));spotRows(rw).forEach(x=>newAt(sk(x)));scalpRows(rw).forEach(x=>newAt(sck(x)));swingRows(rw).forEach(x=>newAt(wk(x)));S.nseed=true}
+function seedNew(){if(S.nseed)return;const rw=getRows();dmiRows(rw).forEach(x=>newAt(dk(x)));keyRows(rw).forEach(x=>newAt(kk(x)));spotRows(rw).forEach(x=>newAt(sk(x)));scalpRows(rw).forEach(x=>newAt(sck(x)));swingRows(rw).forEach(x=>newAt(wk(x)));fibRows(rw).forEach(x=>newAt(fk(x)));S.nseed=true}
 // ===== -DMI (only -DI and ADX) =====
 S.dadx="off";S.dax="off";S.dL=true;S.dS=true;S.dwithin=2;S.dforming=true;
 function dmiRows(rows){const out=[];
@@ -480,24 +516,48 @@ function scalpTable(sr){const list=newFirst(sr.filter(x=>!S.filter||x.s.includes
     const cl=x.sc>=3?"b up":"b",sty=x.sc===2?' style="background:var(--nbg);color:var(--nfg)"':"",L=x.long,sl=L?x.p*(1-S.scSl/100):x.p*(1+S.scSl/100),tp=L?x.p*(1+S.scTp/100):x.p*(1-S.scTp/100),a15=x.a15;
     return'<tr class="r'+(isNew(sck(x))?" nw":"")+'" data-s="'+x.s+'" data-tf="'+x.tf+'"><td><b>'+x.s.replace("USDT","")+'</b><span class="mu">/USDT</span>'+newBadge(sck(x))+'</td><td><span class="b">'+tfl(x.tf)+'</span></td><td><span class="b '+(L?"up":"dn")+'">'+(L?"▲ LONG":"▼ SHORT")+' · '+x.src+'</span></td><td>'+(x.live?'<span class="b up">LIVE</span>':'<span class="b">Closed</span>')+'</td><td><span class="'+cl+'"'+sty+'>'+x.sc+' / 3</span></td><td style="text-align:left" class="mu">'+scChecks(x).join(" · ")+'</td><td>'+g6(x.p)+'</td><td class="dn">'+g6(sl)+'</td><td class="up">'+g6(tp)+'</td><td><span class="mu">'+tfl(x.rt)+'</span> '+a15.live.toFixed(1)+' <span class="mu">/ MA '+a15.lma.toFixed(1)+'</span></td><td>'+fmtT(x.ct)+' <span class="mu">'+agoT(x.ct)+'</span></td><td class="'+(x.t.ch>=0?"up":"dn")+'">'+(x.t.ch!==undefined?(x.t.ch>=0?"+":"")+x.t.ch.toFixed(2)+"%":"")+'</td><td><a href="#coin/'+x.s+'" class="mu">Open →</a></td></tr>'}).join(""):'<tr><td colspan="13" class="empty">'+(S.scanning?"Scanning… results appear here as coins are checked.":"No scalp signal matches right now.")+'</td></tr>')+'</tbody>'}
 
-S.swL=true;S.swS=true;S.swLive=true;
-const SWT={bu:"Broke above swing high",sh:"Swept swing high, closed back below",bd:"Broke below swing low",sl:"Swept swing low, closed back above"};
+S.swL=true;S.swS=true;S.swLive=true;S.swK={sw:1,fvg:1,ob:1};
+const SWT={bu:"Broke above swing high",sh:"Swept swing high, closed back below",bd:"Broke below swing low",sl:"Swept swing low, closed back above",gb:"Price entered a fresh bullish FVG (support)",gr:"Price entered a fresh bearish FVG (resistance)",ob:"Price entered a fresh bullish order block (support)",or:"Price entered a fresh bearish order block (resistance)"};
+const SWG={bu:"sw",sh:"sw",bd:"sw",sl:"sw",gb:"fvg",gr:"fvg",ob:"ob",or:"ob"};
 function wk(x){return x.s+"|sw|"+x.tf+"|"+x.type+"|"+x.ct}
 function swingRows(rows){const out=[];
   rows.forEach(r=>{const p=(r.t||{}).p;if(p===undefined)return;TFS.forEach(tf=>{const a=r.d[tf];if(!a||!S.tfOn[tf]||!a.sw)return;
-    a.sw.sig.forEach(g=>{if((g.long&&!S.swL)||(!g.long&&!S.swS))return;if(g.ago===-1&&!S.swLive)return;
-      out.push({s:r.s,tf,a,t:r.t,p,type:g.type,long:g.long,live:g.ago===-1,lvl:g.lvl,ct:g.t,close:g.t+TFMS[tf],st:g.st})})})});
+    a.sw.sig.forEach(g=>{if((g.long&&!S.swL)||(!g.long&&!S.swS))return;if(g.ago===-1&&!S.swLive)return;if(!S.swK[SWG[g.type]||"sw"])return;
+      out.push({s:r.s,tf,a,t:r.t,p,type:g.type,long:g.long,live:g.ago===-1,lvl:g.lvl,zlo:g.zlo,zhi:g.zhi,ct:g.t,close:g.t+TFMS[tf],st:g.st})})})});
   out.sort((x,y)=>(y.live-x.live)||y.close-x.close);return out}
 function renderXW(){const xb=$("xb");
-  xb.innerHTML='<span class="mu">SHOW</span><button class="tfb'+(S.swL?" on":"")+'" id="wL">Long</button><button class="tfb'+(S.swS?" on":"")+'" id="wS">Short</button><label><input type="checkbox" id="wf"'+(S.swLive?" checked":"")+'> LIVE signals (candle still open)</label><label><input type="checkbox" id="wn"'+(S.onlyNew?" checked":"")+'> Only NEW (last 30 min)</label><span class="mu">Use the TF buttons above to choose timeframes · swing = 5 candles each side</span>';
+  xb.innerHTML='<span class="mu">SHOW</span><button class="tfb'+(S.swL?" on":"")+'" id="wL">Long</button><button class="tfb'+(S.swS?" on":"")+'" id="wS">Short</button><label><input type="checkbox" id="wk1"'+(S.swK.sw?" checked":"")+'> Swing breaks</label><label><input type="checkbox" id="wk2"'+(S.swK.fvg?" checked":"")+'> FVG</label><label><input type="checkbox" id="wk3"'+(S.swK.ob?" checked":"")+'> Order blocks</label><label><input type="checkbox" id="wf"'+(S.swLive?" checked":"")+'> LIVE signals (candle still open)</label><label><input type="checkbox" id="wn"'+(S.onlyNew?" checked":"")+'> Only NEW (last 30 min)</label><span class="mu">Use the TF buttons above to choose timeframes · swing = 5 candles each side · FVG = fair value gap · OB = order block</span>';
   $("wL").onclick=()=>{S.swL=!S.swL;S._xbFor=null;renderScanner(true)};
   $("wS").onclick=()=>{S.swS=!S.swS;S._xbFor=null;renderScanner(true)};
   $("wf").onchange=e=>{S.swLive=e.target.checked;renderScanner(true)};
+  [["wk1","sw"],["wk2","fvg"],["wk3","ob"]].forEach(a=>{$(a[0]).onchange=e=>{S.swK[a[1]]=e.target.checked?1:0;renderScanner(true)}});
   $("wn").onchange=e=>{S.onlyNew=e.target.checked;renderScanner(true)}}
 function swingTable(wr){const list=newFirst(wr.filter(x=>!S.filter||x.s.includes(S.filter)),wk),th=t=>'<th style="cursor:default">'+t+'</th>';
-  $("tbl").innerHTML='<thead><tr>'+["Symbol","TF","Signal","What happened","Status","Swing level","Price now","Distance","Swing formed","Signal candle","24h %",""].map(th).join("")+'</tr></thead><tbody>'+(list.length?list.map(x=>{
+  $("tbl").innerHTML='<thead><tr>'+["Symbol","TF","Signal","What happened","Status","Level / zone","Price now","Distance","Formed","Signal candle","24h %",""].map(th).join("")+'</tr></thead><tbody>'+(list.length?list.map(x=>{
     const L=x.long,d=(x.p-x.lvl)/x.lvl*100;
-    return'<tr class="r'+(isNew(wk(x))?" nw":"")+'" data-s="'+x.s+'" data-tf="'+x.tf+'"><td><b>'+x.s.replace("USDT","")+'</b><span class="mu">/USDT</span>'+newBadge(wk(x))+'</td><td><span class="b">'+tfl(x.tf)+'</span></td><td><span class="b '+(L?"up":"dn")+'">'+(L?"▲ LONG":"▼ SHORT")+'</span></td><td style="text-align:left">'+SWT[x.type]+'</td><td>'+(x.live?'<span class="b up">LIVE</span>':'<span class="b">Closed</span>')+'</td><td>'+g6(x.lvl)+'</td><td>'+g6(x.p)+'</td><td class="'+(d>=0?"up":"dn")+'">'+(d>=0?"+":"")+d.toFixed(2)+'%</td><td class="mu">'+fmtT(x.st)+'</td><td>'+fmtT(x.ct)+' <span class="mu">'+agoT(x.ct)+'</span></td><td class="'+(x.t.ch>=0?"up":"dn")+'">'+(x.t.ch!==undefined?(x.t.ch>=0?"+":"")+x.t.ch.toFixed(2)+"%":"")+'</td><td><a href="#coin/'+x.s+'" class="mu">Open →</a></td></tr>'}).join(""):'<tr><td colspan="12" class="empty">'+(S.scanning?"Scanning… results appear here as coins are checked.":"No swing signal matches right now.")+'</td></tr>')+'</tbody>'}
+    return'<tr class="r'+(isNew(wk(x))?" nw":"")+'" data-s="'+x.s+'" data-tf="'+x.tf+'"><td><b>'+x.s.replace("USDT","")+'</b><span class="mu">/USDT</span>'+newBadge(wk(x))+'</td><td><span class="b">'+tfl(x.tf)+'</span></td><td><span class="b '+(L?"up":"dn")+'">'+(L?"▲ LONG":"▼ SHORT")+'</span></td><td style="text-align:left">'+SWT[x.type]+'</td><td>'+(x.live?'<span class="b up">LIVE</span>':'<span class="b">Closed</span>')+'</td><td>'+(x.zlo!==undefined?g6(x.zlo)+' – '+g6(x.zhi):g6(x.lvl))+'</td><td>'+g6(x.p)+'</td><td class="'+(d>=0?"up":"dn")+'">'+(d>=0?"+":"")+d.toFixed(2)+'%</td><td class="mu">'+fmtT(x.st)+'</td><td>'+fmtT(x.ct)+' <span class="mu">'+agoT(x.ct)+'</span></td><td class="'+(x.t.ch>=0?"up":"dn")+'">'+(x.t.ch!==undefined?(x.t.ch>=0?"+":"")+x.t.ch.toFixed(2)+"%":"")+'</td><td><a href="#coin/'+x.s+'" class="mu">Open →</a></td></tr>'}).join(""):'<tr><td colspan="12" class="empty">'+(S.scanning?"Scanning… results appear here as coins are checked.":"No swing signal matches right now.")+'</td></tr>')+'</tbody>'}
+
+S.fbL=true;S.fbS=true;S.fbConf=true;S.fbZ="0.5-0.786";
+const FBZ={"0.382-0.618":[0.382,0.618],"0.5-0.786":[0.5,0.786],"0.382-0.786":[0.382,0.786]};
+function fk(x){return x.s+"|fib|"+x.tf+"|"+(x.up?"U":"D")+"|"+x.endT}
+function fibRows(rows){const out=[],z=FBZ[S.fbZ]||FBZ["0.5-0.786"];
+  rows.forEach(r=>{const p=(r.t||{}).p;if(p===undefined)return;TFS.forEach(tf=>{const a=r.d[tf];if(!a||!S.tfOn[tf]||!a.fb)return;const f=a.fb;
+    if(S.fbConf&&!f.conf)return;if((f.up&&!S.fbL)||(!f.up&&!S.fbS))return;
+    const rg=f.hi-f.lo,rt=f.up?(f.hi-p)/rg:(p-f.lo)/rg;if(rt<z[0]||rt>z[1])return;
+    const sl=f.up?f.lo:f.hi,tp1=f.up?f.hi:f.lo,tp2=f.up?f.lo+1.272*rg:f.hi-1.272*rg,rr=Math.abs(p-sl)>0?Math.abs(tp1-p)/Math.abs(p-sl):0;
+    out.push({s:r.s,tf,t:r.t,p,up:f.up,hi:f.hi,lo:f.lo,rt,sl,tp1,tp2,rr,conf:f.conf,endT:f.endT,close:f.endT})})});
+  out.sort((x,y)=>y.endT-x.endT);return out}
+function renderXF(){const xb=$("xb");
+  xb.innerHTML='<span class="mu">SHOW</span><button class="tfb'+(S.fbL?" on":"")+'" id="fL">Long (after up leg)</button><button class="tfb'+(S.fbS?" on":"")+'" id="fS">Short (after down leg)</button><span class="mu">Fib zone</span><select id="fz" style="'+SEL+'">'+Object.keys(FBZ).map(k=>'<option value="'+k+'"'+(S.fbZ===k?" selected":"")+'>'+k+(k==="0.5-0.786"?" (golden)":"")+'</option>').join("")+'</select><label><input type="checkbox" id="fc"'+(S.fbConf?" checked":"")+'> Confirmed legs only</label><label><input type="checkbox" id="fn"'+(S.onlyNew?" checked":"")+'> Only NEW (last 30 min)</label><span class="mu">Use the TF buttons above to choose timeframes</span>';
+  $("fL").onclick=()=>{S.fbL=!S.fbL;S._xbFor=null;renderScanner(true)};
+  $("fS").onclick=()=>{S.fbS=!S.fbS;S._xbFor=null;renderScanner(true)};
+  $("fz").onchange=e=>{S.fbZ=e.target.value;renderScanner(true)};
+  $("fc").onchange=e=>{S.fbConf=e.target.checked;renderScanner(true)};
+  $("fn").onchange=e=>{S.onlyNew=e.target.checked;renderScanner(true)}}
+function fibTable(fr){const list=newFirst(fr.filter(x=>!S.filter||x.s.includes(S.filter)),fk),th=t=>'<th style="cursor:default">'+t+'</th>';
+  $("tbl").innerHTML='<thead><tr>'+["Symbol","TF","Signal","Leg","Retraced to Fib","Entry (live)","Stop loss (Fib 1)","Take profit 1 (Fib 0)","Take profit 2 (1.272)","Reward : risk","Leg ended","Status","24h %",""].map(th).join("")+'</tr></thead><tbody>'+(list.length?list.map(x=>{
+    const L=x.up;
+    return'<tr class="r'+(isNew(fk(x))?" nw":"")+'" data-s="'+x.s+'" data-tf="'+x.tf+'"><td><b>'+x.s.replace("USDT","")+'</b><span class="mu">/USDT</span>'+newBadge(fk(x))+'</td><td><span class="b">'+tfl(x.tf)+'</span></td><td><span class="b '+(L?"up":"dn")+'">'+(L?"▲ LONG pullback":"▼ SHORT bounce")+'</span></td><td class="mu">'+(L?"Up leg ":"Down leg ")+g6(L?x.lo:x.hi)+' → '+g6(L?x.hi:x.lo)+'</td><td><b>'+x.rt.toFixed(3)+'</b></td><td>'+g6(x.p)+'</td><td class="dn">'+g6(x.sl)+'</td><td class="up">'+g6(x.tp1)+'</td><td class="up">'+g6(x.tp2)+'</td><td>'+x.rr.toFixed(2)+'</td><td>'+fmtT(x.endT)+' <span class="mu">'+agoT(x.endT)+'</span></td><td>'+(x.conf?'<span class="b">Confirmed</span>':'<span class="b" style="background:var(--nbg);color:var(--nfg)">Provisional</span>')+'</td><td class="'+(x.t.ch>=0?"up":"dn")+'">'+(x.t.ch!==undefined?(x.t.ch>=0?"+":"")+x.t.ch.toFixed(2)+"%":"")+'</td><td><a href="#coin/'+x.s+'" class="mu">Open →</a></td></tr>'}).join(""):'<tr><td colspan="14" class="empty">'+(S.scanning?"Scanning… results appear here as coins are checked.":"No coin is inside the chosen Fib zone right now.")+'</td></tr>')+'</tbody>'}
 function spChecks(x){return[(x.rise?"ADX rising":"ADX not rising"),(x.ok50?"ADX ≤ 50":"ADX above 50 (exhaustion)"),(x.agree?(x.src==="-DMI"?"Key TF agrees":"-DMI agrees"):"no second signal")]}
 function exportSpot(list){const h=["Symbol","TF","Signal","Strength (of 3)","Checks","Entry (live)","Stop loss","Take profit","4H RSI","4H RSI MA","ADX prev","ADX now","Signal candle (PKT)","24h %","24h volume"];
   const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
@@ -519,7 +579,7 @@ async function scan(){
       S.list=j.filter(x=>x.symbol.endsWith("USDT")&&!BY[x.symbol]&&!STABLE.has(x.symbol.slice(0,-4))&&(SRC==="bybit"||!/(UP|DOWN|BULL|BEAR)USDT$/.test(x.symbol))).map(x=>[+x.quoteVolume,x.symbol]).sort((a,b)=>b[0]-a[0]).slice(0,TOP).map(x=>x[1]);S.t=Date.now()}
     S.total=S.list.length;S.done=0;
     await pool(S.list,8,async s=>{const d={};
-      for(const t of TFS){try{const k=await kl(s,t,300,false),a=anTf(k);if(a){if(MST.includes(t))a.ms=msCalc(k,t);d[t]=a}}catch(e){NET.fail++}}
+      for(const t of TFS){try{const k=await kl(s,t,300,false),a=anTf(k);if(a){if(MST.includes(t))a.ms=msCalc(k,t);try{a.fb=fbCalc(k,t)}catch(e){}d[t]=a}}catch(e){NET.fail++}}
       S.data[s]=d;S.done++;$("scanst").textContent="Scanning "+S.done+"/"+S.total;if(S.done%10===0)refresh()});
     $("scanst").textContent="Key timeframes…";await keyExtras();S.last=new Date();S.dur=Math.round((Date.now()-S.lastStart)/1000);notifyNew();seedNew();botScan();botTick();
   }catch(e){$("scanst").textContent="scan failed, retrying"}
@@ -529,7 +589,7 @@ setInterval(()=>{if(!S.scanning&&S.lastStart&&Date.now()-S.lastStart>=S.every*10
 function rc(v){return v===undefined||v===null?"mu":v<=CFG.os1?"up":v>=70?"dn":""}
 const SET=[["n70","Candles in a row above 70"],["lvl","Retest RSI level"],["look","Retest lookback (candles)"],["maLen","MA length"],["os1","Oversold below"],["os2","Strongly oversold below"],["os3","Extremely oversold below"],["dmiLen","-DMI length"],["dmiLvl","-DI level"]];
 const SEL='background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:5px';
-function renderXB(){const xb=$("xb");xb.style.display=(S.tab==="cross"||S.tab==="conf"||S.tab==="retest"||S.tab==="key"||S.tab==="ms"||S.tab==="dmi"||S.tab==="spot"||S.tab==="scalp"||S.tab==="swing")?"flex":"none";if(S.tab==="swing"){renderXW();return}if(S.tab==="scalp"){renderXQ();return}if(S.tab==="spot"){renderXS();return}if(S.tab==="dmi"){renderXD();return}if(S.tab==="ms"){renderXM();return}if(S.tab==="conf"){renderXC();return}if(S.tab==="retest"){renderXR();return}if(S.tab==="key"){renderXK();return}if(S.tab!=="cross")return;
+function renderXB(){const xb=$("xb");xb.style.display=(S.tab==="cross"||S.tab==="conf"||S.tab==="retest"||S.tab==="key"||S.tab==="ms"||S.tab==="dmi"||S.tab==="spot"||S.tab==="scalp"||S.tab==="swing"||S.tab==="fib")?"flex":"none";if(S.tab==="fib"){renderXF();return}if(S.tab==="swing"){renderXW();return}if(S.tab==="scalp"){renderXQ();return}if(S.tab==="spot"){renderXS();return}if(S.tab==="dmi"){renderXD();return}if(S.tab==="ms"){renderXM();return}if(S.tab==="conf"){renderXC();return}if(S.tab==="retest"){renderXR();return}if(S.tab==="key"){renderXK();return}if(S.tab!=="cross")return;
   xb.innerHTML='<span class="mu">SIGNAL</span><button class="tfb'+(S.sigL?" on":"")+'" id="sL">Long (cross up)</button><button class="tfb'+(S.sigS?" on":"")+'" id="sS">Short (cross down)</button><span class="mu">Crossed within last</span><select id="sw" style="'+SEL+'">'+[1,2,3,4,5].map(n=>'<option value="'+n+'"'+(S.within===n?" selected":"")+'>'+n+' candle'+(n>1?"s":"")+'</option>').join("")+'</select><label><input type="checkbox" id="cf"'+(S.forming?" checked":"")+'> Forming crosses (LIVE)</label><label><input type="checkbox" id="c4"'+(S.only4?" checked":"")+'> Only with 4H aligned</label><label><input type="checkbox" id="cs"'+(S.sound?" checked":"")+'> Sound + notification</label><button id="ex" class="tfb">Export CSV</button>';
   $("sL").onclick=()=>{S.sigL=!S.sigL;S._xbFor=null;renderScanner(true)};
   $("sS").onclick=()=>{S.sigS=!S.sigS;S._xbFor=null;renderScanner(true)};
@@ -556,8 +616,8 @@ function renderScanner(keep){
   if(S._xbFor!==S.tab){S._xbFor=S.tab;renderXB()}
   $("tfw").style.display=(S.tab==="conf"||S.tab==="key"||S.tab==="ms"||S.tab==="spot"||S.tab==="scalp")?"none":"contents";
   document.querySelectorAll("#fb .tfb[data-t]").forEach(b=>b.style.display=(S.tab==="retest"&&!RTF.includes(b.dataset.t))?"none":"");
-  const rows=getRows(),xr=crossRows(rows),cr=confRows(rows),rr=retestRows(rows),kr=keyRows(rows),mr=msRows(rows),dr=dmiRows(rows),sr=spotRows(rows),qr=scalpRows(rows),wr=swingRows(rows);dr.forEach(x=>newAt(dk(x)));kr.forEach(x=>newAt(kk(x)));sr.forEach(x=>newAt(sk(x)));qr.forEach(x=>newAt(sck(x)));wr.forEach(x=>newAt(wk(x)));
-  const cnt={};for(const k in RULES)cnt[k]=k==="cross"?xr.length:k==="conf"?cr.length:k==="retest"?rr.length:k==="key"?kr.length:k==="ms"?mr.length:k==="dmi"?dr.length:k==="spot"?sr.length:k==="scalp"?qr.length:k==="swing"?wr.length:rows.filter(r=>match(r.d,k).length).length;
+  const rows=getRows(),xr=crossRows(rows),cr=confRows(rows),rr=retestRows(rows),kr=keyRows(rows),mr=msRows(rows),dr=dmiRows(rows),sr=spotRows(rows),qr=scalpRows(rows),wr=swingRows(rows),fr=fibRows(rows);dr.forEach(x=>newAt(dk(x)));kr.forEach(x=>newAt(kk(x)));sr.forEach(x=>newAt(sk(x)));qr.forEach(x=>newAt(sck(x)));wr.forEach(x=>newAt(wk(x)));fr.forEach(x=>newAt(fk(x)));
+  const cnt={};for(const k in RULES)cnt[k]=k==="cross"?xr.length:k==="conf"?cr.length:k==="retest"?rr.length:k==="key"?kr.length:k==="ms"?mr.length:k==="dmi"?dr.length:k==="spot"?sr.length:k==="scalp"?qr.length:k==="swing"?wr.length:k==="fib"?fr.length:rows.filter(r=>match(r.d,k).length).length;
   $("cds").innerHTML='<div class="card"><small>Coins scanned</small><b>'+rows.length+'</b></div><div class="card"><small>Approaching RSI '+CFG.lvl+'</small><b>'+cnt.a52+'</b></div><div class="card"><small>Oversold (RSI ≤ '+CFG.os1+')</small><b class="up">'+cnt.os+'</b></div><div class="card"><small>MTF Confluence</small><b>'+cnt.conf+'</b></div><div class="card" style="grid-column:span 2"><small>Scan progress</small><b style="font-size:18px">'+(S.scanning?"Scanning "+S.done+"/"+S.total:S.last?"Idle · last scan "+S.dur+"s":"Starting…")+'</b><div style="height:4px;background:var(--line);border-radius:2px;margin:8px 0"><div style="height:4px;width:'+(S.scanning?(S.total?Math.round(S.done/S.total*100):0):S.last?100:0)+'%;background:var(--blue);border-radius:2px"></div></div><small style="text-transform:none;letter-spacing:0">'+NET.calls+' API calls · '+NET.rl+' rate-limit hits · '+NET.fail+' failures</small></div>';
   $("tbs").innerHTML=Object.keys(RULES).map(k=>'<span class="tab'+(S.tab===k?" on":"")+'" data-k="'+k+'">'+RULES[k][0]+'<i>'+cnt[k]+'</i></span>').join("");
   $("tbs").querySelectorAll(".tab").forEach(t=>t.onclick=()=>{S.tab=t.dataset.k;renderScanner(true)});
@@ -579,6 +639,7 @@ function renderScanner(keep){
   if(S.tab==="spot"){spotTable(sr);return}
   if(S.tab==="scalp"){scalpTable(qr);return}
   if(S.tab==="swing"){swingTable(wr);return}
+  if(S.tab==="fib"){fibTable(fr);return}
   const lv=v=>v<=CFG.os3?" ●●●":v<=CFG.os2?" ●●":" ●";
   const tag=(r,t)=>{const a=r.d[t];let x=t;if(S.tab==="os")x+=lv(a.rsi);return'<span class="b up">'+x+'</span>'};
   let list=rows.map(r=>({r,m:match(r.d,S.tab)})).filter(x=>x.m.length&&(!S.filter||x.r.s.includes(S.filter)));
@@ -600,6 +661,12 @@ function tvInit(sym,tfNow){const dark=document.documentElement.dataset.theme!=="
 function swLines(cs,k){(cs._swl||[]).forEach(l=>{try{cs.removePriceLine(l)}catch(e){}});cs._swl=[];const f=swFind(k,k.length-1);
   f.H.slice(0,3).forEach((x,n)=>cs._swl.push(cs.createPriceLine({price:x.p,color:"#f6465d",lineWidth:n?1:2,lineStyle:2,axisLabelVisible:true,title:"Swing high"})));
   f.L.slice(0,3).forEach((x,n)=>cs._swl.push(cs.createPriceLine({price:x.p,color:"#2ebd85",lineWidth:n?1:2,lineStyle:2,axisLabelVisible:true,title:"Swing low"})))}
+function swZones(cs,k){(cs._zl||[]).forEach(l=>{try{cs.removePriceLine(l)}catch(e){}});cs._zl=[];if(k.length<12)return;const L=k.length-1,pr=k[L][4];
+  znFind(k,L).sort((a,b)=>Math.abs((a.lo+a.hi)/2-pr)-Math.abs((b.lo+b.hi)/2-pr)).slice(0,4).forEach(z=>{const c=z.kind==="fvg"?"#4aa3ff":"#f0b90b",nm=(z.bull?"Bull ":"Bear ")+(z.kind==="fvg"?"FVG":"OB");
+    cs._zl.push(cs.createPriceLine({price:z.hi,color:c,lineWidth:1,lineStyle:0,axisLabelVisible:true,title:nm}));
+    cs._zl.push(cs.createPriceLine({price:z.lo,color:c,lineWidth:1,lineStyle:0,axisLabelVisible:false,title:""}))})}
+function swFib(cs,k,tf){(cs._fl||[]).forEach(l=>{try{cs.removePriceLine(l)}catch(e){}});cs._fl=[];if(!window._fib)return;const f=fbCalc(k,tf);if(!f)return;
+  fbLv(f).forEach(x=>{const g=x.r===0.5||x.r===0.618||x.r===0.786,c=g?"#f0b90b":"#8591a0";cs._fl.push(cs.createPriceLine({price:x.p,color:c,lineWidth:1,lineStyle:3,axisLabelVisible:true,title:"Fib "+x.r}))})}
 function swM(k){if(k.length<SWN*2+5)return[];const f=swFind(k,k.length-1),t=i=>k[i][0]/1000+OFF;
   return f.aH.map(x=>({time:t(x.i),position:"aboveBar",color:"#f6465d",shape:"circle"})).concat(f.aL.map(x=>({time:t(x.i),position:"belowBar",color:"#2ebd85",shape:"circle"})))}
 function lwInit(sym,tfNow){const bar=$("tfb");bar.style.display="flex";
@@ -627,7 +694,7 @@ function lwInit(sym,tfNow){const bar=$("tfb");bar.style.display="flex";
       const eps=ep.slice(-8),tt=i=>k[i][0]/1000+OFF;
       vf.setData(eps.map(e=>({time:tt(e.st),value:1})));
       vl.setData(eps.map(e=>({time:tt(e.lo),value:1})));
-      cs.setMarkers(swM(k).concat(eps.flatMap(e=>{const m=[{time:tt(e.st),position:"aboveBar",color:"#f0b90b",shape:"arrowDown",text:"first <"+CFG.os1},{time:tt(e.lo),position:"belowBar",color:"#f6465d",shape:"arrowUp",text:"RSI "+r[e.lo].toFixed(1)}];if(e.end+1<k.length)m.push({time:tt(e.end+1),position:"belowBar",color:"#2ebd85",shape:"circle",text:"claimed "+CFG.os1});return m})).sort((a,b)=>a.time-b.time));swLines(cs,k);
+      cs.setMarkers(swM(k).concat(eps.flatMap(e=>{const m=[{time:tt(e.st),position:"aboveBar",color:"#f0b90b",shape:"arrowDown",text:"first <"+CFG.os1},{time:tt(e.lo),position:"belowBar",color:"#f6465d",shape:"arrowUp",text:"RSI "+r[e.lo].toFixed(1)}];if(e.end+1<k.length)m.push({time:tt(e.end+1),position:"belowBar",color:"#2ebd85",shape:"circle",text:"claimed "+CFG.os1});return m})).sort((a,b)=>a.time-b.time));swLines(cs,k);swZones(cs,k);swFib(cs,k,tfNow);
       if(first)chart.timeScale().setVisibleLogicalRange({from:k.length-120,to:k.length+5});
     }catch(e){}
   }
@@ -706,8 +773,8 @@ async function renderCoin(sym){
   const star=$("st");const paintStar=()=>star.classList.toggle("on",wl().includes(sym));paintStar();
   star.onclick=()=>{let a=wl();a=a.includes(sym)?a.filter(x=>x!==sym):a.concat(sym);setWl(a);paintStar()};
   panel(sym,my);cTimer=setInterval(()=>panel(sym,my),20000);
-  $("cmode").innerHTML='<button class="'+(window._swing?"":"on")+'" data-m="0">TradingView chart</button><button class="'+(window._swing?"on":"")+'" data-m="1">Swing chart (high / low lines)</button>'+(window._swing?'<span class="mu" style="align-self:center;font-size:12px">Red line = swing high (resistance) · green line = swing low (support) · dots = swing points</span>':'');
-  $("cmode").querySelectorAll("button").forEach(b=>b.onclick=()=>{window._swing=b.dataset.m==="1";renderCoin(sym)});
+  $("cmode").innerHTML='<button class="'+(window._swing?"":"on")+'" data-m="0">TradingView chart</button><button class="'+(window._swing?"on":"")+'" data-m="1">Swing chart (high / low lines)</button>'+(window._swing?'<button class="'+(window._fib?"on":"")+'" data-m="2">Fib levels</button><span class="mu" style="align-self:center;font-size:12px">Red line = swing high (resistance) · green line = swing low (support) · dots = swing points · blue = FVG · yellow = order block (two lines = top and bottom of the zone)</span>':'');
+  $("cmode").querySelectorAll("button").forEach(b=>b.onclick=()=>{if(b.dataset.m==="2")window._fib=!window._fib;else window._swing=b.dataset.m==="1";renderCoin(sym)});
   try{if(window._swing)throw 0;await tvLoad();if(CN!==my)return;tvInit(sym,tfNow)}catch(e){if(CN!==my)return;lwInit(sym,tfNow)}}
 // ===== Dominance (BTC.D, USDT.D, BTC+ETH+STABLE.D, TOTAL3: calculated from coin prices x CoinGecko supply) =====
 const DSER=["BTC.D","USDT.D","BTC+ETH+STABLE.D","TOTAL3"],DTF=["15m","1h","4h","1d"],DCT=["5m","15m","30m","1h","2h","4h","1d"],COINS_USED=60;
