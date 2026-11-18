@@ -139,6 +139,10 @@ function dmiCalc(k,p){const n=k.length,o=new Array(n).fill(null);if(n<=p+1)retur
   for(let i=1;i<n;i++){const h=k[i][2],l=k[i][3],pc=k[i-1][4],up=h-k[i-1][2],dn=k[i-1][3]-l;tr[i]=Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc));md[i]=(dn>up&&dn>0)?dn:0}
   let st=0,sm=0;for(let i=1;i<=p;i++){st+=tr[i];sm+=md[i]}o[p]=st===0?0:100*sm/st;
   for(let i=p+1;i<n;i++){st=st-st/p+tr[i];sm=sm-sm/p+md[i];o[i]=st===0?0:100*sm/st}return o}
+function pdiCalc(k,p){const n=k.length,o=new Array(n).fill(null);if(n<=p+1)return o;const tr=[],pd=[];
+  for(let i=1;i<n;i++){const h=k[i][2],l=k[i][3],pc=k[i-1][4],up=h-k[i-1][2],dn=k[i-1][3]-l;tr[i]=Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc));pd[i]=(up>dn&&up>0)?up:0}
+  let st=0,sp=0;for(let i=1;i<=p;i++){st+=tr[i];sp+=pd[i]}o[p]=st===0?0:100*sp/st;
+  for(let i=p+1;i<n;i++){st=st-st/p+tr[i];sp=sp-sp/p+pd[i];o[i]=st===0?0:100*sp/st}return o}
 // ADX (Wilder, same smoothing length p as DMI). Returns array aligned with k.
 function adxCalc(k,p){const n=k.length,o=new Array(n).fill(null);if(n<2*p+1)return o;const tr=[],pd=[],md=[];
   for(let i=1;i<n;i++){const h=k[i][2],l=k[i][3],pc=k[i-1][4],up=h-k[i-1][2],dn=k[i-1][3]-l;tr[i]=Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc));pd[i]=(up>dn&&up>0)?up:0;md[i]=(dn>up&&dn>0)?dn:0}
@@ -738,11 +742,24 @@ function swZones(cs,k){(cs._zl||[]).forEach(l=>{try{cs.removePriceLine(l)}catch(
     cs._zl.push(cs.createPriceLine({price:z.hi,color:c,lineWidth:1,lineStyle:2,axisLabelVisible:true,title:nm}))})}
 function chart0(cs){return CH}
 function LAY(){return window._lay||(window._lay={sw:1,zn:1,fib:0})}
-function fbM(k,tf){if(!LAY().fib)return[];const fx=fbCalc(k,tf),f=fx&&(S.fbLeg==="done"?fx.c:fx.f);if(!f)return[];const t=x=>x/1000+OFF;
-  return[{time:t(f.up?f.loT:f.hiT),position:f.up?"belowBar":"aboveBar",color:"#f0b90b",shape:f.up?"arrowUp":"arrowDown",text:"Fib start"},{time:t(f.up?f.hiT:f.loT),position:f.up?"aboveBar":"belowBar",color:"#f0b90b",shape:f.up?"arrowDown":"arrowUp",text:"Fib end"}]}
-function swFib(cs,k,tf){(cs._fl||[]).forEach(l=>{try{cs.removePriceLine(l)}catch(e){}});cs._fl=[];if(!LAY().fib)return;const fx=fbCalc(k,tf),f=fx&&(S.fbLeg==="done"?fx.c:fx.f);if(!f)return;
-  fbLv(f).forEach(x=>{const g=x.r===0.5||x.r===0.618||x.r===0.786,c=g?"#f0b90b":"#8591a0";cs._fl.push(cs.createPriceLine({price:x.p,color:c,lineWidth:g?2:1,lineStyle:2,axisLabelVisible:true,title:"Fib "+x.r}))});
-  const rg=f.hi-f.lo;FIBE.forEach(e=>cs._fl.push(cs.createPriceLine({price:f.up?f.lo+e*rg:f.hi-e*rg,color:"#b48cff",lineWidth:1,lineStyle:3,axisLabelVisible:true,title:"Ext "+e})))}
+const FBC={0:"#9ea3ad",0.236:"#f6465d",0.382:"#ff9800",0.5:"#2ebd85",0.618:"#26a69a",0.702:"#f6465d",0.705:"#f6465d",0.786:"#26c6da",1:"#9ea3ad",1.272:"#b48cff",1.618:"#4aa3ff",2:"#b48cff"};
+function mfKey(sym,tf){return"mf|"+sym+"|"+tf}
+function mfGet(sym,tf){try{window._mf=window._mf||JSON.parse(localStorage.getItem("mfib")||"{}")}catch(e){window._mf=window._mf||{}}return window._mf[mfKey(sym,tf)]||null}
+function mfSet(sym,tf,v){window._mf=window._mf||{};if(v)window._mf[mfKey(sym,tf)]=v;else delete window._mf[mfKey(sym,tf)];try{localStorage.setItem("mfib",JSON.stringify(window._mf))}catch(e){}}
+function chartLeg(k,tf,sym){const m=sym&&mfGet(sym,tf);if(m){const up=m.b.p>m.a.p;return{up,hi:Math.max(m.a.p,m.b.p),lo:Math.min(m.a.p,m.b.p),hiT:up?m.b.t:m.a.t,loT:up?m.a.t:m.b.t,manual:true}}
+  const fx=fbCalc(k,tf,window._mu||undefined),f=fx&&(S.fbLeg==="done"?fx.c:fx.f);return f?Object.assign({manual:false},f):null}
+function fibLines(f){const mine=window._lv!=="py",rg=f.hi-f.lo,a=(mine?fbLv2(f):fbLv(f)).map(x=>({r:x.r,p:x.p})),e=(mine?[1.618]:FIBE).map(r=>({r,p:f.up?f.lo+r*rg:f.hi-r*rg}));
+  return a.concat(e).map(x=>({p:x.p,col:FBC[x.r]||"#8591a0",txt:x.r+" ("+g6(x.p)+")"}))}
+function FibP(chart,series,lines,t0,tl){this.c=chart;this.s=series;this.L=lines;this.t0=t0;this.tl=tl;const me=this;this._v=[{zOrder:()=>"top",renderer:()=>({draw:t=>me.draw(t)})}]}
+FibP.prototype.paneViews=function(){return this._v};
+FibP.prototype.draw=function(target){const me=this;target.useBitmapCoordinateSpace(sc=>{try{const ts=me.c.timeScale(),hr=sc.horizontalPixelRatio,vr=sc.verticalPixelRatio;let x0=ts.timeToCoordinate(me.t0);if(x0===null||x0<0)x0=0;let x1=ts.timeToCoordinate(me.tl);if(x1===null)x1=sc.bitmapSize.width/hr-70;x1+=8*(ts.options().barSpacing||6);x1=Math.min(x1,sc.bitmapSize.width/hr-6);
+  const ctx=sc.context;ctx.font=Math.round(12*vr)+"px system-ui,sans-serif";ctx.textBaseline="bottom";ctx.textAlign="right";
+  me.L.forEach(l=>{const y=me.s.priceToCoordinate(l.p);if(y===null)return;ctx.strokeStyle=l.col;ctx.lineWidth=Math.max(1,vr);ctx.beginPath();ctx.moveTo(x0*hr,y*vr);ctx.lineTo(x1*hr,y*vr);ctx.stroke();ctx.fillStyle=l.col;ctx.fillText(l.txt,(x1-4)*hr,y*vr-2*vr)})}catch(e){}})};
+function fbM(k,tf,sym){if(!LAY().fib)return[];const f=chartLeg(k,tf,sym);if(!f)return[];const t=x=>x/1000+OFF;
+  return[{time:t(f.up?f.loT:f.hiT),position:f.up?"belowBar":"aboveBar",color:"#f0b90b",shape:f.up?"arrowUp":"arrowDown",text:f.manual?"My Fib start":"Fib start"},{time:t(f.up?f.hiT:f.loT),position:f.up?"aboveBar":"belowBar",color:"#f0b90b",shape:f.up?"arrowDown":"arrowUp",text:f.manual?"My Fib end":"Fib end"}]}
+function swFib(cs,k,tf,sym){(cs._fl||[]).forEach(l=>{try{cs.removePriceLine(l)}catch(e){}});cs._fl=[];(cs._fp||[]).forEach(q=>{try{cs.detachPrimitive(q)}catch(e){}});cs._fp=[];if(!LAY().fib)return;const f=chartLeg(k,tf,sym);if(!f)return;
+  const L=fibLines(f),t0=Math.min(f.hiT,f.loT)/1000+OFF,tl=k[k.length-1][0]/1000+OFF;
+  try{const q=new FibP(chart0(cs),cs,L,t0,tl);cs.attachPrimitive(q);cs._fp.push(q)}catch(e){L.forEach(l=>cs._fl.push(cs.createPriceLine({price:l.p,color:l.col,lineWidth:1,lineStyle:2,axisLabelVisible:true,title:l.txt})))}}
 function swM(k){if(k.length<SWN*2+5)return[];const f=swFind(k,k.length-1),t=i=>k[i][0]/1000+OFF;
   return f.aH.map(x=>({time:t(x.i),position:"aboveBar",color:"#f6465d",shape:"circle"})).concat(f.aL.map(x=>({time:t(x.i),position:"belowBar",color:"#2ebd85",shape:"circle"})))}
 function lwInit(sym,tfNow){const bar=$("tfb");bar.style.display="flex";
@@ -751,10 +768,16 @@ function lwInit(sym,tfNow){const bar=$("tfb");bar.style.display="flex";
   if(!window.LightweightCharts){$("cwrap").innerHTML='<div class="empty">The chart could not load. <a class="up" target="_blank" rel="noopener" href="https://www.tradingview.com/chart/?symbol='+encodeURIComponent(tvSym(sym))+'">Open on TradingView ↗</a></div>';return}
   const chart=LightweightCharts.createChart($("cwrap"),{layout:{background:{color:cv("--panel")},textColor:cv("--mut")},grid:{vertLines:{color:cv("--line")},horzLines:{color:cv("--line")}},timeScale:{timeVisible:true,borderColor:cv("--line")},rightPriceScale:{borderColor:cv("--line")},autoSize:true});CH=chart;
   const cs=chart.addCandlestickSeries({upColor:"#2ebd85",downColor:"#f6465d",wickUpColor:"#2ebd85",wickDownColor:"#f6465d",borderVisible:false});
-  cs.priceScale().applyOptions({scaleMargins:{top:0.05,bottom:0.34}});
+  window._lwClick=function(pm){if(!window._draw||!pm||pm.time===undefined||!pm.point)return;let pr=cs.coordinateToPrice(pm.point.y);const d=pm.seriesData&&pm.seriesData.get(cs);if(d&&d.high!==undefined)pr=Math.abs(pr-d.high)<Math.abs(pr-d.low)?d.high:d.low;if(pr===null||pr===undefined)return;const pt={t:(pm.time-OFF)*1000,p:pr};
+    if(window._draw===1){window._mf0=pt;window._draw=2;if($("mfh"))$("mfh").textContent="Now click the END of the leg (level 0)"}
+    else{mfSet(sym,tfNow,{a:window._mf0,b:pt});window._draw=0;window._mf0=null;LAY().fib=1;renderCoin(sym)}};
+  chart.subscribeClick(pm=>window._lwClick(pm));
+  cs.priceScale().applyOptions({scaleMargins:{top:0.04,bottom:0.52}});
   const rl=chart.addLineSeries({priceScaleId:"rsi",color:"#b48cff",lineWidth:2,priceLineVisible:false,lastValueVisible:true});
   const ml=chart.addLineSeries({priceScaleId:"rsi",color:"#f0b90b",lineWidth:2,priceLineVisible:false,lastValueVisible:false});
-  chart.priceScale("rsi").applyOptions({scaleMargins:{top:0.7,bottom:0.03}});
+  chart.priceScale("rsi").applyOptions({scaleMargins:{top:0.79,bottom:0.02}});
+  const pdl=chart.addLineSeries({priceScaleId:"dmi",color:"#2d8cff",lineWidth:1,priceLineVisible:false,lastValueVisible:true,title:"+DI"}),mdl=chart.addLineSeries({priceScaleId:"dmi",color:"#ff2d6f",lineWidth:1,priceLineVisible:false,lastValueVisible:true,title:"-DI"}),adl=chart.addLineSeries({priceScaleId:"dmi",color:"#ff8c00",lineWidth:2,priceLineVisible:false,lastValueVisible:true,title:"ADX"});
+  chart.priceScale("dmi").applyOptions({scaleMargins:{top:0.51,bottom:0.23}});adl.createPriceLine({price:CFG.dmiLvl,color:"#8591a0",lineWidth:1,lineStyle:2,axisLabelVisible:false,title:""+CFG.dmiLvl});
   [[30,"#2ebd85"],[50,"#8591a0"],[70,"#f6465d"]].forEach(([v,c])=>rl.createPriceLine({price:v,color:c,lineWidth:1,lineStyle:2,axisLabelVisible:false,title:""+v}));
   const vl=chart.addHistogramSeries({priceScaleId:"vl",color:"rgba(246,70,93,.6)",priceLineVisible:false,lastValueVisible:false});chart.priceScale("vl").applyOptions({scaleMargins:{top:0,bottom:0},visible:false});const vf=chart.addHistogramSeries({priceScaleId:"vl",color:"rgba(240,185,11,.7)",priceLineVisible:false,lastValueVisible:false});
   async function load(first){
@@ -765,12 +788,13 @@ function lwInit(sym,tfNow){const bar=$("tfb");bar.style.display="flex";
       const lp=cl[cl.length-1],pr=Math.max(2,Math.min(8,4-Math.floor(Math.log10(lp))));cs.applyOptions({priceFormat:{type:"price",precision:pr,minMove:1/Math.pow(10,pr)}});
       cs.setData(k.map(x=>({time:x[0]/1000+OFF,open:x[1],high:x[2],low:x[3],close:x[4]})));
       rl.setData(k.map((x,i)=>r[i]===null?null:{time:x[0]/1000+OFF,value:r[i]}).filter(Boolean));
+       {const pv=pdiCalc(k,CFG.dmiLen),mv=dmiCalc(k,CFG.dmiLen),av=adxCalc(k,CFG.dmiLen),ln=a=>k.map((x,i)=>a[i]===null||a[i]===undefined?null:{time:x[0]/1000+OFF,value:a[i]}).filter(Boolean);pdl.setData(ln(pv));mdl.setData(ln(mv));adl.setData(ln(av))}
       ml.setData(k.map((x,i)=>m[i]===null?null:{time:x[0]/1000+OFF,value:m[i]}).filter(Boolean));
       const ep=[];{let i=0;while(i<r.length){if(r[i]!==null&&r[i]<CFG.os1){let j=i,lo=i;while(j+1<r.length&&r[j+1]!==null&&r[j+1]<CFG.os1){j++;if(r[j]<r[lo])lo=j}ep.push({st:i,lo,end:j});i=j+1}else i++}}
       const eps=ep.slice(-8),tt=i=>k[i][0]/1000+OFF;
       vf.setData(eps.map(e=>({time:tt(e.st),value:1})));
       vl.setData(eps.map(e=>({time:tt(e.lo),value:1})));
-      cs.setMarkers((LAY().sw?swM(k):[]).concat(fbM(k,tfNow)).concat(eps.flatMap(e=>{const m=[{time:tt(e.st),position:"aboveBar",color:"#f0b90b",shape:"arrowDown",text:"first <"+CFG.os1},{time:tt(e.lo),position:"belowBar",color:"#f6465d",shape:"arrowUp",text:"RSI "+r[e.lo].toFixed(1)}];if(e.end+1<k.length)m.push({time:tt(e.end+1),position:"belowBar",color:"#2ebd85",shape:"circle",text:"claimed "+CFG.os1});return m})).sort((a,b)=>a.time-b.time));swLines(cs,k);swZones(cs,k);swFib(cs,k,tfNow);
+      cs.setMarkers((LAY().sw?swM(k):[]).concat(fbM(k,tfNow,sym)).concat(eps.flatMap(e=>{const m=[{time:tt(e.st),position:"aboveBar",color:"#f0b90b",shape:"arrowDown",text:"first <"+CFG.os1},{time:tt(e.lo),position:"belowBar",color:"#f6465d",shape:"arrowUp",text:"RSI "+r[e.lo].toFixed(1)}];if(e.end+1<k.length)m.push({time:tt(e.end+1),position:"belowBar",color:"#2ebd85",shape:"circle",text:"claimed "+CFG.os1});return m})).sort((a,b)=>a.time-b.time));swLines(cs,k);swZones(cs,k);swFib(cs,k,tfNow,sym);
       if(first)chart.timeScale().setVisibleLogicalRange({from:k.length-120,to:k.length+5});
     }catch(e){}
   }
@@ -850,8 +874,9 @@ async function renderCoin(sym){
   star.onclick=()=>{let a=wl();a=a.includes(sym)?a.filter(x=>x!==sym):a.concat(sym);setWl(a);paintStar()};
   panel(sym,my);cTimer=setInterval(()=>panel(sym,my),20000);
   {const lay=LAY(),sw=window._swing,fo=lay.fib&&!lay.sw&&!lay.zn;
-  $("cmode").innerHTML='<button class="'+(sw?"":"on")+'" data-m="0">TradingView chart</button><button class="'+(sw&&!fo?"on":"")+'" data-m="1">Swing chart</button><button class="'+(sw&&fo?"on":"")+'" data-m="3">Fibonacci chart</button>'+(sw?'<span class="mu" style="align-self:center;font-size:12px">Show:</span><button class="'+(lay.sw?"on":"")+'" data-l="sw">Swing lines</button><button class="'+(lay.zn?"on":"")+'" data-l="zn">FVG / OB</button><button class="'+(lay.fib?"on":"")+'" data-l="fib">Fib levels</button>'+(lay.fib?'<button data-l="leg">Leg: '+(S.fbLeg==="done"?"last completed":"latest")+'</button>':"")+'<span class="mu" style="align-self:center;font-size:12px;flex-basis:100%">Red / green dashed = swing high / low · blue box = FVG · yellow box = order block · gold / grey dashed = Fib levels (gold = 0.5, 0.618, 0.786) · purple dotted = Fib extensions</span>':"");
-  $("cmode").querySelectorAll("button").forEach(b=>b.onclick=()=>{const m=b.dataset.m,l=b.dataset.l;if(m==="0")window._swing=false;else if(m==="1"){window._swing=true;window._lay={sw:1,zn:1,fib:0}}else if(m==="3"){window._swing=true;window._lay={sw:0,zn:0,fib:1}}else if(l==="leg")S.fbLeg=S.fbLeg==="done"?"latest":"done";else if(l){const y=LAY();y[l]=y[l]?0:1}renderCoin(sym)})}
+  $("cmode").innerHTML='<button class="'+(sw?"":"on")+'" data-m="0">TradingView chart</button><button class="'+(sw&&!fo?"on":"")+'" data-m="1">Swing chart</button><button class="'+(sw&&fo?"on":"")+'" data-m="3">Fibonacci chart</button>'+(sw?'<span class="mu" style="align-self:center;font-size:12px">Show:</span><button class="'+(lay.sw?"on":"")+'" data-l="sw">Swing lines</button><button class="'+(lay.zn?"on":"")+'" data-l="zn">FVG / OB</button><button class="'+(lay.fib?"on":"")+'" data-l="fib">Fib levels</button>'+(lay.fib?'<button data-l="leg">Leg: '+(S.fbLeg==="done"?"last completed":"latest")+'</button><button data-l="lv">Levels: '+(window._lv==="py"?"Python":"mine")+'</button><select id="mu" style="'+SEL+'">'+[["","Swing size: auto"],["2","small (2×ATR)"],["5","big (5×ATR)"],["8","huge (8×ATR)"]].map(o=>'<option value="'+o[0]+'"'+(String(window._mu||"")===o[0]?" selected":"")+'>'+o[1]+'</option>').join("")+'</select><button class="'+(window._draw?"on":"")+'" data-l="draw">Draw my Fib (2 clicks)</button>'+(mfGet(sym,tfNow)?'<button data-l="clr">Clear my Fib</button>':"")+'<span class="mu" id="mfh" style="align-self:center;font-size:12px;color:var(--blue)">'+(window._draw===1?"Click the START of the leg (level 1) on the chart":window._draw===2?"Now click the END of the leg (level 0)":"")+'</span>':"")+'<span class="mu" style="align-self:center;font-size:12px;flex-basis:100%">Red / green dashed = swing high / low · blue box = FVG · yellow box = order block · Fib lines start where the leg starts · Draw my Fib = click the START of your leg, then the END (it snaps to the candle high or low)</span>':"");
+  if($("mu"))$("mu").onchange=e=>{window._mu=+e.target.value||0;renderCoin(sym)};
+  $("cmode").querySelectorAll("button").forEach(b=>b.onclick=()=>{const m=b.dataset.m,l=b.dataset.l;if(m==="0")window._swing=false;else if(m==="1"){window._swing=true;window._lay={sw:1,zn:1,fib:0}}else if(m==="3"){window._swing=true;window._lay={sw:0,zn:0,fib:1}}else if(l==="leg")S.fbLeg=S.fbLeg==="done"?"latest":"done";else if(l==="lv")window._lv=window._lv==="py"?"mine":"py";else if(l==="draw"){window._draw=window._draw?0:1;window._mf0=null}else if(l==="clr")mfSet(sym,tfNow,null);else if(l){const y=LAY();y[l]=y[l]?0:1}renderCoin(sym)})}
   try{if(window._swing)throw 0;await tvLoad();if(CN!==my)return;tvInit(sym,tfNow)}catch(e){if(CN!==my)return;lwInit(sym,tfNow)}}
 // ===== Dominance (BTC.D, USDT.D, BTC+ETH+STABLE.D, TOTAL3: calculated from coin prices x CoinGecko supply) =====
 const DSER=["BTC.D","USDT.D","BTC+ETH+STABLE.D","TOTAL3"],DTF=["15m","1h","4h","1d"],DCT=["5m","15m","30m","1h","2h","4h","1d"],COINS_USED=60;
