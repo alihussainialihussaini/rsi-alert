@@ -792,9 +792,9 @@ function lwInit(sym,tfNow){const bar=$("tfb");bar.style.display="flex";
       ml.setData(k.map((x,i)=>m[i]===null?null:{time:x[0]/1000+OFF,value:m[i]}).filter(Boolean));
       const ep=[];{let i=0;while(i<r.length){if(r[i]!==null&&r[i]<CFG.os1){let j=i,lo=i;while(j+1<r.length&&r[j+1]!==null&&r[j+1]<CFG.os1){j++;if(r[j]<r[lo])lo=j}ep.push({st:i,lo,end:j});i=j+1}else i++}}
       const eps=ep.slice(-8),tt=i=>k[i][0]/1000+OFF;
-      vf.setData(eps.map(e=>({time:tt(e.st),value:1})));
-      vl.setData(eps.map(e=>({time:tt(e.lo),value:1})));
-      cs.setMarkers((LAY().sw?swM(k):[]).concat(fbM(k,tfNow,sym)).concat(eps.flatMap(e=>{const m=[{time:tt(e.st),position:"aboveBar",color:"#f0b90b",shape:"arrowDown",text:"first <"+CFG.os1},{time:tt(e.lo),position:"belowBar",color:"#f6465d",shape:"arrowUp",text:"RSI "+r[e.lo].toFixed(1)}];if(e.end+1<k.length)m.push({time:tt(e.end+1),position:"belowBar",color:"#2ebd85",shape:"circle",text:"claimed "+CFG.os1});return m})).sort((a,b)=>a.time-b.time));swLines(cs,k);swZones(cs,k);swFib(cs,k,tfNow,sym);
+      const fo=LAY().fib&&!LAY().sw&&!LAY().zn;vf.setData(fo?[]:eps.map(e=>({time:tt(e.st),value:1})));
+      vl.setData(fo?[]:eps.map(e=>({time:tt(e.lo),value:1})));
+      cs.setMarkers((LAY().sw?swM(k):[]).concat(fbM(k,tfNow,sym)).concat(fo?[]:eps.flatMap(e=>{const m=[{time:tt(e.st),position:"aboveBar",color:"#f0b90b",shape:"arrowDown",text:"first <"+CFG.os1},{time:tt(e.lo),position:"belowBar",color:"#f6465d",shape:"arrowUp",text:"RSI "+r[e.lo].toFixed(1)}];if(e.end+1<k.length)m.push({time:tt(e.end+1),position:"belowBar",color:"#2ebd85",shape:"circle",text:"claimed "+CFG.os1});return m})).sort((a,b)=>a.time-b.time));swLines(cs,k);swZones(cs,k);swFib(cs,k,tfNow,sym);
       if(first)chart.timeScale().setVisibleLogicalRange({from:k.length-120,to:k.length+5});
     }catch(e){}
   }
