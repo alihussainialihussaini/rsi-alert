@@ -73,6 +73,7 @@ select:focus, input:focus { border-color: var(--green-line); }
 .head .sub { color: var(--muted); }
 
 .chart-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.chart-bar select { padding: 4px 8px; font-size: 12px; }
 .chart-bar .group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 #chartBox { position: relative; height: clamp(600px, 82vh, 940px); background: var(--bg); }
 #cv { position: absolute; inset: 0; cursor: crosshair; touch-action: pan-y; }
@@ -158,6 +159,7 @@ select:focus, input:focus { border-color: var(--green-line); }
           <button class="btn sm" id="zoomOut" title="Zoom out">−</button>
           <button class="btn sm" id="zoomIn" title="Zoom in">+</button>
           <label class="toggle"><input type="checkbox" id="cvdChk"> CVD</label>
+          <select id="cvdStyle" title="CVD style"><option value="line">CVD: line</option><option value="candles">CVD: candles</option></select>
           <label class="toggle"><input type="checkbox" id="deltaChk"> Delta</label>
         </div>
         <div class="hint">Wheel: zoom · Shift+wheel: price zoom · Drag: pan · Double-click: reset</div>
@@ -239,7 +241,7 @@ const TFS = { '1': 60000, '3': 180000, '5': 300000, '15': 900000 };
 const TFL = { '1': '1m', '3': '3m', '5': '5m', '15': '15m' };
 const QUICK = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
 const DEFAULTS = { volMult: 1.5, avgN: 20, zoneFrac: 0.30, stack: 0.30, deltaCap: 0.15, closePos: 0.50, swingN: 12, confirmN: 3, rr: 2, timeout: 30, imb: 3 };
-const cfg = Object.assign({ sym: 'BTCUSDT', tf: '5', rows: 'auto', unit: 'usdt', sound: false, theme: null, showCvd: true, showDelta: true }, DEFAULTS, store.get('cfg', {}));
+const cfg = Object.assign({ sym: 'BTCUSDT', tf: '5', rows: 'auto', unit: 'usdt', sound: false, theme: null, showCvd: true, showDelta: true, cvdStyle: 'line' }, DEFAULTS, store.get('cfg', {}));
 const saveCfg = () => store.set('cfg', cfg);
 let signals = store.get('signals', []);
 const saveSignals = () => store.set('signals', signals.slice(-150));
@@ -742,7 +744,22 @@ function draw() {
       for (const f of [0.2, 0.5, 0.8]) { const y = Math.round(top + 4 + f * (h - 8)) + 0.5; ctx.strokeStyle = line; ctx.globalAlpha = 0.7; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(g.xRight, y); ctx.stroke(); ctx.globalAlpha = 1; }
       if (cvdLo < 0 && cvdHi > 0) { ctx.save(); ctx.strokeStyle = amber; ctx.setLineDash([2, 4]); ctx.globalAlpha = 0.6; const y = yCvd(0); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(g.xRight, y); ctx.stroke(); ctx.restore(); }
       const bw = clamp(colW * 0.5, 2, 16);
-      for (let i = iLo; i <= iHi; i++) {
+      if (cfg.cvdStyle === 'line') {
+        const pts = [];
+        for (let i = Math.max(0, iLo - 1); i <= Math.min(N - 1, iHi + 1); i++) {
+          const q = cvd[i]; if (!q) continue;
+          if (!pts.length) pts.push([cxOf(i) - colW / 2, yCvd(q.o)]);
+          pts.push([cxOf(i), yCvd(q.c)]);
+        }
+        if (pts.length > 1) {
+          const base = yCvd(clamp(0, cvdLo, cvdHi));
+          ctx.beginPath(); ctx.moveTo(pts[0][0], base); for (const p of pts) ctx.lineTo(p[0], p[1]); ctx.lineTo(pts[pts.length - 1][0], base); ctx.closePath();
+          ctx.globalAlpha = 0.10; ctx.fillStyle = blue; ctx.fill(); ctx.globalAlpha = 1;
+          ctx.beginPath(); pts.forEach((p, k) => (k ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])));
+          ctx.strokeStyle = blue; ctx.lineWidth = 1.8; ctx.lineJoin = 'round'; ctx.stroke(); ctx.lineWidth = 1;
+          if (colW >= 14) for (const p of pts.slice(1)) { ctx.beginPath(); ctx.arc(p[0], p[1], 2.2, 0, 6.2832); ctx.fillStyle = blue; ctx.fill(); }
+        }
+      } else for (let i = iLo; i <= iHi; i++) {
         const q = cvd[i]; if (!q) continue; const cx = cxOf(i), col = q.c >= q.o ? green : red;
         ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(Math.round(cx) + 0.5, yCvd(q.h)); ctx.lineTo(Math.round(cx) + 0.5, yCvd(q.l)); ctx.stroke();
         ctx.fillStyle = col; ctx.fillRect(cx - bw / 2, Math.min(yCvd(q.o), yCvd(q.c)), bw, Math.max(1.5, Math.abs(yCvd(q.o) - yCvd(q.c))));
@@ -751,7 +768,8 @@ function draw() {
     ctx.restore();
     let lastQ = null; for (let i = N - 1; i >= 0; i--) if (cvd[i]) { lastQ = cvd[i]; break; }
     paneLabel('CVD' + (lastQ ? '  ' + fmtSigned(lastQ.c) : ''), top, lastQ && lastQ.c < 0 ? red : green);
-    if (yCvd) { ctx.font = `10.5px ${MONO}`; ctx.textAlign = 'left'; ctx.fillStyle = muted; for (const f of [0.2, 0.5, 0.8]) { const v = cvdHi - f * (cvdHi - cvdLo); ctx.fillText(fmtSigned(v), g.xRight + 6, top + 4 + f * (h - 8)); } }
+    if (yCvd) { ctx.font = `10.5px ${MONO}`; ctx.textAlign = 'left'; ctx.fillStyle = muted; for (const f of [0.2, 0.5, 0.8]) { const v = cvdHi - f * (cvdHi - cvdLo), yy = top + 4 + f * (h - 8); if (lastQ && Math.abs(yy - yCvd(lastQ.c)) < 13) continue; ctx.fillText(fmtSigned(v), g.xRight + 6, yy); } }
+    if (yCvd && lastQ) { const yl = yCvd(lastQ.c); if (yl > top + 8 && yl < top + h - 8) tag(fmtSigned(lastQ.c), yl, blue, C('--bg')); }
   }
   if (cfg.showDelta) {
     const top = g.dTop, h = g.dH; paneFrame(top, h);
@@ -863,6 +881,7 @@ $('soundChk').addEventListener('change', (e) => {
   if (cfg.sound && typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission();
 });
 $('cvdChk').addEventListener('change', (e) => { cfg.showCvd = e.target.checked; saveCfg(); requestDraw(); });
+$('cvdStyle').addEventListener('change', (e) => { cfg.cvdStyle = e.target.value; saveCfg(); requestDraw(); });
 $('deltaChk').addEventListener('change', (e) => { cfg.showDelta = e.target.checked; saveCfg(); requestDraw(); });
 $('clearBtn').addEventListener('click', () => { signals = []; saveSignals(); sigDirty = true; requestDraw(); });
 $('fitBtn').addEventListener('click', () => { view.autoY = true; requestDraw(); });
@@ -924,7 +943,7 @@ $('setSave').addEventListener('click', () => {
 
 /* ============================================================ start */
 $('tfSel').value = cfg.tf; $('rowSel').value = cfg.rows; $('unitSel').value = cfg.unit; $('soundChk').checked = !!cfg.sound;
-$('cvdChk').checked = !!cfg.showCvd; $('deltaChk').checked = !!cfg.showDelta;
+$('cvdStyle').value = cfg.cvdStyle; $('cvdChk').checked = !!cfg.showCvd; $('deltaChk').checked = !!cfg.showDelta;
 applyTheme(); renderQuick(); renderHead();
 setInterval(() => { st.tps = st.tpsCount; st.tpsCount = 0; renderLive(); }, 1000);
 setInterval(() => { if (dirty) draw(); if (sigDirty) renderSignals(); }, 250);
