@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Footprint Absorption Scanner</title>
+<style>
+:root {
+  --bg: #0b0d11; --panel: #12151b; --panel2: #171b22; --line: #222731; --line2: #2c3240;
+  --text: #e8ebf0; --muted: #8a93a3; --dim: #5d6575;
+  --green: #3ddc84; --green-bg: rgba(61,220,132,.10); --green-line: rgba(61,220,132,.38);
+  --amber: #f2b544; --amber-bg: rgba(242,181,68,.12); --amber-line: rgba(242,181,68,.40);
+  --red: #f0565b; --red-bg: rgba(240,86,91,.12); --red-line: rgba(240,86,91,.40);
+  --blue: #5b9cff; --blue-bg: rgba(91,156,255,.12); --blue-line: rgba(91,156,255,.40);
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --strong: #fff; --text2: #c5cad4; --text2b: #d6dae2; --topbg: rgba(11,13,17,.92);
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: #f4f6f9; --panel: #ffffff; --panel2: #eef1f5; --line: #e2e6ec; --line2: #cfd5de;
+  --text: #141821; --muted: #5b6474; --dim: #8a93a3;
+  --green: #12a150; --amber: #b7791f; --red: #d93a40; --blue: #2f6fe0;
+  --strong: #0b0d11; --text2: #3d4453; --text2b: #232834; --topbg: rgba(244,246,249,.92);
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 13.5px/1.45 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+.hidden { display: none !important; }
+button, select, input { font: inherit; color: inherit; }
+a { color: inherit; }
+.up { color: var(--green); } .down { color: var(--red); } .muted { color: var(--muted); } .dim { color: var(--dim); }
+.mono { font-family: var(--mono); font-size: 12.5px; }
+
+.top { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; flex-wrap: wrap; gap: 12px 16px; padding: 10px 24px; border-bottom: 1px solid var(--line); background: var(--topbg); backdrop-filter: blur(8px); }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+.logo { width: 32px; height: 32px; border-radius: 8px; background: var(--green-bg); border: 1px solid var(--green-line); color: var(--green); display: grid; place-items: center; font-weight: 800; }
+.brand-name { font-weight: 700; letter-spacing: .1em; font-size: 13px; }
+.brand-sub { color: var(--muted); font-size: 11px; }
+.ctl { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; flex: 1; min-width: 260px; }
+.top-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.toggle { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; cursor: pointer; }
+
+.btn { display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border: 1px solid var(--line2); padding: 7px 13px; border-radius: 7px; cursor: pointer; font-size: 12.5px; color: var(--text2b); white-space: nowrap; }
+.btn:hover { color: var(--strong); border-color: var(--muted); }
+.btn-primary { background: var(--green); border-color: var(--green); color: #05210f; font-weight: 600; }
+select, input[type=number], input[type=text] { background: var(--panel2); border: 1px solid var(--line2); border-radius: 7px; padding: 6px 9px; outline: none; }
+select:focus, input:focus { border-color: var(--green-line); }
+#symIn { width: 130px; text-transform: uppercase; }
+.chip { border: 1px solid var(--line2); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; color: var(--muted); user-select: none; background: transparent; }
+.chip:hover { color: var(--text); }
+.chip.on { color: var(--green); border-color: var(--green-line); background: var(--green-bg); }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill-live { color: var(--green); background: var(--green-bg); border-color: var(--green-line); }
+.pill-scan { color: var(--blue); background: var(--blue-bg); border-color: var(--blue-line); }
+.pill-error { color: var(--red); background: var(--red-bg); border-color: var(--red-line); }
+.pill-muted { color: var(--muted); background: var(--panel2); }
+
+.wrap { display: grid; grid-template-columns: minmax(0, 1fr) 350px; gap: 16px; padding: 18px 24px 40px; align-items: start; }
+.banner { margin: 0 0 14px; padding: 11px 14px; border-radius: 8px; border: 1px solid var(--red-line); background: var(--red-bg); color: var(--red); font-size: 13px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 16px; min-width: 0; overflow: hidden; }
+.panel-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.panel-head b { font-size: 13px; }
+.pn { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.pn:last-child { border-bottom: 0; }
+.pn h4 { margin: 0 0 10px; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); font-weight: 600; }
+
+.head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.head .sym { font-size: 20px; font-weight: 650; }
+.head .price { font-size: 24px; font-weight: 650; font-family: var(--mono); }
+.head .sub { color: var(--muted); }
+
+#chartScroll { max-height: 74vh; overflow: auto; position: relative; }
+#cv { display: block; }
+.chart-msg { padding: 60px 20px; text-align: center; color: var(--muted); }
+
+.kv { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.kv .l { color: var(--dim); font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; }
+.kv .v { font-size: 15px; font-weight: 600; margin-top: 2px; }
+.preview { margin-top: 12px; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); font-size: 12.5px; color: var(--text2); }
+.preview.l { border-color: var(--green-line); background: var(--green-bg); }
+.preview.s { border-color: var(--red-line); background: var(--red-bg); }
+
+.sig { padding: 11px 16px; border-bottom: 1px solid var(--line); }
+.sig:last-child { border-bottom: 0; }
+.sig-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 5px; font-size: 11px; font-weight: 700; border: 1px solid transparent; }
+.tag-L { color: var(--green); background: var(--green-bg); }
+.tag-S { color: var(--red); background: var(--red-bg); }
+.tag-WATCH { color: var(--amber); background: var(--amber-bg); }
+.tag-CONFIRMED { color: var(--blue); background: var(--blue-bg); }
+.tag-FAILED, .tag-EXPIRED { color: var(--muted); background: var(--panel2); font-weight: 500; }
+.tag-WIN { color: #05210f; background: var(--green); }
+.tag-LOSS { color: #fff; background: var(--red); }
+.tag-TIMEOUT { color: var(--muted); background: var(--panel2); }
+.tf { font-size: 11px; border: 1px solid var(--line2); border-radius: 5px; padding: 1px 7px; color: var(--muted); font-family: var(--mono); }
+.sig-line { margin-top: 5px; color: var(--muted); font-size: 12px; }
+.sig-line.mono { color: var(--text2); }
+.empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.stat { background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 7px 4px; text-align: center; }
+.stat span { display: block; color: var(--dim); font-size: 10px; }
+.stat b { font-size: 15px; font-weight: 600; }
+.legend { padding: 14px 16px; color: var(--text2); font-size: 12.5px; line-height: 1.65; }
+.legend b { color: var(--strong); }
+.legend .g { color: var(--green); font-weight: 700; } .legend .r { color: var(--red); font-weight: 700; } .legend .a { color: var(--amber); font-weight: 700; }
+.linkbtn { background: none; border: 0; color: var(--dim); cursor: pointer; font-size: 12px; text-decoration: underline; padding: 0; }
+
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: grid; place-items: center; z-index: 50; }
+.modal-box { background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; padding: 20px 22px; width: min(560px, calc(100vw - 32px)); max-height: 86vh; overflow: auto; }
+.modal-box h3 { margin: 0 0 14px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
+.grid2 label { display: flex; flex-direction: column; gap: 5px; color: var(--muted); font-size: 12.5px; }
+.hint { color: var(--dim); font-size: 12px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; align-items: center; margin-top: 14px; }
+.modal-actions .hint { flex: 1; }
+
+@media (max-width: 1050px) { .wrap { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) { .top, .wrap { padding-left: 14px; padding-right: 14px; } .grid2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="scanner-v2.html" title="Back to scanner">
+    <div class="logo">F</div>
+    <div><div class="brand-name">FOOTPRINT</div><div class="brand-sub">Absorption · Bybit live</div></div>
+  </a>
+  <div class="ctl">
+    <input type="text" id="symIn" placeholder="BTC" autocomplete="off" spellcheck="false">
+    <button class="btn" id="symGo">Load</button>
+    <span id="quick"></span>
+    <select id="tfSel" title="Timeframe"><option value="1">1m</option><option value="3">3m</option><option value="5">5m</option><option value="15">15m</option></select>
+    <select id="rowSel" title="Row size"><option value="auto">Rows: auto</option><option value="1">×1 tick</option><option value="2">×2</option><option value="5">×5</option><option value="10">×10</option><option value="20">×20</option><option value="50">×50</option><option value="100">×100</option></select>
+    <select id="unitSel" title="Volume unit"><option value="usdt">Volume: USDT</option><option value="coin">Volume: coin</option></select>
+  </div>
+  <div class="top-actions">
+    <span id="status" class="pill pill-muted">Starting…</span>
+    <label class="toggle"><input type="checkbox" id="soundChk"> Sound + notification</label>
+    <button id="themeBtn" class="btn" title="Switch theme">☀︎</button>
+    <button id="settingsBtn" class="btn">Settings</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <section>
+    <div id="banner" class="banner hidden"></div>
+    <div class="head"><span class="sym" id="hSym">—</span><span class="price" id="hPx">—</span><span class="sub" id="hSub"></span></div>
+    <div class="panel">
+      <div id="chartScroll"><canvas id="cv"></canvas></div>
+      <div id="chartMsg" class="chart-msg">Waiting for trades…</div>
+    </div>
+    <div class="panel">
+      <div class="legend">
+        <b>How to read it.</b> Each cell shows <b>sell × buy</b> volume at that price: sell is volume hitting the bid, buy is volume lifting the ask. <b>Δ</b> is buy minus sell for the candle, <b>Σ</b> its total.
+        <span class="g">Green bold</span> = buy imbalance (ask volume at least the set ratio of the bid one row below). <span class="r">Red bold</span> = sell imbalance. <span class="a">Amber outline</span> = most-traded price (POC).<br>
+        <b>Absorption</b> = volume well above average, concentrated at one extreme with sellers (or buyers) dominating there, yet price closes away from it and delta does not follow. It becomes a signal after a later candle closes beyond the absorption candle with matching delta. A close beyond the other side cancels it.
+        Footprint data starts from the last ~1000 trades when the page opens; candles marked * are partial and are never scored.
+      </div>
+    </div>
+  </section>
+
+  <aside>
+    <div class="panel">
+      <div class="pn">
+        <h4>Live candle</h4>
+        <div class="kv">
+          <div><div class="l">Delta Δ</div><div class="v mono" id="lvDelta">—</div></div>
+          <div><div class="l">Volume Σ</div><div class="v mono" id="lvTot">—</div></div>
+          <div><div class="l">vs average</div><div class="v mono" id="lvX">—</div></div>
+          <div><div class="l">Trades / sec</div><div class="v mono" id="lvTps">—</div></div>
+        </div>
+        <div class="preview" id="lvPreview">—</div>
+      </div>
+      <div class="pn">
+        <h4>Journal (confirmed signals)</h4>
+        <div class="stats" id="stats"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><b>Absorption signals</b><button class="linkbtn" id="clearBtn">Clear</button></div>
+      <div id="sigList"></div>
+    </div>
+  </aside>
+</main>
+
+<div id="settings" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <h3>Detection settings</h3>
+    <div class="grid2">
+      <label>Volume vs average (× or more)<input type="number" id="sVol" min="1" step="0.1"></label>
+      <label>Average over last N candles<input type="number" id="sAvg" min="5" max="100"></label>
+      <label>Extreme zone (% of candle range)<input type="number" id="sZone" min="10" max="50" step="1"></label>
+      <label>Zone share of candle volume (%)<input type="number" id="sStack" min="5" max="80" step="1"></label>
+      <label>Max delta against (% of volume)<input type="number" id="sDelta" min="0" max="60" step="1"></label>
+      <label>Close position in range (% or more)<input type="number" id="sClose" min="0" max="90" step="5"></label>
+      <label>Require swing extreme, last N (0 = off)<input type="number" id="sSwing" min="0" max="100"></label>
+      <label>Confirm within N candles<input type="number" id="sConfirm" min="1" max="10"></label>
+      <label>Risk : reward<input type="number" id="sRR" min="0.5" max="10" step="0.5"></label>
+      <label>Trade timeout (candles)<input type="number" id="sTimeout" min="3" max="200"></label>
+      <label>Imbalance ratio<input type="number" id="sImb" min="1.5" max="10" step="0.5"></label>
+    </div>
+    <p class="hint">Saved only in this browser. Changes re-run detection on the candles already loaded.</p>
+    <div class="modal-actions"><button class="btn" id="setReset">Defaults</button><span class="hint"></span><button class="btn" id="setCancel">Close</button><button class="btn btn-primary" id="setSave">Save</button></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+(() => {
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('fp.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('fp.' + k, JSON.stringify(v)); } catch { /* storage off */ } },
+};
+
+/* ============================================================ config + state */
+const API = 'https://api.bybit.com/v5/market';
+const WS_URL = 'wss://stream.bybit.com/v5/public/linear';
+const TFS = { '1': 60000, '3': 180000, '5': 300000, '15': 900000 };
+const TFL = { '1': '1m', '3': '3m', '5': '5m', '15': '15m' };
+const QUICK = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
+const DEFAULTS = { volMult: 1.5, avgN: 20, zoneFrac: 0.30, stack: 0.30, deltaCap: 0.15, closePos: 0.50, swingN: 12, confirmN: 3, rr: 2, timeout: 30, imb: 3 };
+const cfg = Object.assign({ sym: 'BTCUSDT', tf: '5', rows: 'auto', unit: 'usdt', sound: false, theme: null }, DEFAULTS, store.get('cfg', {}));
+const saveCfg = () => store.set('cfg', cfg);
+let signals = store.get('signals', []);
+const saveSignals = () => store.set('signals', signals.slice(-150));
+
+const st = {
+  sym: cfg.sym, tf: cfg.tf, tick: 0.01, dec: 2,
+  candles: [], trades: [], seen: new Set(), kl: [], pending: [], ready: false,
+  ws: null, wsOk: false, wasDown: false, last: null, tpsCount: 0, tps: 0, loadId: 0,
+};
+let dirty = true, sigDirty = true;
+
+/* ============================================================ network */
+async function getJson(url) {
+  const r = await fetch(url, { cache: 'no-store' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const j = await r.json();
+  if (j.retCode !== 0) throw new Error(j.retMsg || 'Bybit error');
+  return j.result;
+}
+const tradeUrl = () => `${API}/recent-trade?category=linear&symbol=${st.sym}&limit=1000`;
+const mapRest = (x) => ({ id: x.execId, T: +x.time, p: +x.price, q: +x.size, s: x.side });
+
+function setStatus() {
+  const el = $('status');
+  if (st.err) { el.className = 'pill pill-error'; el.textContent = 'Error'; return; }
+  if (!st.ready) { el.className = 'pill pill-scan'; el.textContent = 'Loading…'; return; }
+  if (st.wsOk) { el.className = 'pill pill-live'; el.textContent = 'Live'; return; }
+  el.className = 'pill pill-muted'; el.textContent = 'Reconnecting…';
+}
+function showError(msg) { st.err = msg; const b = $('banner'); b.textContent = msg; b.classList.remove('hidden'); setStatus(); }
+function clearError() { st.err = null; $('banner').classList.add('hidden'); }
+
+let pingTimer = 0;
+function wsConnect() {
+  if (st.ws && st.ws.readyState < 2) return;
+  let ws;
+  try { ws = new WebSocket(WS_URL); } catch { setTimeout(wsConnect, 3000); return; }
+  st.ws = ws;
+  ws.onopen = () => {
+    st.wsOk = true; setStatus(); subscribe();
+    if (st.wasDown && st.ready) reseed();
+    st.wasDown = false;
+    clearInterval(pingTimer);
+    pingTimer = setInterval(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ op: 'ping' })); }, 20000);
+  };
+  ws.onmessage = (e) => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    if (!m.topic || m.topic !== 'publicTrade.' + st.sym || !Array.isArray(m.data)) return;
+    for (const d of m.data) {
+      const tr = { id: d.i, T: +d.T, p: +d.p, q: +d.v, s: d.S };
+      if (!st.ready) st.pending.push(tr); else pushTrade(tr, true);
+    }
+  };
+  ws.onclose = () => { clearInterval(pingTimer); st.wsOk = false; st.wasDown = true; setStatus(); setTimeout(wsConnect, 2000); };
+  ws.onerror = () => { try { ws.close(); } catch { /* ignore */ } };
+}
+function wsSend(obj) { if (st.ws && st.ws.readyState === 1) st.ws.send(JSON.stringify(obj)); }
+const subscribe = () => wsSend({ op: 'subscribe', args: ['publicTrade.' + st.sym] });
+const unsubscribe = (sym) => wsSend({ op: 'unsubscribe', args: ['publicTrade.' + sym] });
+
+async function reseed() {
+  try {
+    const rt = await getJson(tradeUrl());
+    (rt.list || []).map(mapRest).sort((a, b) => a.T - b.T).forEach((t) => pushTrade(t, true));
+  } catch { /* ignore */ }
+}
+
+async function loadAll() {
+  const id = ++st.loadId;
+  st.ready = false; st.pending = []; st.candles = []; st.trades = []; st.seen = new Set(); st.last = null; st.kl = [];
+  dirty = true; sigDirty = true; clearError(); setStatus(); renderHead();
+  subscribe();
+  try {
+    const inst = await getJson(`${API}/instruments-info?category=linear&symbol=${st.sym}`);
+    const row = inst.list && inst.list[0];
+    if (!row) throw new Error('Unknown symbol ' + st.sym);
+    if (id !== st.loadId) return;
+    st.tick = +row.priceFilter.tickSize;
+    st.dec = (String(row.priceFilter.tickSize).split('.')[1] || '').length;
+    const [kl, rt] = await Promise.all([
+      getJson(`${API}/kline?category=linear&symbol=${st.sym}&interval=${st.tf}&limit=120`),
+      getJson(tradeUrl()),
+    ]);
+    if (id !== st.loadId) return;
+    st.kl = kl.list || [];
+    for (const t of (rt.list || []).map(mapRest).sort((a, b) => a.T - b.T)) { st.seen.add(t.id); st.trades.push(t); }
+    rebuild();
+    st.ready = true;
+    const pend = st.pending; st.pending = [];
+    pend.sort((a, b) => a.T - b.T).forEach((t) => pushTrade(t, true));
+    if (st.trades.length) st.last = st.trades[st.trades.length - 1].p;
+  } catch (e) {
+    if (id === st.loadId) showError('Could not load ' + st.sym + ': ' + (e.message || e));
+    return;
+  }
+  setStatus(); dirty = true; sigDirty = true;
+}
+
+async function changeTf() {
+  const id = ++st.loadId; st.ready = false; setStatus();
+  try {
+    const kl = await getJson(`${API}/kline?category=linear&symbol=${st.sym}&interval=${st.tf}&limit=120`);
+    if (id !== st.loadId) return;
+    st.kl = kl.list || [];
+    rebuild(); st.ready = true;
+  } catch (e) { showError('Could not load candles: ' + (e.message || e)); return; }
+  setStatus(); dirty = true; sigDirty = true;
+}
+
+/* ============================================================ candles + footprint aggregation */
+function buildCandles() {
+  const rev = st.kl.slice().reverse();
+  st.candles = rev.map((k, i) => ({
+    t: +k[0], o: +k[1], h: +k[2], l: +k[3], c: +k[4], vol: +k[5],
+    fp: null, partial: false, bid: 0, ask: 0, closed: i < rev.length - 1, hist: true, lastT: 0, processed: false, kmin: 0, kmax: 0,
+  }));
+}
+function rebuild() {
+  buildCandles();
+  const ts = st.trades.slice().sort((a, b) => a.T - b.T);
+  for (const tr of ts) ingest(tr, false);
+  const cs = st.candles;
+  for (let i = 0; i < cs.length - 1; i++) if (cs[i].fp && !cs[i].partial) processClose(cs[i], true);
+}
+function pushTrade(tr, live) {
+  if (tr.id != null) { if (st.seen.has(tr.id)) return; st.seen.add(tr.id); if (st.seen.size > 60000) st.seen = new Set(st.trades.slice(-20000).map((t) => t.id)); }
+  st.trades.push(tr);
+  if (st.trades.length > 250000) st.trades.splice(0, 50000);
+  ingest(tr, live);
+  st.last = tr.p; st.tpsCount++; dirty = true;
+}
+function ingest(tr, live) {
+  const ms = TFS[st.tf], t = Math.floor(tr.T / ms) * ms, cs = st.candles;
+  let c = cs[cs.length - 1];
+  if (c && t < c.t) {
+    c = null;
+    for (let i = cs.length - 1; i >= 0; i--) { if (cs[i].t === t) { c = cs[i]; break; } if (cs[i].t < t) break; }
+    if (!c) return;
+  } else if (!c || t > c.t) {
+    if (c && !c.closed) closeCandle(c, !live);
+    c = { t, o: tr.p, h: tr.p, l: tr.p, c: tr.p, vol: 0, fp: null, partial: false, bid: 0, ask: 0, closed: false, hist: false, lastT: 0, processed: false, kmin: 0, kmax: 0 };
+    cs.push(c); if (cs.length > 400) cs.shift();
+  }
+  addTo(c, tr);
+}
+function addTo(c, tr) {
+  if (!c.fp) { c.fp = new Map(); c.partial = !st.candles.some((x) => x.fp && x.t < c.t); c.kmin = Infinity; c.kmax = -Infinity; }
+  const k = Math.round(tr.p / st.tick);
+  let cell = c.fp.get(k); if (!cell) { cell = [0, 0]; c.fp.set(k, cell); }
+  if (tr.s === 'Sell') { cell[0] += tr.q; c.bid += tr.q; } else { cell[1] += tr.q; c.ask += tr.q; }
+  if (k < c.kmin) c.kmin = k; if (k > c.kmax) c.kmax = k;
+  if (!c.closed || !c.hist) {
+    if (tr.p > c.h) c.h = tr.p; if (tr.p < c.l) c.l = tr.p;
+    if (tr.T >= c.lastT) { c.c = tr.p; c.lastT = tr.T; }
+  }
+}
+function closeCandle(c, silent) { c.closed = true; if (c.fp && !c.partial) processClose(c, silent); }
+const volOf = (x) => (x.fp && !x.partial) ? x.bid + x.ask : x.vol;
+
+/* ============================================================ absorption engine */
+function analyse(c) {
+  if (!c.fp) return null;
+  const rng = c.h - c.l; if (!(rng > 0)) return null;
+  const lz = c.l + cfg.zoneFrac * rng, hz = c.h - cfg.zoneFrac * rng, eps = st.tick * 0.01;
+  let B = 0, A = 0, lb = 0, la = 0, hb = 0, ha = 0;
+  for (const [k, v] of c.fp) {
+    const p = k * st.tick; B += v[0]; A += v[1];
+    if (p <= lz + eps) { lb += v[0]; la += v[1]; }
+    if (p >= hz - eps) { hb += v[0]; ha += v[1]; }
+  }
+  const tot = A + B; if (!tot) return null;
+  return { B, A, tot, delta: A - B, lb, la, hb, ha, lz, hz, rng };
+}
+function baseline(c) {
+  const i = st.candles.indexOf(c); if (i < 0) return null;
+  const prev = st.candles.slice(Math.max(0, i - cfg.avgN), i);
+  if (prev.length < 5) return null;
+  const avg = prev.reduce((s, x) => s + volOf(x), 0) / prev.length;
+  return avg > 0 ? avg : null;
+}
+function evaluate(c) {
+  const a = analyse(c); if (!a) return null;
+  const base = baseline(c); if (!base) return null;
+  const volX = a.tot / base, dirs = [];
+  if (volX >= cfg.volMult) {
+    const i = st.candles.indexOf(c), tol = st.tick * 2;
+    const prior = st.candles.slice(Math.max(0, i - cfg.swingN), i);
+    const dPct = a.delta / a.tot;
+    if (a.lb / a.tot >= cfg.stack && a.lb >= a.la && dPct >= -cfg.deltaCap && (c.c - c.l) / a.rng >= cfg.closePos
+        && (!cfg.swingN || prior.every((x) => x.l >= c.l - tol))) dirs.push('L');
+    if (a.ha / a.tot >= cfg.stack && a.ha >= a.hb && dPct <= cfg.deltaCap && (c.h - c.c) / a.rng >= cfg.closePos
+        && (!cfg.swingN || prior.every((x) => x.h <= c.h + tol))) dirs.push('S');
+  }
+  return { a, volX, dirs };
+}
+function processClose(c, silent) {
+  if (c.processed) return; c.processed = true;
+  updateSignals(c, silent);
+  const ev = evaluate(c);
+  if (ev) for (const dir of ev.dirs) addSignal(c, dir, ev, silent);
+}
+function addSignal(c, dir, ev, silent) {
+  const id = [st.sym, st.tf, dir, c.t].join('|');
+  if (signals.some((s) => s.id === id)) return;
+  const a = ev.a, L = dir === 'L';
+  signals.push({
+    id, sym: st.sym, tf: st.tf, dir, candleT: c.t, lastT: c.t, low: c.l, high: c.h, range: a.rng, tick: st.tick, dec: st.dec,
+    zoneLo: L ? c.l : a.hz, zoneHi: L ? a.lz : c.h,
+    volX: ev.volX, deltaPct: a.delta / a.tot * 100, stackPct: (L ? a.lb : a.ha) / a.tot * 100,
+    status: 'WATCH', confirmT: null, entry: null, sl: null, tp: null, bars: 0, outcome: null,
+  });
+  saveSignals(); sigDirty = true;
+  if (!silent) notify('Absorption watch', `${st.sym.replace('USDT', '')} ${TFL[st.tf]} ${L ? 'bullish' : 'bearish'} absorption, waiting for confirmation`, 'watch');
+}
+function confirmSignal(s, c, silent) {
+  const L = s.dir === 'L', entry = c.c;
+  const sl = L ? s.low - 0.15 * s.range - s.tick : s.high + 0.15 * s.range + s.tick;
+  const risk = L ? entry - sl : sl - entry;
+  if (!(risk > 0)) { s.status = 'FAILED'; return; }
+  s.status = 'CONFIRMED'; s.confirmT = c.t; s.entry = entry; s.sl = sl; s.tp = L ? entry + cfg.rr * risk : entry - cfg.rr * risk; s.bars = 0;
+  if (!silent) notify('Absorption confirmed', `${s.sym.replace('USDT', '')} ${TFL[s.tf]} ${L ? 'LONG' : 'SHORT'} entry ${entry.toFixed(s.dec)}`, 'confirm');
+}
+function updateSignals(c, silent) {
+  let changed = false;
+  for (const s of signals) {
+    if (s.sym !== st.sym || s.tf !== st.tf) continue;
+    if (c.t <= s.lastT || c.t <= s.candleT) continue;
+    s.lastT = c.t; changed = true;
+    const L = s.dir === 'L';
+    if (s.status === 'WATCH') {
+      const d = (c.fp && !c.partial) ? c.ask - c.bid : null;
+      if (L ? c.c < s.low : c.c > s.high) s.status = 'FAILED';
+      else if (L ? (c.c > s.high && (d == null || d > 0)) : (c.c < s.low && (d == null || d < 0))) confirmSignal(s, c, silent);
+      if (s.status === 'WATCH' && Math.round((c.t - s.candleT) / TFS[s.tf]) >= cfg.confirmN) s.status = 'EXPIRED';
+    } else if (s.status === 'CONFIRMED' && !s.outcome && c.t > s.confirmT) {
+      s.bars++;
+      if (L ? c.l <= s.sl : c.h >= s.sl) s.outcome = 'LOSS';
+      else if (L ? c.h >= s.tp : c.l <= s.tp) s.outcome = 'WIN';
+      else if (s.bars >= cfg.timeout) s.outcome = 'TIMEOUT';
+    }
+  }
+  if (changed) { saveSignals(); sigDirty = true; }
+}
+
+/* ============================================================ sound + notifications */
+function beep(kind) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)(), o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = kind === 'confirm' ? 1175 : 660; g.gain.value = 0.08;
+    o.connect(g); g.connect(ctx.destination); o.start();
+    setTimeout(() => { o.stop(); ctx.close(); }, kind === 'confirm' ? 320 : 180);
+  } catch { /* audio unavailable */ }
+}
+function notify(title, body, kind) {
+  if (!cfg.sound) return;
+  beep(kind);
+  if (typeof Notification !== 'undefined' && Notification.permission === 'granted') new Notification(title, { body });
+}
+
+/* ============================================================ formatting */
+function fmtN(v) {
+  if (!v) return '0';
+  if (v >= 1e9) return (v / 1e9).toFixed(1) + 'B';
+  if (v >= 1e6) return (v / 1e6).toFixed(1) + 'M';
+  if (v >= 1e4) return Math.round(v / 1e3) + 'K';
+  if (v >= 1e3) return (v / 1e3).toFixed(1) + 'K';
+  if (v >= 100) return String(Math.round(v));
+  if (v >= 10) return v.toFixed(1);
+  return String(+v.toPrecision(2));
+}
+const fmtSigned = (v) => (v > 0 ? '+' : v < 0 ? '−' : '') + fmtN(Math.abs(v));
+const fmtTime = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const fmtP = (v, dec) => v == null ? '—' : (+v).toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec });
+
+/* ============================================================ chart */
+const AX = 64, COLW = 104, TOP = 36, BOT = 64, ROWH = 16, MULTS = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
+function draw() {
+  dirty = false;
+  const cv = $('cv'), sc = $('chartScroll'), ctx = cv.getContext && cv.getContext('2d');
+  if (!ctx) return;
+  const css = getComputedStyle(document.documentElement), C = (n) => css.getPropertyValue(n).trim();
+  const K = Math.max(4, Math.floor((sc.clientWidth - AX - 8) / COLW));
+  const vis = st.candles.filter((c) => c.fp).slice(-K);
+  $('chartMsg').classList.toggle('hidden', vis.length > 0);
+  if (!vis.length) { cv.width = 0; cv.height = 0; cv.style.width = '0px'; cv.style.height = '0px'; return; }
+
+  let kmin = Infinity, kmax = -Infinity;
+  for (const c of vis) { if (c.kmin < kmin) kmin = c.kmin; if (c.kmax > kmax) kmax = c.kmax; }
+  let mult;
+  if (cfg.rows === 'auto') { mult = MULTS[MULTS.length - 1]; for (const m of MULTS) if (Math.floor(kmax / m) - Math.floor(kmin / m) + 1 <= 40) { mult = m; break; } }
+  else mult = +cfg.rows || 1;
+  const binMin = Math.floor(kmin / mult), binMax = Math.floor(kmax / mult), nRows = binMax - binMin + 1;
+  const W = AX + vis.length * COLW + 8, H = TOP + nRows * ROWH + BOT, dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const green = C('--green'), red = C('--red'), amber = C('--amber'), text2 = C('--text2'), dim = C('--dim'), line = C('--line'), muted = C('--muted'), strong = C('--strong');
+  ctx.clearRect(0, 0, W, H);
+  const yOf = (b) => TOP + (binMax - b) * ROWH, usdt = cfg.unit === 'usdt';
+  const conv = (k) => usdt ? k * st.tick : 1;
+  const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+
+  // aggregate each candle into display bins
+  const cols = vis.map((c) => {
+    const bins = new Map(); let tb = 0, ta = 0, tot = 0;
+    for (const [k, v] of c.fp) {
+      const b = Math.floor(k / mult), f = conv(k); let e = bins.get(b); if (!e) { e = [0, 0]; bins.set(b, e); }
+      e[0] += v[0] * f; e[1] += v[1] * f; tb += v[0] * f; ta += v[1] * f;
+    }
+    let poc = null, pocV = -1, maxCell = 0;
+    for (const [b, e] of bins) { const t = e[0] + e[1]; if (t > pocV) { pocV = t; poc = b; } if (t > maxCell) maxCell = t; }
+    return { c, bins, tb, ta, poc, maxCell, tot: tb + ta };
+  });
+  const gMax = Math.max(...cols.map((x) => x.maxCell), 1);
+
+  // grid + axis
+  ctx.font = `10px ${MONO}`; ctx.textBaseline = 'middle';
+  for (let b = binMin; b <= binMax; b++) {
+    const y = yOf(b);
+    ctx.strokeStyle = line; ctx.globalAlpha = .6; ctx.beginPath(); ctx.moveTo(AX, y + ROWH); ctx.lineTo(W - 4, y + ROWH); ctx.stroke(); ctx.globalAlpha = 1;
+    ctx.fillStyle = dim; ctx.textAlign = 'right'; ctx.fillText((b * mult * st.tick).toFixed(st.dec), AX - 6, y + ROWH / 2);
+  }
+
+  const bySig = {};
+  for (const s of signals) if (s.sym === st.sym && s.tf === st.tf) (bySig[s.candleT] = bySig[s.candleT] || []).push(s);
+
+  cols.forEach((col, i) => {
+    const c = col.c, x0 = AX + i * COLW, cx = x0 + COLW / 2 + 3, minV = col.tot * 0.015;
+    const bid = (b) => (col.bins.get(b) || [0, 0])[0], ask = (b) => (col.bins.get(b) || [0, 0])[1];
+    // zone outline for absorption candles
+    for (const s of (bySig[c.t] || [])) {
+      const b1 = Math.floor(Math.round(s.zoneLo / st.tick) / mult), b2 = Math.floor(Math.round(s.zoneHi / st.tick) / mult);
+      ctx.save(); ctx.strokeStyle = s.dir === 'L' ? green : red; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.2;
+      ctx.strokeRect(x0 + 6, yOf(b2) + .5, COLW - 8, (b2 - b1 + 1) * ROWH - 1); ctx.restore();
+    }
+    for (const [b, e] of col.bins) {
+      const y = yOf(b), tot = e[0] + e[1];
+      ctx.globalAlpha = 0.07 + 0.42 * Math.sqrt(tot / gMax); ctx.fillStyle = e[1] >= e[0] ? green : red; ctx.fillRect(x0 + 8, y + 1, COLW - 12, ROWH - 2); ctx.globalAlpha = 1;
+      const buyImb = e[1] >= cfg.imb * bid(b - 1) && e[1] >= minV, sellImb = e[0] >= cfg.imb * ask(b + 1) && e[0] >= minV;
+      ctx.font = `10.5px ${MONO}`;
+      ctx.textAlign = 'right'; ctx.fillStyle = sellImb ? red : text2; if (sellImb) ctx.font = `bold 10.5px ${MONO}`; ctx.fillText(fmtN(e[0]), cx - 5, y + ROWH / 2 + .5);
+      ctx.font = `10.5px ${MONO}`; ctx.textAlign = 'center'; ctx.fillStyle = dim; ctx.fillText('×', cx, y + ROWH / 2 + .5);
+      ctx.textAlign = 'left'; ctx.fillStyle = buyImb ? green : text2; if (buyImb) ctx.font = `bold 10.5px ${MONO}`; ctx.fillText(fmtN(e[1]), cx + 5, y + ROWH / 2 + .5);
+    }
+    if (col.poc != null) { ctx.strokeStyle = amber; ctx.lineWidth = 1.2; ctx.strokeRect(x0 + 8.5, yOf(col.poc) + 1.5, COLW - 13, ROWH - 3); ctx.lineWidth = 1; }
+    // candle body + wick
+    const up = c.c >= c.o, bc = up ? green : red, yH = TOP + (binMax + 1 - c.h / (mult * st.tick)) * ROWH, yL = TOP + (binMax + 1 - c.l / (mult * st.tick)) * ROWH;
+    const yO = TOP + (binMax + 1 - c.o / (mult * st.tick)) * ROWH, yC = TOP + (binMax + 1 - c.c / (mult * st.tick)) * ROWH;
+    ctx.strokeStyle = bc; ctx.beginPath(); ctx.moveTo(x0 + 3.5, yH); ctx.lineTo(x0 + 3.5, yL); ctx.stroke();
+    ctx.fillStyle = bc; ctx.fillRect(x0 + 1, Math.min(yO, yC), 5, Math.max(1.5, Math.abs(yC - yO)));
+    // header + footer
+    const yb = TOP + nRows * ROWH;
+    ctx.textAlign = 'center'; ctx.font = `10.5px ${MONO}`; ctx.fillStyle = muted; ctx.fillText(fmtTime(c.t) + (c.partial ? '*' : ''), cx, 12);
+    const d = col.ta - col.tb;
+    ctx.fillStyle = d >= 0 ? green : red; ctx.font = `bold 11px ${MONO}`; ctx.fillText('Δ ' + fmtSigned(d), cx, yb + 32);
+    ctx.fillStyle = strong; ctx.font = `11px ${MONO}`; ctx.fillText('Σ ' + fmtN(col.tot), cx, yb + 48);
+    // markers
+    for (const s of (bySig[c.t] || [])) {
+      const L = s.dir === 'L', tag = { WATCH: '', CONFIRMED: ' ✓', FAILED: ' ✗', EXPIRED: ' –' }[s.status];
+      ctx.font = `bold 10.5px ${MONO}`; ctx.fillStyle = L ? green : red;
+      ctx.fillText((L ? '▲ ABS' : '▼ ABS') + tag, cx, L ? yb + 12 : 26);
+    }
+  });
+
+  // last price line
+  if (st.last != null) {
+    const y = TOP + (binMax + 1 - st.last / (mult * st.tick)) * ROWH;
+    if (y >= TOP && y <= TOP + nRows * ROWH) {
+      ctx.save(); ctx.strokeStyle = amber; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.moveTo(AX, y); ctx.lineTo(W - 4, y); ctx.stroke(); ctx.restore();
+      ctx.fillStyle = amber; ctx.fillRect(0, y - 8, AX - 2, 16); ctx.fillStyle = '#0b0d10'; ctx.textAlign = 'right'; ctx.font = `bold 10px ${MONO}`; ctx.fillText(st.last.toFixed(st.dec), AX - 5, y + .5);
+    }
+  }
+}
+
+/* ============================================================ side panels */
+function renderHead() {
+  $('hSym').textContent = st.sym.replace(/USDT$/, '') + ' / USDT';
+  $('hSub').textContent = `${TFL[st.tf]} footprint · Bybit perpetual`;
+}
+function renderLive() {
+  $('hPx').textContent = st.last != null ? fmtP(st.last, st.dec) : '—';
+  const cur = st.candles[st.candles.length - 1], pv = $('lvPreview');
+  if (!cur || !cur.fp) { ['lvDelta', 'lvTot', 'lvX'].forEach((i) => { $(i).textContent = '—'; }); $('lvTps').textContent = st.tps; pv.className = 'preview'; pv.textContent = 'Waiting for trades…'; return; }
+  const f = cfg.unit === 'usdt' ? st.last || cur.c : 1, d = (cur.ask - cur.bid) * f, t = (cur.ask + cur.bid) * f;
+  $('lvDelta').innerHTML = `<span class="${d >= 0 ? 'up' : 'down'}">${fmtSigned(d)}</span>`;
+  $('lvTot').textContent = fmtN(t);
+  const base = baseline(cur); $('lvX').textContent = base ? ((cur.bid + cur.ask) / base).toFixed(2) + '×' : '—';
+  $('lvTps').textContent = st.tps;
+  if (cur.partial) { pv.className = 'preview'; pv.textContent = 'First candle is partial and not scored.'; return; }
+  const ev = evaluate(cur);
+  if (ev && ev.dirs.length) {
+    const L = ev.dirs[0] === 'L';
+    pv.className = 'preview ' + (L ? 'l' : 's');
+    pv.textContent = `${L ? 'Bullish' : 'Bearish'} absorption forming: ${ev.volX.toFixed(1)}× volume, delta ${(ev.a.delta / ev.a.tot * 100).toFixed(0)}% of Σ. Needs confirmation on a later close.`;
+  } else { pv.className = 'preview'; pv.textContent = 'No absorption pattern on the forming candle.'; }
+}
+const STATUS_LABEL = { WATCH: 'Watching', CONFIRMED: 'Confirmed', FAILED: 'Failed', EXPIRED: 'Expired' };
+function renderSignals() {
+  sigDirty = false;
+  const list = signals.slice().sort((a, b) => b.candleT - a.candleT).slice(0, 40);
+  $('sigList').innerHTML = list.length ? list.map((s) => {
+    const L = s.dir === 'L';
+    const lvl = s.status === 'CONFIRMED' ? `<div class="sig-line mono">Entry ${fmtP(s.entry, s.dec)} · SL ${fmtP(s.sl, s.dec)} · TP ${fmtP(s.tp, s.dec)}</div>` : '';
+    return `<div class="sig"><div class="sig-top">
+      <span class="tag tag-${s.dir}">${L ? '▲ Long' : '▼ Short'}</span><b>${esc(s.sym.replace('USDT', ''))}</b><span class="tf">${esc(TFL[s.tf])}</span>
+      <span class="dim">${esc(fmtTime(s.candleT))}</span><span class="tag tag-${s.status}">${STATUS_LABEL[s.status]}</span>${s.outcome ? `<span class="tag tag-${s.outcome}">${s.outcome}</span>` : ''}</div>
+      <div class="sig-line">${s.volX.toFixed(1)}× volume · Δ ${s.deltaPct >= 0 ? '+' : ''}${s.deltaPct.toFixed(0)}% · ${L ? 'sell' : 'buy'} stack ${s.stackPct.toFixed(0)}% of Σ</div>
+      <div class="sig-line mono">Zone ${fmtP(s.zoneLo, s.dec)} – ${fmtP(s.zoneHi, s.dec)}</div>${lvl}</div>`;
+  }).join('') : '<div class="empty">No absorption yet. Signals appear as candles close with the pattern.</div>';
+  const conf = signals.filter((s) => s.status === 'CONFIRMED');
+  const w = conf.filter((s) => s.outcome === 'WIN').length, l = conf.filter((s) => s.outcome === 'LOSS').length, t = conf.filter((s) => s.outcome === 'TIMEOUT').length;
+  const open = conf.filter((s) => !s.outcome).length;
+  $('stats').innerHTML = [['Wins', w], ['Losses', l], ['Timeout', t], ['Win rate', (w + l) ? Math.round(w / (w + l) * 100) + '%' : '—']].map(([a, b]) => `<div class="stat"><span>${a}</span><b>${b}</b></div>`).join('')
+    + (open ? `<div class="hint" style="grid-column:1/-1;margin-top:4px">${open} open</div>` : '');
+}
+
+/* ============================================================ controls */
+function normSym(v) { v = v.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''); if (!v) return ''; return v.endsWith('USDT') ? v : v + 'USDT'; }
+function setSymbol(sym) {
+  sym = normSym(sym); if (!sym) return;
+  const old = st.sym; if (old !== sym) unsubscribe(old);
+  st.sym = cfg.sym = sym; saveCfg(); $('symIn').value = ''; renderQuick(); loadAll();
+}
+function renderQuick() {
+  $('quick').innerHTML = QUICK.map((q) => `<button class="chip ${st.sym === q + 'USDT' ? 'on' : ''}" data-q="${q}">${q}</button>`).join(' ');
+  $('quick').querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => setSymbol(b.dataset.q)));
+}
+function applyTheme() { if (cfg.theme) document.documentElement.setAttribute('data-theme', cfg.theme); $('themeBtn').textContent = document.documentElement.getAttribute('data-theme') === 'light' ? '☾' : '☀︎'; }
+$('themeBtn').addEventListener('click', () => {
+  cfg.theme = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'; saveCfg(); applyTheme(); dirty = true;
+});
+$('symGo').addEventListener('click', () => setSymbol($('symIn').value));
+$('symIn').addEventListener('keydown', (e) => { if (e.key === 'Enter') setSymbol($('symIn').value); });
+$('tfSel').addEventListener('change', (e) => { st.tf = cfg.tf = e.target.value; saveCfg(); renderHead(); changeTf(); });
+$('rowSel').addEventListener('change', (e) => { cfg.rows = e.target.value; saveCfg(); dirty = true; });
+$('unitSel').addEventListener('change', (e) => { cfg.unit = e.target.value; saveCfg(); dirty = true; });
+$('soundChk').addEventListener('change', (e) => {
+  cfg.sound = e.target.checked; saveCfg();
+  if (cfg.sound && typeof Notification !== 'undefined' && Notification.permission === 'default') Notification.requestPermission();
+});
+$('clearBtn').addEventListener('click', () => { signals = []; saveSignals(); sigDirty = true; });
+window.addEventListener('resize', () => { dirty = true; });
+
+const SET_MAP = [['sVol', 'volMult', 1], ['sAvg', 'avgN', 1], ['sZone', 'zoneFrac', 100], ['sStack', 'stack', 100], ['sDelta', 'deltaCap', 100],
+  ['sClose', 'closePos', 100], ['sSwing', 'swingN', 1], ['sConfirm', 'confirmN', 1], ['sRR', 'rr', 1], ['sTimeout', 'timeout', 1], ['sImb', 'imb', 1]];
+function fillSettings() { for (const [id, k, m] of SET_MAP) $(id).value = +(cfg[k] * m).toFixed(2); }
+$('settingsBtn').addEventListener('click', () => { fillSettings(); $('settings').classList.remove('hidden'); });
+$('setCancel').addEventListener('click', () => $('settings').classList.add('hidden'));
+$('setReset').addEventListener('click', () => { Object.assign(cfg, DEFAULTS); fillSettings(); });
+$('setSave').addEventListener('click', () => {
+  for (const [id, k, m] of SET_MAP) { const v = parseFloat($(id).value); if (Number.isFinite(v)) cfg[k] = v / m; }
+  saveCfg(); $('settings').classList.add('hidden');
+  if (st.ready) { rebuild(); dirty = true; sigDirty = true; }
+});
+
+/* ============================================================ start */
+$('tfSel').value = cfg.tf; $('rowSel').value = cfg.rows; $('unitSel').value = cfg.unit; $('soundChk').checked = !!cfg.sound;
+applyTheme(); renderQuick(); renderHead();
+setInterval(() => { st.tps = st.tpsCount; st.tpsCount = 0; renderLive(); }, 1000);
+setInterval(() => { if (dirty) draw(); if (sigDirty) renderSignals(); }, 250);
+wsConnect();
+loadAll();
+})();
+</script>
+</body>
+</html>
