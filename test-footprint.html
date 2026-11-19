@@ -97,6 +97,7 @@ select:focus, input:focus { border-color: var(--green-line); }
 .tag-FAILED, .tag-EXPIRED { color: var(--muted); background: var(--panel2); font-weight: 500; }
 .tag-WIN { color: #05210f; background: var(--green); }
 .tag-LOSS { color: #fff; background: var(--red); }
+.tag-DIV { color: var(--blue); background: var(--blue-bg); }
 .tag-TIMEOUT { color: var(--muted); background: var(--panel2); }
 .tf { font-size: 11px; border: 1px solid var(--line2); border-radius: 5px; padding: 1px 7px; color: var(--muted); font-family: var(--mono); }
 .sig-line { margin-top: 5px; color: var(--muted); font-size: 12px; }
@@ -161,6 +162,7 @@ select:focus, input:focus { border-color: var(--green-line); }
           <label class="toggle"><input type="checkbox" id="cvdChk"> CVD</label>
           <select id="cvdStyle" title="CVD style"><option value="line">CVD: line</option><option value="candles">CVD: candles</option></select>
           <label class="toggle"><input type="checkbox" id="deltaChk"> Delta</label>
+          <label class="toggle"><input type="checkbox" id="divChk"> Divergence</label>
         </div>
         <div class="hint">Wheel: zoom · Shift+wheel: price zoom · Drag: pan · Double-click: reset</div>
       </div>
@@ -170,7 +172,7 @@ select:focus, input:focus { border-color: var(--green-line); }
       <div class="legend">
         <b>How to read it.</b> Each cell shows <b>sell × buy</b> volume at that price: sell is volume hitting the bid, buy is volume lifting the ask. <b>Δ</b> is buy minus sell for the candle, <b>Σ</b> its total.
         <span class="g">Green bold</span> = buy imbalance (ask volume at least the set ratio of the bid one row below). <span class="r">Red bold</span> = sell imbalance. <span class="a">Amber outline</span> = most-traded price (POC).<br>
-        <b>CVD</b> (cumulative volume delta) is the running total of Δ, drawn as candles from the first candle with tick data. Price making a lower low while CVD holds higher (or the reverse at highs) is a divergence and supports an absorption read.<br>
+        <b>CVD</b> (cumulative volume delta) is the running total of Δ, drawn as candles from the first candle with tick data. <b>CVD divergence</b>: <span class="g">bullish</span> when price makes a lower low while CVD makes a higher low, <span class="r">bearish</span> when price makes a higher high while CVD makes a lower high. It is drawn on the price chart and on the CVD line between the two pivots, and is confirmed once the set number of candles after the second pivot have closed. A divergence next to an absorption signal adds a <b>CVD div ✓</b> tag to it. The <b>#n</b> under each time is the candle count since footprint data began.<br>
         <b>Absorption</b> = volume well above average, concentrated at one extreme with sellers (or buyers) dominating there, yet price closes away from it and delta does not follow. It becomes a signal after a later candle closes beyond the absorption candle with matching delta. A close beyond the other side cancels it.
         Footprint data starts from the last ~1000 trades when the page opens; candles marked * are partial and are never scored. Candles without footprint data show as plain candles.
       </div>
@@ -189,6 +191,7 @@ select:focus, input:focus { border-color: var(--green-line); }
           <div><div class="l">Trades / sec</div><div class="v mono" id="lvTps">—</div></div>
         </div>
         <div class="preview" id="lvPreview">—</div>
+        <div class="preview" id="lvDiv" style="margin-top:8px">—</div>
       </div>
       <div class="pn">
         <h4>Journal (confirmed signals)</h4>
@@ -217,6 +220,8 @@ select:focus, input:focus { border-color: var(--green-line); }
       <label>Risk : reward<input type="number" id="sRR" min="0.5" max="10" step="0.5"></label>
       <label>Trade timeout (candles)<input type="number" id="sTimeout" min="3" max="200"></label>
       <label>Imbalance ratio<input type="number" id="sImb" min="1.5" max="10" step="0.5"></label>
+      <label>CVD divergence pivot bars<input type="number" id="sDivN" min="1" max="6"></label>
+      <label>Max bars between pivots<input type="number" id="sDivMax" min="5" max="100"></label>
     </div>
     <p class="hint">Saved only in this browser. Changes re-run detection on the candles already loaded.</p>
     <div class="modal-actions"><button class="btn" id="setReset">Defaults</button><span class="hint"></span><button class="btn" id="setCancel">Close</button><button class="btn btn-primary" id="setSave">Save</button></div>
@@ -240,8 +245,8 @@ const WS_URL = 'wss://stream.bybit.com/v5/public/linear';
 const TFS = { '1': 60000, '3': 180000, '5': 300000, '15': 900000 };
 const TFL = { '1': '1m', '3': '3m', '5': '5m', '15': '15m' };
 const QUICK = ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'];
-const DEFAULTS = { volMult: 1.5, avgN: 20, zoneFrac: 0.30, stack: 0.30, deltaCap: 0.15, closePos: 0.50, swingN: 12, confirmN: 3, rr: 2, timeout: 30, imb: 3 };
-const cfg = Object.assign({ sym: 'BTCUSDT', tf: '5', rows: 'auto', unit: 'usdt', sound: false, theme: null, showCvd: true, showDelta: true, cvdStyle: 'line' }, DEFAULTS, store.get('cfg', {}));
+const DEFAULTS = { volMult: 1.5, avgN: 20, zoneFrac: 0.30, stack: 0.30, deltaCap: 0.15, closePos: 0.50, swingN: 12, confirmN: 3, rr: 2, timeout: 30, imb: 3, divN: 2, divMax: 30 };
+const cfg = Object.assign({ sym: 'BTCUSDT', tf: '5', rows: 'auto', unit: 'usdt', sound: false, theme: null, showCvd: true, showDelta: true, cvdStyle: 'line', showDiv: true }, DEFAULTS, store.get('cfg', {}));
 const saveCfg = () => store.set('cfg', cfg);
 let signals = store.get('signals', []);
 const saveSignals = () => store.set('signals', signals.slice(-150));
@@ -250,6 +255,7 @@ const st = {
   sym: cfg.sym, tf: cfg.tf, tick: 0.01, dec: 2,
   candles: [], trades: [], seen: new Set(), kl: [], pending: [], ready: false,
   ws: null, wsOk: false, wasDown: false, last: null, tpsCount: 0, tps: 0, loadId: 0,
+  divs: [], divSig: '', divSeen: new Set(), divInit: false,
 };
 let dirty = true, sigDirty = true;
 const view = { colW: 104, ppt: 3, pMid: null, scrollX: 0, autoY: true };
@@ -313,7 +319,7 @@ async function reseed() {
 async function loadAll() {
   const id = ++st.loadId;
   st.ready = false; st.pending = []; st.candles = []; st.trades = []; st.seen = new Set(); st.last = null; st.kl = [];
-  view.scrollX = 0; view.autoY = true;
+  view.scrollX = 0; view.autoY = true; st.divs = []; st.divSig = ''; st.divSeen = new Set(); st.divInit = false;
   dirty = true; sigDirty = true; clearError(); setStatus(); renderHead();
   subscribe();
   try {
@@ -348,7 +354,7 @@ async function changeTf() {
     const kl = await getJson(`${API}/kline?category=linear&symbol=${st.sym}&interval=${st.tf}&limit=120`);
     if (id !== st.loadId) return;
     st.kl = kl.list || [];
-    view.scrollX = 0; view.autoY = true;
+    view.scrollX = 0; view.autoY = true; st.divs = []; st.divSig = ''; st.divSeen = new Set(); st.divInit = false;
     rebuild(); st.ready = true;
   } catch (e) { showError('Could not load candles: ' + (e.message || e)); return; }
   setStatus(); dirty = true; sigDirty = true;
@@ -564,8 +570,30 @@ function niceStep(x) {
   return 10 * p;
 }
 
+function divergences() {
+  const cs = st.candles, N = cs.length, cvd = cvdSeries(), n = cfg.divN, out = [], lows = [], highs = [];
+  for (let i = n; i < N - n; i++) {
+    if (!cvd[i]) continue; let lo = true, hi = true;
+    for (let j = i - n; j <= i + n && (lo || hi); j++) {
+      if (j === i) continue;
+      if (j < i) { if (cs[j].l <= cs[i].l) lo = false; if (cs[j].h >= cs[i].h) hi = false; }
+      else { if (cs[j].l < cs[i].l) lo = false; if (cs[j].h > cs[i].h) hi = false; }
+    }
+    if (lo) lows.push(i); if (hi) highs.push(i);
+  }
+  for (let k = 1; k < lows.length; k++) {
+    const a = lows[k - 1], b = lows[k];
+    if (b - a <= cfg.divMax && cs[b].l < cs[a].l - st.tick * 0.5 && cvd[b].c > cvd[a].c) out.push({ type: 'bull', a, b, pa: cs[a].l, pb: cs[b].l, ca: cvd[a].c, cb: cvd[b].c, t: cs[b].t });
+  }
+  for (let k = 1; k < highs.length; k++) {
+    const a = highs[k - 1], b = highs[k];
+    if (b - a <= cfg.divMax && cs[b].h > cs[a].h + st.tick * 0.5 && cvd[b].c < cvd[a].c) out.push({ type: 'bear', a, b, pa: cs[a].h, pb: cs[b].h, ca: cvd[a].c, cb: cvd[b].c, t: cs[b].t });
+  }
+  return out;
+}
+
 /* ============================================================ chart renderer */
-const AXR = 76, PADL = 8, TAXIS = 24, MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+const AXR = 76, PADL = 8, TAXIS = 34, MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace';
 let mouse = { x: 0, y: 0, in: false }, drag = null, rafPending = false;
 const requestDraw = () => { if (rafPending) return; rafPending = true; requestAnimationFrame(() => { rafPending = false; draw(); }); };
 
@@ -624,7 +652,7 @@ function draw() {
   const idxByT = new Map(); cs.forEach((c, i) => idxByT.set(c.t, i));
   const sigs = signals.filter((s) => s.sym === st.sym && s.tf === st.tf), sigByT = {};
   for (const s of sigs) (sigByT[s.candleT] = sigByT[s.candleT] || []).push(s);
-  const cvd = cvdSeries();
+  const cvd = cvdSeries(), firstFp = cs.findIndex((c) => c.fp), divs = cfg.showDiv ? divergences() : [];
 
   ctx.textBaseline = 'middle';
   const clipRect = (top, h) => { ctx.save(); ctx.beginPath(); ctx.rect(0, top, g.xRight, h); ctx.clip(); };
@@ -680,6 +708,13 @@ function draw() {
       ctx.fillText((L ? '▲ ABS' : '▼ ABS') + tg, cx, L ? yL + 14 : yH - 12);
     }
   }
+  for (const d of divs) {
+    const x1 = cxOf(d.a), x2 = cxOf(d.b); if (x2 < -20 || x1 > g.xRight + 20) continue;
+    const bull = d.type === 'bull', col = bull ? green : red, off = ppt / 2 + (bull ? 5 : -5), y1 = yP(d.pa) + off, y2 = yP(d.pb) + off;
+    ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 1.8; ctx.setLineDash([5, 3]); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.restore();
+    ctx.fillStyle = col; for (const [x, y] of [[x1, y1], [x2, y2]]) { ctx.beginPath(); ctx.arc(x, y, 3, 0, 6.2832); ctx.fill(); }
+    ctx.font = `bold 10.5px ${MONO}`; ctx.textAlign = 'center'; ctx.fillText(bull ? '▲ CVD DIV' : '▼ CVD DIV', x2, y2 + (bull ? 28 : -28));
+  }
   // open trade levels
   for (const s of sigs) {
     if (s.status !== 'CONFIRMED' || s.outcome) continue;
@@ -698,7 +733,7 @@ function draw() {
   {
     const c = cs[legendIdx], cv_ = cvd[legendIdx]; let x = 10; const y = 14;
     const seg = (txt, col, bold) => { ctx.font = `${bold ? 'bold ' : ''}11px ${MONO}`; ctx.textAlign = 'left'; ctx.fillStyle = col; ctx.fillText(txt, x, y); x += ctx.measureText(txt).width + 8; };
-    seg(`${st.sym} · ${TFL[st.tf]} · ${fmtTime(c.t)}${c.partial ? '*' : ''}`, strong, true);
+    seg(`${st.sym} · ${TFL[st.tf]} · ${fmtTime(c.t)}${c.partial ? '*' : ''}${c.fp && firstFp >= 0 ? ' · #' + (legendIdx - firstFp + 1) : ''}`, strong, true);
     seg('O ' + c.o.toFixed(st.dec), c.c >= c.o ? green : red); seg('H ' + c.h.toFixed(st.dec), c.c >= c.o ? green : red);
     seg('L ' + c.l.toFixed(st.dec), c.c >= c.o ? green : red); seg('C ' + c.c.toFixed(st.dec), c.c >= c.o ? green : red);
     if (c.fp) { seg('Δ ' + fmtSigned(dOf(c)), dOf(c) >= 0 ? green : red, true); seg('Σ ' + fmtN(binsOf(c, mult).tot), text2); }
@@ -764,6 +799,15 @@ function draw() {
         ctx.strokeStyle = col; ctx.beginPath(); ctx.moveTo(Math.round(cx) + 0.5, yCvd(q.h)); ctx.lineTo(Math.round(cx) + 0.5, yCvd(q.l)); ctx.stroke();
         ctx.fillStyle = col; ctx.fillRect(cx - bw / 2, Math.min(yCvd(q.o), yCvd(q.c)), bw, Math.max(1.5, Math.abs(yCvd(q.o) - yCvd(q.c))));
       }
+      for (const d of divs) {
+        const x1 = cxOf(d.a), x2 = cxOf(d.b); if (x2 < -20 || x1 > g.xRight + 20) continue; const col = d.type === 'bull' ? green : red;
+        ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x1, yCvd(d.ca)); ctx.lineTo(x2, yCvd(d.cb)); ctx.stroke(); ctx.restore();
+        ctx.fillStyle = col; for (const [x, v] of [[x1, d.ca], [x2, d.cb]]) { ctx.beginPath(); ctx.arc(x, yCvd(v), 3.4, 0, 6.2832); ctx.fill(); }
+      }
+      if (colW >= 70) for (let i = iLo; i <= iHi; i++) {
+        const q = cvd[i]; if (!q) continue; const y = yCvd(cfg.cvdStyle === 'line' ? q.c : q.h) - 9;
+        if (y > top + 7) { ctx.font = `10px ${MONO}`; ctx.textAlign = 'center'; ctx.fillStyle = text2; ctx.fillText(fmtSigned(q.c), cxOf(i), y); }
+      }
     }
     ctx.restore();
     let lastQ = null; for (let i = N - 1; i >= 0; i--) if (cvd[i]) { lastQ = cvd[i]; break; }
@@ -791,8 +835,13 @@ function draw() {
   /* ---------- time axis ---------- */
   ctx.fillStyle = panel; ctx.fillRect(0, g.axisTop, W, TAXIS);
   ctx.strokeStyle = line2; ctx.beginPath(); ctx.moveTo(0, g.axisTop + 0.5); ctx.lineTo(W, g.axisTop + 0.5); ctx.stroke();
-  const every = Math.max(1, Math.ceil(78 / colW)); ctx.font = `10.5px ${MONO}`; ctx.textAlign = 'center'; ctx.fillStyle = muted;
-  for (let i = iLo; i <= iHi; i++) { if (Math.round(cs[i].t / TFS[st.tf]) % every) continue; const x = cxOf(i); if (x > 20 && x < g.xRight - 20) ctx.fillText(fmtTime(cs[i].t), x, g.axisTop + TAXIS / 2 + 1); }
+  const every = Math.max(1, Math.ceil(78 / colW));
+  for (let i = iLo; i <= iHi; i++) {
+    const x = cxOf(i); if (x <= 20 || x >= g.xRight - 20) continue; const onT = !(Math.round(cs[i].t / TFS[st.tf]) % every);
+    ctx.textAlign = 'center';
+    if (onT) { ctx.font = `10.5px ${MONO}`; ctx.fillStyle = muted; ctx.fillText(fmtTime(cs[i].t), x, g.axisTop + 11); }
+    if (firstFp >= 0 && i >= firstFp && (onT || colW >= 40)) { ctx.font = `bold 10px ${MONO}`; ctx.fillStyle = text2; ctx.fillText('#' + (i - firstFp + 1), x, g.axisTop + 25); }
+  }
 
   /* ---------- crosshair ---------- */
   if (mouse.in && mouse.x < g.xRight && mouse.y < g.axisTop) {
@@ -806,8 +855,8 @@ function draw() {
     else if (cfg.showDelta && mouse.y >= g.dTop && mouse.y <= g.dTop + g.dH && yDel) { const yz = yDel(0); label = fmtSigned((yz - mouse.y) / (yz - yDel(dMax)) * dMax); }
     if (label) tag(label, mouse.y, strong, C('--bg'));
     if (hov >= 0) {
-      const t = fmtTime(cs[hov].t), tw = ctx.measureText(t).width + 14; ctx.fillStyle = strong; ctx.fillRect(hx - tw / 2, g.axisTop + 2, tw, TAXIS - 4);
-      ctx.font = `bold 10.5px ${MONO}`; ctx.textAlign = 'center'; ctx.fillStyle = C('--bg'); ctx.fillText(t, hx, g.axisTop + TAXIS / 2 + 1);
+      const t = fmtTime(cs[hov].t), tw = ctx.measureText(t).width + 14; ctx.fillStyle = strong; ctx.fillRect(hx - tw / 2, g.axisTop + 2, tw, 18);
+      ctx.font = `bold 10.5px ${MONO}`; ctx.textAlign = 'center'; ctx.fillStyle = C('--bg'); ctx.fillText(t, hx, g.axisTop + 11);
     }
   }
 }
@@ -819,6 +868,17 @@ function renderHead() {
 }
 function renderLive() {
   $('hPx').textContent = st.last != null ? fmtP(st.last, st.dec) : '—';
+  if (st.ready) {
+    const ds = divergences(), sg = ds.map((d) => d.type + d.b).join(',');
+    if (sg !== st.divSig) {
+      st.divSig = sg; st.divs = ds; sigDirty = true; dirty = true;
+      for (const d of ds) { const k = d.type + d.t; if (!st.divSeen.has(k)) { st.divSeen.add(k); if (st.divInit) notify('CVD divergence', `${st.sym.replace('USDT', '')} ${TFL[st.tf]} ${d.type === 'bull' ? 'bullish' : 'bearish'} CVD divergence`, 'watch'); } }
+      st.divInit = true;
+    }
+    const last = st.divs.slice().sort((a, b) => b.b - a.b)[0], el = $('lvDiv');
+    if (last) { const bull = last.type === 'bull'; el.className = 'preview ' + (bull ? 'l' : 's'); el.textContent = `${bull ? 'Bullish' : 'Bearish'} CVD divergence at ${fmtTime(last.t)}: price ${bull ? 'lower low' : 'higher high'}, CVD ${bull ? 'higher low' : 'lower high'}.`; }
+    else { el.className = 'preview'; el.textContent = 'No CVD divergence yet.'; }
+  }
   const cur = st.candles[st.candles.length - 1], pv = $('lvPreview');
   if (!cur || !cur.fp) { ['lvDelta', 'lvTot', 'lvX', 'lvCvd'].forEach((i) => { $(i).textContent = '—'; }); $('lvTps').textContent = st.tps; pv.className = 'preview'; pv.textContent = 'Waiting for trades…'; return; }
   const d = dOf(cur), t = binsOf(cur, 1).tot;
@@ -841,11 +901,12 @@ function renderSignals() {
   sigDirty = false;
   const list = signals.slice().sort((a, b) => b.candleT - a.candleT).slice(0, 40);
   $('sigList').innerHTML = list.length ? list.map((s) => {
-    const L = s.dir === 'L';
+    const L = s.dir === 'L', bi = (s.sym === st.sym && s.tf === st.tf) ? st.candles.findIndex((c) => c.t === s.candleT) : -1;
+    const dv = bi >= 0 && st.divs.some((d) => d.type === (L ? 'bull' : 'bear') && Math.abs(d.b - bi) <= 3);
     const lvl = s.status === 'CONFIRMED' ? `<div class="sig-line mono">Entry ${fmtP(s.entry, s.dec)} · SL ${fmtP(s.sl, s.dec)} · TP ${fmtP(s.tp, s.dec)}</div>` : '';
     return `<div class="sig"><div class="sig-top">
       <span class="tag tag-${s.dir}">${L ? '▲ Long' : '▼ Short'}</span><b>${esc(s.sym.replace('USDT', ''))}</b><span class="tf">${esc(TFL[s.tf])}</span>
-      <span class="dim">${esc(fmtTime(s.candleT))}</span><span class="tag tag-${s.status}">${STATUS_LABEL[s.status]}</span>${s.outcome ? `<span class="tag tag-${s.outcome}">${s.outcome}</span>` : ''}</div>
+      <span class="dim">${esc(fmtTime(s.candleT))}</span><span class="tag tag-${s.status}">${STATUS_LABEL[s.status]}</span>${dv ? '<span class="tag tag-DIV">CVD div ✓</span>' : ''}${s.outcome ? `<span class="tag tag-${s.outcome}">${s.outcome}</span>` : ''}</div>
       <div class="sig-line">${s.volX.toFixed(1)}× volume · Δ ${s.deltaPct >= 0 ? '+' : ''}${s.deltaPct.toFixed(0)}% · ${L ? 'sell' : 'buy'} stack ${s.stackPct.toFixed(0)}% of Σ</div>
       <div class="sig-line mono">Zone ${fmtP(s.zoneLo, s.dec)} – ${fmtP(s.zoneHi, s.dec)}</div>${lvl}</div>`;
   }).join('') : '<div class="empty">No absorption yet. Signals appear as candles close with the pattern.</div>';
@@ -882,6 +943,7 @@ $('soundChk').addEventListener('change', (e) => {
 });
 $('cvdChk').addEventListener('change', (e) => { cfg.showCvd = e.target.checked; saveCfg(); requestDraw(); });
 $('cvdStyle').addEventListener('change', (e) => { cfg.cvdStyle = e.target.value; saveCfg(); requestDraw(); });
+$('divChk').addEventListener('change', (e) => { cfg.showDiv = e.target.checked; saveCfg(); requestDraw(); });
 $('deltaChk').addEventListener('change', (e) => { cfg.showDelta = e.target.checked; saveCfg(); requestDraw(); });
 $('clearBtn').addEventListener('click', () => { signals = []; saveSignals(); sigDirty = true; requestDraw(); });
 $('fitBtn').addEventListener('click', () => { view.autoY = true; requestDraw(); });
@@ -930,7 +992,7 @@ function zoomX(f, anchorX) {
 })();
 
 const SET_MAP = [['sVol', 'volMult', 1], ['sAvg', 'avgN', 1], ['sZone', 'zoneFrac', 100], ['sStack', 'stack', 100], ['sDelta', 'deltaCap', 100],
-  ['sClose', 'closePos', 100], ['sSwing', 'swingN', 1], ['sConfirm', 'confirmN', 1], ['sRR', 'rr', 1], ['sTimeout', 'timeout', 1], ['sImb', 'imb', 1]];
+  ['sClose', 'closePos', 100], ['sSwing', 'swingN', 1], ['sConfirm', 'confirmN', 1], ['sRR', 'rr', 1], ['sTimeout', 'timeout', 1], ['sImb', 'imb', 1], ['sDivN', 'divN', 1], ['sDivMax', 'divMax', 1]];
 function fillSettings() { for (const [id, k, m] of SET_MAP) $(id).value = +(cfg[k] * m).toFixed(2); }
 $('settingsBtn').addEventListener('click', () => { fillSettings(); $('settings').classList.remove('hidden'); });
 $('setCancel').addEventListener('click', () => $('settings').classList.add('hidden'));
@@ -943,7 +1005,7 @@ $('setSave').addEventListener('click', () => {
 
 /* ============================================================ start */
 $('tfSel').value = cfg.tf; $('rowSel').value = cfg.rows; $('unitSel').value = cfg.unit; $('soundChk').checked = !!cfg.sound;
-$('cvdStyle').value = cfg.cvdStyle; $('cvdChk').checked = !!cfg.showCvd; $('deltaChk').checked = !!cfg.showDelta;
+$('cvdStyle').value = cfg.cvdStyle; $('cvdChk').checked = !!cfg.showCvd; $('deltaChk').checked = !!cfg.showDelta; $('divChk').checked = !!cfg.showDiv;
 applyTheme(); renderQuick(); renderHead();
 setInterval(() => { st.tps = st.tpsCount; st.tpsCount = 0; renderLive(); }, 1000);
 setInterval(() => { if (dirty) draw(); if (sigDirty) renderSignals(); }, 250);
