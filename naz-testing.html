@@ -1158,7 +1158,7 @@ function go(){const r=route();
   else if(r.p==="watchlist"){$("crumb").textContent="Scanner / My Watchlist";renderWatch()}
   else{$("crumb").textContent="Scanner / RSI Scanner";renderScanner(false)}}
 window.addEventListener("hashchange",go);
-$("q").onkeydown=e=>{if(e.key==="Enter"){const s=fix($("q").value);if(s){location.hash="#coin/"+s;$("q").value=""}}};
+$("q").onkeydown=e=>{if(e.key==="Enter"){const dq=$("q").value.trim().toUpperCase().replace(/\s+/g,""),dn=dq==="TOTAL3"||dq==="BTC.D"||dq==="USDT.D"||dq==="BTCD"||dq==="USDTD"||dq==="BTC+ETH+STABLE.D"?dq.replace(/^(BTC|USDT)D$/,"$1.D"):null;if(dn){location.hash="#dominance/"+encodeURIComponent(dn);$("q").value="";return}const s=fix($("q").value);if(s){location.hash="#coin/"+s;$("q").value=""}}};
 let th="dark";try{th=localStorage.getItem("theme")||"dark"}catch(e){}
 $("tg").onclick=()=>{applyTheme(document.documentElement.dataset.theme==="light"?"dark":"light");if(route().p==="coin")go()};
 applyTheme(th);
