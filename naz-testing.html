@@ -104,6 +104,8 @@ tr.nw td{background:var(--onbg)}tr.nw td:first-child{box-shadow:inset 3px 0 0 va
   <a class="nav" data-r="coin/SOLUSDT" href="#coin/SOLUSDT">Solana</a>
   <div class="grp">Dominance</div>
   <a class="nav" data-r="dominance" href="#dominance">BTC.D · USDT.D · TOTAL3</a>
+  <div class="grp">PSX Stocks</div>
+  <a class="nav" data-r="psx" href="#psx">PSX · TradingView</a>
   <div class="grp">Other</div>
   <a class="nav" href="index.html">Alert Board</a>
  </aside>
@@ -1234,6 +1236,25 @@ function renderBot(auto){
   $("bax").onchange=e=>{B.adxOnly=e.target.checked?1:0;botSave();renderBot()};
   $("brs").onclick=()=>{if(confirm("Delete all demo trades?")){B.trades=[];B.seen={};B.seeded=false;botSave();renderBot()}};
   $("page").querySelectorAll("tr.r").forEach(tr=>tr.onclick=()=>{location.hash="#coin/"+tr.dataset.s})}
+// ===== PSX stocks (TradingView widgets) =====
+const PSXL="OGDC PPL PSO HUBC MARI ENGRO FFC EFERT LUCK MCB UBL HBL MEBL BAHL NBP FCCL DGKC MLCF CHCC SYS TRG NETSOL ISL INIL PAEL TGL SNGP SSGC POL ATRL NRL PRL KAPCO HCAR INDU MTL THALL ILP GATM AGP".split(" ");
+function tvEmbed(el,file,cfg){el.innerHTML="";const w=document.createElement("div");w.className="tradingview-widget-container";w.style.height="100%";w.style.width="100%";const i=document.createElement("div");i.className="tradingview-widget-container__widget";i.style.height="100%";i.style.width="100%";w.appendChild(i);const sc=document.createElement("script");sc.src="https://s3.tradingview.com/external-embedding/"+file;sc.async=true;sc.innerHTML=JSON.stringify(cfg);w.appendChild(sc);el.appendChild(w)}
+async function renderPsx(a){coinStop();let sym="OGDC";try{const d=decodeURIComponent(a||"").toUpperCase().replace(/^PSX:/,"");if(/^[A-Z0-9]{2,12}$/.test(d))sym=d;else if(window._psx)sym=window._psx}catch(e){}
+  window._psx=sym;const iv=window._psxTf||"D",dark=document.documentElement.dataset.theme!=="light",th=dark?"dark":"light";
+  const tfs=[["15","15m"],["60","1h"],["240","4h"],["D","1D"],["W","1W"]];
+  $("page").innerHTML='<h2>PSX Stocks</h2><p class="sub">Pakistan Stock Exchange stocks shown with TradingView widgets. Signals below are TradingView\'s own Buy / Sell ratings (moving averages and oscillators), not the scanner rules. Data can be delayed.</p>'
+   +'<div class="card" style="padding:12px;margin-bottom:12px"><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span class="mu">Stock</span><select id="psxSel" style="'+SEL+'">'+PSXL.map(x=>'<option'+(x===sym?" selected":"")+'>'+x+'</option>').join("")+(PSXL.includes(sym)?"":'<option selected>'+sym+'</option>')+'</select><input id="psxIn" placeholder="Any PSX symbol, e.g. KEL, then Enter" style="min-width:230px"><span class="mu">Timeframe</span>'+tfs.map(t=>'<button class="tfb'+(iv===t[0]?" on":"")+'" data-tf="'+t[0]+'">'+t[1]+'</button>').join("")+'</div></div>'
+   +'<h3 style="margin:14px 0 6px">All Pakistan stocks · TradingView screener</h3><div id="psxS" style="height:560px;border-radius:12px;overflow:hidden"></div>'
+   +'<h3 style="margin:14px 0 6px">PSX:'+sym+' · chart</h3><div id="psxC" style="height:520px;border-radius:12px;overflow:hidden"></div>'
+   +'<h3 style="margin:14px 0 6px">PSX:'+sym+' · TradingView technical rating</h3><div id="psxT" style="height:420px;max-width:520px;border-radius:12px;overflow:hidden"></div>'
+   +'<p class="sub" id="psxMsg"></p>';
+  $("psxSel").onchange=e=>{location.hash="#psx/"+e.target.value};
+  $("psxIn").onkeydown=e=>{if(e.key==="Enter"){const v=e.target.value.trim().toUpperCase().replace(/^PSX:/,"");if(/^[A-Z0-9]{2,12}$/.test(v))location.hash="#psx/"+v}};
+  $("page").querySelectorAll("button[data-tf]").forEach(b=>b.onclick=()=>{window._psxTf=b.dataset.tf;renderPsx(sym)});
+  try{tvEmbed($("psxS"),"embed-widget-screener.js",{width:"100%",height:560,defaultColumn:"moving_averages",defaultScreen:"general",market:"pakistan",showToolbar:true,colorTheme:th,locale:"en",isTransparent:false});
+    tvEmbed($("psxT"),"embed-widget-technical-analysis.js",{interval:iv==="D"?"1D":iv==="W"?"1W":iv==="60"?"1h":iv==="240"?"4h":"15m",width:"100%",isTransparent:false,height:420,symbol:"PSX:"+sym,showIntervalTabs:true,displayMode:"single",locale:"en",colorTheme:th});
+    await tvLoad();new TradingView.widget({container_id:"psxC",autosize:true,symbol:"PSX:"+sym,interval:iv,timezone:"Asia/Karachi",theme:th,style:"1",locale:"en",toolbar_bg:dark?"#12161d":"#ffffff",backgroundColor:dark?"#0b0e13":"#ffffff",enable_publishing:false,allow_symbol_change:true,hide_side_toolbar:false,withdateranges:true,studies:["RSI@tv-basicstudies"]})}
+  catch(e){const m=$("psxMsg");if(m)m.textContent="TradingView could not load here (blocked network or ad blocker). Try another network or turn the blocker off."}}
 // ===== router =====
 function route(){const h=(location.hash||"#scanner").slice(1).split("/");return{p:h[0]||"scanner",a:h[1]}}
 function go(){const r=route();
@@ -1241,6 +1262,7 @@ function go(){const r=route();
   if(r.p!=="coin")coinStop();
   if(r.p==="coin"&&r.a){$("crumb").textContent="Coins / "+r.a;renderCoin(r.a)}
   else if(r.p==="dominance"){$("crumb").textContent="Dominance / "+(r.a?decodeURIComponent(r.a):"BTC.D");renderDom(r.a)}
+  else if(r.p==="psx"){$("crumb").textContent="PSX Stocks / TradingView";renderPsx(r.a)}
   else if(r.p==="funding"){$("crumb").textContent="Scanner / Funding Rates";renderFunding();wxLoad()}
   else if(r.p==="recovery"){$("crumb").textContent="Altcoins / Recovery Report";renderRecovery();if(!S.list.length)scan()}
   else if(r.p==="macro"){$("crumb").textContent="Commodities & Indices / RSI Scanner";renderMacro();macScan()}
@@ -1248,7 +1270,7 @@ function go(){const r=route();
   else if(r.p==="watchlist"){$("crumb").textContent="Scanner / My Watchlist";renderWatch()}
   else{$("crumb").textContent="Scanner / RSI Scanner";renderScanner(false)}}
 window.addEventListener("hashchange",go);
-$("q").onkeydown=e=>{if(e.key==="Enter"){const dq=$("q").value.trim().toUpperCase().replace(/\s+/g,""),dn=dq==="TOTAL3"||dq==="BTC.D"||dq==="USDT.D"||dq==="BTCD"||dq==="USDTD"||dq==="BTC+ETH+STABLE.D"?dq.replace(/^(BTC|USDT)D$/,"$1.D"):null;if(dn){location.hash="#dominance/"+encodeURIComponent(dn);$("q").value="";return}const s=fix($("q").value);if(s){location.hash="#coin/"+s;$("q").value=""}}};
+$("q").onkeydown=e=>{if(e.key==="Enter"){const pm=$("q").value.trim().toUpperCase().match(/^PSX:([A-Z0-9]+)$/);if(pm){location.hash="#psx/"+pm[1];$("q").value="";return}const dq=$("q").value.trim().toUpperCase().replace(/\s+/g,""),dn=dq==="TOTAL3"||dq==="BTC.D"||dq==="USDT.D"||dq==="BTCD"||dq==="USDTD"||dq==="BTC+ETH+STABLE.D"?dq.replace(/^(BTC|USDT)D$/,"$1.D"):null;if(dn){location.hash="#dominance/"+encodeURIComponent(dn);$("q").value="";return}const s=fix($("q").value);if(s){location.hash="#coin/"+s;$("q").value=""}}};
 let th="dark";try{th=localStorage.getItem("theme")||"dark"}catch(e){}
 $("tg").onclick=()=>{applyTheme(document.documentElement.dataset.theme==="light"?"dark":"light");if(route().p==="coin")go()};
 applyTheme(th);
